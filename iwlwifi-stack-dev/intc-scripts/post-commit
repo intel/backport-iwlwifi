@@ -1,0 +1,15 @@
+#!/bin/sh
+
+unset GIT_DIR GIT_PREFIX GIT_WORK_TREE GIT_INDEX_FILE
+export GIT_DIR GIT_PREFIX GIT_WORK_TREE GIT_INDEX_FILE
+
+msg="$(./intc-scripts/check-commit-msg.py /tmp /tmp HEAD)"
+
+if [ -n "$msg" ] ; then
+	echo ''
+	echo '/-------- check-commit-message output --------'
+	printf "%s\n" "$msg" | sed 's/^/| /'
+	echo '\---------------------------------------------'
+	echo ''
+	echo ''
+fi

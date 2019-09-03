@@ -1,0 +1,170 @@
+config IWLXVT
+	tristate "Enable XVT op_mode"
+	depends on IWLWIFI
+	select IWLWIFI_DEVICE_TESTMODE
+	select IWLWIFI_SUPPORT_DEBUG_OVERRIDES
+	help
+	  This option enables the xVT operation mode. xVT mode supports
+	  special debug and testing operations that are not supported in
+	  the standard operation modes, and is used for verification
+	  purposes.
+	  xVT mode does not support the standard WiFi operations, and
+	  does not communicate with the user mode through the nl80211.
+
+	  Enabling this options allows to fully control the HW using
+	  an external tool in user space.
+
+	  Say Y if you have the user space application and want
+	  to execute debug and testing flows on the HW.
+
+config IWLWIFI_NUM_CHANNELS
+	int "number of supported concurrent channels"
+	range 1 2
+	default 2
+	depends on IWLMVM
+
+config IWLMVM_AX_SOFTAP_TESTMODE
+	bool "enable 11ax softap testmode debugfs configuration files"
+	depends on IWLMVM
+	depends on MAC80211_DEBUGFS
+	default y
+	help
+	  Enable 11ax softap testmode debugfs entries that can be used to
+	  enable/disable test modes for trigger frame sending to an 11ax
+	  testmode client.
+
+config IWLMVM_ADVANCED_QUOTA_MGMT
+	bool "enable advanced quota management code"
+	default y
+	depends on IWLMVM
+	help
+	  This code isn't intended to go upstream yet, hence
+	  the config option. You shouldn't turn it off.
+
+config IWLWIFI_THERMAL_DEBUGFS
+	bool "enable thermal debug write and read support"
+	depends on IWLWIFI_DEBUGFS
+	default y
+	help
+	  Enable thermal settings debugfs entries that can be used to change
+	  the temperatures and other parameters for testing, This code isn't
+	  intended for upstream, hence the config option. You shouldn't turn it off.
+
+config IWLWIFI_DEVICE_TESTMODE
+	bool "enable generic netlink testmode support"
+	depends on IWLWIFI
+	default y if IWLMVM
+	select IWLWIFI_SUPPORT_DEBUG_OVERRIDES
+
+config IWLWIFI_FRQ_MGR_TEST
+	bool "Enable Frequency Manager API - Test Mode"
+	depends on IWLMVM && IWLWIFI_SUPPORT_DEBUG_OVERRIDES
+	help
+	  This option enables running The Frequency Manager API
+	  in Debug Mode without having A Frequency Manager.
+	  In this mode you can run the Frequency Manager on any Platform,
+	  monitor the notifications that the driver send the Frequency Manager,
+	  and initiate notifications from the Frequency Manager.
+
+config IWLWIFI_FRQ_MGR
+	bool "enable Frequency Manager API" if !IWLWIFI_FRQ_MGR_TEST
+	default y if IWLWIFI_FRQ_MGR_TEST
+	depends on IWLMVM && (IUI_FM || IWLWIFI_FRQ_MGR_TEST)
+	help
+	  This option enables The Frequency Manager API.
+	  Enabling this option allows the driver to receive and send
+	  Frequency notification from and to the Frequency Manager.
+	  The notification can involve Tx power, Rx gain, and ADC/DAC
+
+config IWLWIFI_SUPPORT_DEBUG_OVERRIDES
+	depends on IWLWIFI
+	bool "enable default value override (for debugging)"
+
+config IWLWIFI_FORCE_OFDM_RATE
+	bool "force transmit to OFDM low rate"
+	depends on IWLMVM
+	help
+	  This option force the FW to transmit OFDM rate.
+
+	  If unsure say N, Say Y if you have this code and want to transmit OFDM low rate.
+
+config IWLMVM_P2P_OPPPS_TEST_WA
+	bool "Use WA to pass P2P OPPPS certification test"
+	depends on IWLMVM
+	---help---
+	  This option enables a WA to pass P2P OPPPS certification test.
+	  This test verifies P2P client power management behavior when
+	  connected to P2P GO that advertises OPPPS. Since P2P client power
+	  management is not supported currently by FW a special WA is required.
+	  Send zeroed quota on P2P client MAC if power save is enabled from
+	  user space to mimic power management behavior. Update quota to normal
+	  value otherwise.
+
+config IWLMVM_VENDOR_CMDS
+	bool "enable vendor commands"
+	depends on IWLMVM
+	default y
+	help
+	  This option enables support for vendor commands, including some
+	  that don't have their own Kconfig option. Other Kconfig options
+	  depend on this one as well.
+
+	  This option mostly exists for non-upstream tagging, so best
+	  leave it set to Y.
+
+config IWLWIFI_LTE_COEX
+        bool "enable lte coexistence support"
+        depends on IWLMVM_VENDOR_CMDS
+	help
+	  This option enables LTE-Coexistence (vendor) commands
+
+config IWLMVM_TDLS_PEER_CACHE
+	bool "enable TDLS peer caching and traffic monitoring"
+	depends on IWLMVM_VENDOR_CMDS
+	default y
+	help
+	  This option enables (vendor) commands from userspace to monitor
+	  traffic to and from specific peers on the same BSS. These peers
+	  might be TDLS peers, or candidates to become such.
+
+config IWLWIFI_DISALLOW_OLDER_FW
+	bool "disallow fallback to older firmware images"
+	depends on IWLWIFI
+	help
+	  This Kconfig option allows disabling fallback to older firmware images
+	  to ensure tight coupling between driver and firmware releases. When
+	  enabled, the dbg-cfg framework can still override this setting.
+
+config IWLWIFI_NUM_STA_INTERFACES
+	int "number of supported concurrent station interfaces"
+	range 1 2
+	default 1
+	depends on IWLMVM
+
+config REJECT_NONUPSTREAM_NL80211
+	bool "reject non-upstreamed nl80211 commands"
+	depends on CFG80211
+	help
+	  Say Y to disable non-upstream commands.
+
+config IWLFMAC_9000_SUPPORT
+	bool
+	depends on IWLFMAC
+	default y
+	help
+	  Say N to disable support for 9000-series devices in FMAC.
+	  This option is mostly used for code pruning & documentation
+	  purposes.
+
+config IWLWIFI_DEBUG_HOST_CMD_ENABLED
+	bool
+	default y
+	help
+	  This option enables the using of debug host command API.
+	  It's used for debug purposes and not intended for upstream
+
+config IWLWIFI_ATLAS_PLATFORM_WORKAROUND
+	bool "enable Atlas platform workaround code"
+	help
+	  Say Y here to enable Atlas platform detection at runtime,
+	  to enable a specific workaround if detected.

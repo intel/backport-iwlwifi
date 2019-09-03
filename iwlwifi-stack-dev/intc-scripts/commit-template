@@ -1,0 +1,37 @@
+## <component>: <subcomponent>: subject
+## component is usually iwlwifi/mac80211/cfg80211 and similar
+## subcomponent is something within, like rs, bt-coex, ...
+## need [BUGFIX] prefix for type=bug
+##
+## Write your commit message in the imperative: "Fix bug" and not
+## "Fixed bug" or "Fixing bug". This makes more sense when reading
+## the commit message before the code change, which is usually true
+## for everyone but yourself. Also, it matches the convention of
+## automated commit messages like from merge and revert.
+##
+## In the body of the commit message (that goes here) answer the
+## following questions:
+##  - why is this change necessary
+##  - high-level overview of how the patch achieves the objective
+##  - what are possible side-effects of the change
+##
+## Remember that most commit messages will eventually be public, so
+##  - don't use code-names ("Stone Peak")
+##  - don't refer to thinks we can't publish (WAPI, ...), if you
+##    must do it after a --- separator below
+##
+## uncomment and adjust the metadata lines below as appropriate
+##
+## maint is only for chromeos, the scripting etc.
+## bug/fixes is only needed for bugfixes
+#
+#type=<bugfix|feature|cleanup|maint>
+#ticket=jira:WLWG-
+#ticket=jira:WIFILNX-
+#ticket=kernel.org:
+#ticket=chrome-os-partner:
+#ticket=chromium.org:
+#ticket=none
+#fixes=<Ichangeid|unknown>
+#
+## signed-off-by etc follows

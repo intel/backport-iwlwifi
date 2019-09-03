@@ -1,0 +1,1373 @@
+@abort_scan@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,5,0)
+	.abort_scan = fn,
++#endif
+...
+};
+
+@@
+identifier abort_scan.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,5,0)
+fn(...)
+{
+...
+}
++#endif
+
+@join_ocb@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
+	.join_ocb = fn,
++#endif
+...
+};
+
+@@
+identifier join_ocb.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
+fn(...)
+{
+...
+}
++#endif
+
+@leave_ocb@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
+	.leave_ocb = fn,
++#endif
+...
+};
+
+@@
+identifier leave_ocb.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
+ieee80211_msrment_cookie(...)
+{
+...
+}
++#endif
+
+@perform_msrment@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
+	.perform_msrment = fn,
++#endif
+...
+};
+
+@@
+identifier perform_msrment.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
+fn(...)
+{
+...
+}
++#endif
+
+@abort_msrment@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
+	.abort_msrment = fn,
++#endif
+...
+};
+
+@@
+identifier abort_msrment.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
+fn(...)
+{
+...
+}
++#endif
+
+@add_tx_ts@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,18,0)
+	.add_tx_ts = fn,
++#endif
+...
+};
+
+@@
+identifier add_tx_ts.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(3,18,0)
+fn(...)
+{
+...
+}
++#endif
+
+@del_tx_ts@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,18,0)
+	.del_tx_ts = fn,
++#endif
+...
+};
+
+@@
+identifier del_tx_ts.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(3,18,0)
+fn(...)
+{
+...
+}
++#endif
+
+@set_ap_chanwidth@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,16,0)
+	.set_ap_chanwidth = fn,
++#endif
+...
+};
+
+@@
+identifier set_ap_chanwidth.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(3,16,0)
+fn(...)
+{
+...
+}
++#endif
+
+@set_qos_map@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,14,0)
+	.set_qos_map = fn,
++#endif
+...
+};
+
+@@
+identifier set_qos_map.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(3,14,0)
+fn(...)
+{
+...
+}
++#endif
+
+@channel_switch@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,12,0)
+	.channel_switch = fn,
++#endif
+...
+};
+
+@start_radar_detection@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,15,0)
+	.start_radar_detection = fn,
++#endif
+...
+};
+
+@@
+identifier start_radar_detection.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(3,15,0)
+fn(...)
+{
+...
+}
++#endif
+
+@tdls_channel_switch@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
+	.tdls_channel_switch = fn,
++#endif
+...
+};
+
+@tdls_cancel_channel_switch@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
+	.tdls_cancel_channel_switch = fn,
++#endif
+...
+};
+
+@@
+identifier ops;
+identifier fn;
+typedef u8;
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(3,14,0)
++static int _wrap_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
++			 struct ieee80211_channel *chan, bool offchan,
++			 unsigned int wait, const u8 *buf, size_t len,
++			 bool no_cck, bool dont_wait_for_ack, u64 *cookie)
++{
++	struct cfg80211_mgmt_tx_params params = {
++		.chan = chan,
++		.offchan = offchan,
++		.wait = wait,
++		.buf = buf,
++		.len = len,
++		.no_cck = no_cck,
++		.dont_wait_for_ack = dont_wait_for_ack,
++	};
++
++	return fn(wiphy, wdev, &params, cookie);
++}
++#endif
++
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(3,14,0)
+	.mgmt_tx = fn,
++#else
++	.mgmt_tx = _wrap_mgmt_tx,
++#endif
+...
+};
+
+@start_nan@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+	.start_nan = fn,
++#endif
+...
+};
+
+@stop_nan@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+	.stop_nan = fn,
++#endif
+...
+};
+
+@nan_change_conf@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+	.nan_change_conf = fn,
++#endif
+...
+};
+
+@add_nan_func@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+	.add_nan_func = fn,
++#endif
+...
+};
+
+@del_nan_func@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+	.del_nan_func = fn,
++#endif
+...
+};
+
+@@
+identifier start_nan.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+identifier stop_nan.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+identifier nan_change_conf.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+identifier add_nan_func.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+identifier del_nan_func.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+fn(...)
+{
+...
+}
++#endif
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
+case NL80211_IFTYPE_OCB:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression E;
+@@
+-E == NL80211_IFTYPE_OCB
++ieee80211_viftype_ocb(E)
+
+@@
+expression E;
+@@
+-E != NL80211_IFTYPE_OCB
++ !ieee80211_viftype_ocb(E)
+
+@@
+identifier sdata;
+@@
+-sdata->wdev.cac_started
++wdev_cac_started(&sdata->wdev)
+
+@@
+identifier s;
+identifier fn;
+@@
+fn(..., struct cfg80211_csa_settings *s, ...)
+{
+<...
+(
+- s->n_counter_offsets_beacon
++ csa_n_counter_offsets_beacon(s)
+|
+- s->n_counter_offsets_presp
++ csa_n_counter_offsets_presp(s)
+|
+- s->counter_offsets_beacon
++ csa_counter_offsets_beacon(s)
+|
+- s->counter_offsets_presp
++ csa_counter_offsets_presp(s)
+)
+...>
+}
+
+@@
+identifier req;
+@@
+struct cfg80211_scan_request *req;
+<...
+-req->scan_width
++cfg_scan_req_width(req)
+...>
+
+@@
+identifier req;
+identifier fn;
+@@
+fn(..., struct cfg80211_sched_scan_request *req, ...)
+{
+<...
+-req->scan_width
++cfg_scan_req_width(req)
+...>
+}
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(4,4,0)
+case NL80211_IFTYPE_NAN:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression E;
+@@
+-E == NL80211_IFTYPE_NAN
++ieee80211_viftype_nan(E)
+
+@@
+expression E;
+@@
+-E != NL80211_IFTYPE_NAN
++ !ieee80211_viftype_nan(E)
+
+@@
+expression E;
+@@
+-E & BIT(NL80211_IFTYPE_NAN)
++ ieee80211_has_nan_iftype(E)
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
+case NL80211_IFTYPE_NAN_DATA:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression E;
+@@
+-E == NL80211_IFTYPE_NAN_DATA
++ieee80211_viftype_nan_data(E)
+
+@@
+expression E;
+@@
+-E != NL80211_IFTYPE_NAN_DATA
++ !ieee80211_viftype_nan_data(E)
+
+@@
+expression E;
+@@
+-E & BIT(NL80211_IFTYPE_NAN_DATA)
++ ieee80211_has_nan_data_iftype(E)
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_find_nan_func(...)
+{
+...
+}
++#endif
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_find_nan_func_by_cookie(...)
+{
+...
+}
++#endif
+
+@@
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,9,0)
++void ieee80211_nan_func_terminated(struct ieee80211_vif *vif,
++				   u8 inst_id,
++				   enum nl80211_nan_func_term_reason reason,
++				   gfp_t gfp)
++{
++}
++#endif
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_nan_func_terminated(...)
+{
+...
+}
++#endif
+
+@@
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,9,0)
++static int ieee80211_reconfig_nan(struct ieee80211_sub_if_data *sdata)
++{
++	return 0;
++}
++#endif
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_reconfig_nan(...)
+{
+...
+}
++#endif
+
+@@
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,9,0)
++void ieee80211_nan_func_match(struct ieee80211_vif *vif,
++			      struct cfg80211_nan_match_params *match,
++			      gfp_t gfp)
++{
++}
++#endif
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_nan_func_match(...)
+{
+...
+}
++#endif
+
+@@
+expression E;
+@@
+-E |= BIT(NL80211_IFTYPE_NAN)
++ E |= 0
+
+@@
+@@
+enum iwl_fw_dbg_trigger_vif_type {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+IWL_FW_DBG_CONF_VIF_NAN = NL80211_IFTYPE_NAN,
++#endif
+...
+};
+
+@@
+identifier wdev;
+@@
+-wdev->nan_started
++cfg80211_nan_started(wdev)
+
+@@
+identifier limits;
+@@
+struct ieee80211_iface_limit limits[] = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+	{
+		...,
+		.types = BIT(NL80211_IFTYPE_NAN),
+	},
++#endif
+...
+};
+
+@@
+expression E;
+@@
+-fw_has_capa(E, IWL_UCODE_TLV_CAPA_NAN_SUPPORT)
++false
+
+@@
+struct station_parameters *params;
+@@
+-params->support_p2p_ps
++cfg80211_sta_support_p2p_ps(params, sdata->vif.p2p)
+
+@scan_req@
+identifier req;
+@@
+struct cfg80211_scan_request *req;
+
+
+@@
+identifier scan_req.req;
+expression E;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,7,0)
+ether_addr_copy(E, req->bssid);
++#endif
+
+@@
+expression E;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,7,0)
+eth_broadcast_addr(E->req.bssid);
++#endif
+
+@@
+identifier req;
+@@
+struct cfg80211_scan_request *req;
+<...
+-req->bssid
++cfg80211_scan_req_bssid(req)
+...>
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(4,8,0)
+local->hw_scan_req->req.duration = E;
++#endif
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(4,8,0)
+local->hw_scan_req->req.duration_mandatory = E;
++#endif
+
+@@
+identifier bss_meta;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(4,8,0)
+bss_meta.parent_tsf = E;
++#endif
+
+@@
+identifier bss_meta, fn;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(4,8,0)
+fn(bss_meta.parent_bssid, E);
++#else
++E = E;
++#endif
+
+@set_multicast_to_unicast@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,10,0)
+	.set_multicast_to_unicast = fn,
++#endif
+...
+};
+
+@@
+identifier set_multicast_to_unicast.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,10,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+struct cfg80211_assoc_request *req;
+@@
+<...
+(
+-req->fils_kek
++iwl7000_get_fils_kek(req)
+|
+-req->fils_kek_len
++iwl7000_get_fils_kek_len(req)
+|
+-req->fils_nonces
++iwl7000_get_fils_nonces(req)
+)
+...>
+
+@@
+struct cfg80211_auth_request *req;
+@@
+<...
+(
+-req->auth_data_len
++iwl7000_get_auth_data_len(req)
+|
+-req->auth_data
++iwl7000_get_auth_data(req)
+)
+...>
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(4,10,0)
+case
+(
+NL80211_AUTHTYPE_FILS_SK
+|
+NL80211_AUTHTYPE_FILS_SK_PFS
+|
+NL80211_AUTHTYPE_FILS_PK
+):
+... when != break;
+break;
++#endif
+}
+
+@@
+identifier hw;
+expression E;
+assignment operator op = {=,|=};
+@@
+
++#if CFG80211_VERSION >= KERNEL_VERSION(4,11,0)
+hw->wiphy->nan_supported_bands op E;
++#endif
+
+@@
+struct cfg80211_nan_conf *conf;
+expression E;
+@@
+-conf->bands & BIT(E)
++ieee80211_nan_has_band(conf, E)
+
+@@
+struct cfg80211_nan_conf *conf;
+expression E;
+@@
+-conf->bands |= BIT(E);
++ieee80211_nan_set_band(conf, E);
+
+@@
+struct cfg80211_nan_conf new_conf;
+struct cfg80211_nan_conf *conf;
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,9,0) || CFG80211_VERSION >= KERNEL_VERSION(4,11,0)
+new_conf.bands = conf->bands;
++#else
++new_conf.dual = conf->dual;
++#endif
+
+@@
+struct cfg80211_nan_conf *conf;
+@@
+-conf->bands
++ieee80211_nan_bands(conf)
+
+@set_cqm_rssi_range_config@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,12,0)
+	.set_cqm_rssi_range_config = fn,
++#endif
+...
+};
+
+@@
+identifier set_cqm_rssi_range_config.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,12,0)
+fn(...)
+{
+...
+}
++#endif
+
+@cfg_vif_ops@
+identifier ops;
+identifier add_vif, change_vif, sched_stop;
+@@
+struct cfg80211_ops ops = {
+...,
+.add_virtual_intf = add_vif,
+...,
+.change_virtual_intf = change_vif,
+...,
+.sched_scan_stop = sched_stop,
+...,
+};
+
+@@
+identifier cfg_vif_ops.add_vif;
+typedef u32;
+@@
+add_vif(...,
++#if CFG80211_VERSION > KERNEL_VERSION(4,0,0)
+unsigned char name_assign_type,
++#endif
+...,
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 *flags,
++#endif
+struct vif_params *params)
+{
++#if CFG80211_VERSION <= KERNEL_VERSION(4,0,0)
++unsigned char name_assign_type = NET_NAME_UNKNOWN;
++#endif
+...
+}
+
+@@
+identifier cfg_vif_ops.change_vif;
+@@
+change_vif(...,
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 *flags,
++#endif
+struct vif_params *params)
+{...}
+
+@@
+identifier cfg_vif_ops.sched_stop;
+@@
+sched_stop(...
++#if CFG80211_VERSION >= KERNEL_VERSION(4,12,0)
+, u64 reqid
++#endif
+ )
+{...}
+
+@@
+identifier p;
+@@
+ieee80211_set_mon_options(...,
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 flags,
++#endif
+                                     struct vif_params *p, ...)
+{
+<...
+-p->flags
++mon_opts_flags(p)
+...>
+}
+
+@@
+identifier fn;
+expression e1, e2, e3;
+@@
+fn(...)
+{
+<...
+-e3 = ieee80211_set_mon_options(e1, e2);
++e3 = ieee80211_set_mon_options(e1, mon_opts_params(e2));
+...>
+}
+
+@@
+identifier p;
+@@
+ieee80211_if_add(...,
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 flags,
++#endif
+struct vif_params *p)
+{
+<...
+-p->flags
++mon_opts_flags(p)
+...>
+}
+
+@@
+@@
+int ieee80211_if_add(struct ieee80211_local *local, const char *name,
+		     unsigned char name_assign_type,
+		     struct wireless_dev **new_wdev, enum nl80211_iftype type,
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 flags,
++#endif
+		     struct vif_params *params);
+
+@@
+identifier fn;
+expression e1, e2, e3, e4, e5, e6, r;
+@@
+fn(...)
+{
+<...
+-r = ieee80211_if_add(e1, e2, e3, e4, e5, e6);
++r = ieee80211_if_add(e1, e2, e3, e4, e5, mon_opts_params(e6));
+...>
+}
+
+@@
+identifier r;
+expression e;
+@@
+<+...
+if (e) {
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 f = 0;
++u32 *flags = &f;
++#endif
+...
+r = ieee80211_if_add(...);
+...
+}
+...+>
+
+@@
+identifier fn, p;
+@@
+fn(..., struct vif_params *p, ...)
+{
+<...
+-p->vht_mumimo_groups
++vif_params_vht_mumimo_groups(p)
+...>
+}
+
+@@
+identifier fn, p;
+@@
+fn(..., struct vif_params *p, ...)
+{
+<...
+-p->vht_mumimo_follow_addr
++vif_params_vht_mumimo_follow_addr(p)
+...>
+}
+
+@@
+expression E;
+struct ieee80211_supported_band *sband;
+@@
+-sband->n_iftype_data = E
++ieee80211_sband_set_num_iftypes_data(sband, E)
+
+@@
+struct ieee80211_supported_band *sband;
+@@
+-sband->n_iftype_data
++ieee80211_sband_get_num_iftypes_data(sband)
+
+@@
+expression E;
+struct ieee80211_supported_band *sband;
+@@
+-sband->iftype_data = E
++ieee80211_sband_set_iftypes_data(sband, E)
+
+@@
+expression E;
+struct ieee80211_supported_band *sband;
+@@
+-&sband->iftype_data[E]
++ieee80211_sband_get_iftypes_data_entry(sband, E)
+
+@@
+struct ieee80211_supported_band *sband;
+@@
+-sband->iftype_data
++ieee80211_sband_get_iftypes_data(sband)
+
+@@
+identifier hw;
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_SCHED_SCAN;
++#else
+hw->wiphy->max_sched_scan_reqs = 1;
++#endif
+
+@@
+struct cfg80211_ibss_params *params;
+@@
+-params->userspace_handles_dfs
++cfg80211_ibss_userspace_handles_dfs(params)
+
+@@
+struct cfg80211_ap_settings *params;
+@@
+-params->smps_mode
++cfg80211_ap_settings_smps_mode(params)
+
+@@
+struct cfg80211_crypto_settings *crypto;
+@@
+-crypto->n_ciphers_group
++cfg80211_crypto_n_ciphers_group(crypto)
+
+@@
+struct cfg80211_crypto_settings *crypto;
+expression idx;
+@@
+-crypto->ciphers_group[idx]
++cfg80211_crypto_ciphers_group(crypto, idx)
+
+@@
+struct rate_info *rinfo;
+expression E, F;
+@@
+{
+...
+-rinfo->bw = E;
++set_rate_info_bw(rinfo, E);
+<...
+-rinfo->flags = F;
++rinfo->flags |= F;
+...>
+}
+
+@@
+struct rate_info rinfo;
+expression E, F;
+@@
+{
+...
+-rinfo.bw = E;
++set_rate_info_bw(&rinfo, E);
+<...
+-rinfo.flags = F;
++rinfo.flags |= F;
+...>
+}
+
+@@
+struct cfg80211_nan_conf *conf;
+@@
+-conf->cdw_2g
++nan_conf_cdw_2g(conf)
+@@
+struct cfg80211_nan_conf *conf;
+@@
+-conf->cdw_5g
++nan_conf_cdw_5g(conf)
+
+@@
+identifier params;
+@@
+struct cfg80211_ap_settings *params;
+<...
+-params->he_cap
++cfg_he_cap(params)
+...>
+
+@@
+identifier params;
+identifier fn;
+@@
+fn(..., struct cfg80211_ap_settings *params, ...)
+{
+<...
+-params->he_cap
++cfg_he_cap(params)
+...>
+}
+
+@@
+expression dev, addr, cookie, acked, gfp;
+expression is_valid_ack_signal, ack_signal;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,17,0)
+cfg80211_probe_status(dev, addr, cookie, acked, ack_signal,
+		      is_valid_ack_signal, gfp);
++#else
++cfg80211_probe_status(dev, addr, cookie, acked, gfp);
++#endif
+
+@@
+identifier params;
+identifier type =~ "cfg80211_crypto_settings|mesh_setup|cfg80211_ibss_params";
+@@
+struct type *params;
+<...
+-params->control_port_over_nl80211
++cfg_control_port_over_nl80211(params)
+...>
+
+@@
+identifier params;
+identifier fn;
+identifier type =~ "cfg80211_crypto_settings|mesh_setup|cfg80211_ibss_params";
+@@
+fn(..., struct type *params, ...)
+{
+<...
+-params->control_port_over_nl80211
++cfg_control_port_over_nl80211(params)
+...>
+}
+
+@@
+identifier p;
+identifier type =~ "cfg80211_ap_settings|cfg80211_assoc_request";
+@@
+struct type *p;
+<...
+-p->crypto.control_port_over_nl80211
++cfg_control_port_over_nl80211(&p->crypto)
+...>
+
+
+@@
+identifier p, fn;
+identifier type =~ "cfg80211_ap_settings|cfg80211_assoc_request";
+@@
+fn(..., struct type *p, ...)
+{
+<...
+-p->crypto.control_port_over_nl80211
++cfg_control_port_over_nl80211(&p->crypto)
+...>
+}
+
+@tx_control_port@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,17,0)
+	.tx_control_port = fn,
++#endif
+...
+};
+
+@@
+identifier tx_control_port.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,17,0)
+fn(...)
+{
+...
+}
++#endif
+
+@ftm_responder_stats@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+	.get_ftm_responder_stats = fn,
++#endif
+...
+};
+
+@@
+identifier ftm_responder_stats.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+identifier bd, fn;
+identifier m =~ "ftm_responder|lci|civicloc";
+statement s;
+@@
+fn(..., struct cfg80211_beacon_data *bd, ...)
+{
+<+...
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+if (bd->m) s
++#endif
+...+>
+}
+
+@@
+identifier bd, fn;
+statement s;
+@@
+fn(..., struct cfg80211_beacon_data *bd, ...)
+{
+<+...
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+if (bd->ftm_responder != -1) s
++#endif
+...+>
+}
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+ieee80211_set_ftm_responder_params(...)
+{...}
++#endif
+
+@@
+identifier beacon, fn;
+identifier m =~ "lci_len|civicloc_len";
+@@
+fn(..., struct cfg80211_beacon_data *beacon, ...)
+{
+<+...
+-beacon->m
++beacon_ftm_len(beacon, m)
+...+>
+}
+
+@@
+expression e;
+struct cfg80211_beacon_data *beacon;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+beacon->ftm_responder = e;
++#endif
+
+@wiphy_ext_capa@
+identifier a, capa;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
+struct wiphy_iftype_ext_capab a[] = {
+...,
+{
+...,
+	.extended_capabilities = capa,
+...,
+},
+...,
+};
++#endif
+
+@@
+identifier wiphy_ext_capa.capa;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
+const u8 capa[] = {
+...,
+};
++#endif
+
+@@
+identifier wiphy_ext_capa.a;
+expression e;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
+if (e) {
+...
+hw->wiphy->iftype_ext_capab = a;
+...
+}
++#endif
+
+@start_pmsr@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+	.start_pmsr = fn,
++#endif
+...
+};
+
+@@
+identifier start_pmsr.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+fn(...)
+{
+...
+}
++#endif
+
+@abort_pmsr@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+	.abort_pmsr = fn,
++#endif
+...
+};
+
+@@
+identifier abort_pmsr.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+expression dev, bss, mgmt, len;
+expression uapsd_queues, ies, ies_len;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,1,0)
+cfg80211_rx_assoc_resp(dev, bss, mgmt, len, uapsd_queues, ies, ies_len);
++#else
++cfg80211_rx_assoc_resp(dev, bss, mgmt, len, uapsd_queues);
++#endif
