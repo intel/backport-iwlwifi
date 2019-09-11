@@ -564,7 +564,12 @@ void iwl_mvm_rx_rx_mpdu(struct iwl_mvm *mvm, struct napi_struct *napi,
 
 	if (unlikely(ieee80211_is_beacon(hdr->frame_control) ||
 		     ieee80211_is_probe_resp(hdr->frame_control)))
+#if LINUX_VERSION_IS_GEQ(5,3,0)
+
+		rx_status->boottime_ns = ktime_get_boottime_ns();
+#else
 		rx_status->boottime_ns = ktime_get_boot_ns();
+#endif
 
 	/* Take a reference briefly to kick off a d0i3 entry delay so
 	 * we can handle bursts of RX packets without toggling the

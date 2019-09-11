@@ -1471,7 +1471,12 @@ void iwl_mvm_get_sync_time(struct iwl_mvm *mvm, u32 *gp2, u64 *boottime)
 	}
 
 	*gp2 = iwl_mvm_get_systime(mvm);
+#if LINUX_VERSION_IS_GEQ(5,3,0)
+
+	*boottime = ktime_get_boottime_ns();
+#else
 	*boottime = ktime_get_boot_ns();
+#endif
 
 	if (!ps_disabled) {
 		mvm->ps_disabled = ps_disabled;
