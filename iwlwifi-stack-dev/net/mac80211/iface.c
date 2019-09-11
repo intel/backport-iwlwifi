@@ -1132,7 +1132,11 @@ static void ieee80211_uninit(struct net_device *dev)
 	ieee80211_teardown_sdata(IEEE80211_DEV_TO_SUB_IF(dev));
 }
 
-#if LINUX_VERSION_IS_GEQ(4,19,0)
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+static u16 ieee80211_netdev_select_queue(struct net_device *dev,
+					 struct sk_buff *skb,
+					 struct net_device *sb_dev)
+#elif LINUX_VERSION_IS_GEQ(4,19,0)
 static u16 ieee80211_netdev_select_queue(struct net_device *dev,
 					 struct sk_buff *skb,
 					 struct net_device *sb_dev,
@@ -1223,7 +1227,12 @@ static const struct net_device_ops ieee80211_dataif_ops = {
 
 };
 
-#if LINUX_VERSION_IS_GEQ(4,19,0)
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+static u16 ieee80211_monitor_select_queue(struct net_device *dev,
+                                          struct sk_buff *skb,
+                                          struct net_device *sb_dev)
+
+#elif LINUX_VERSION_IS_GEQ(4,19,0)
 static u16 ieee80211_monitor_select_queue(struct net_device *dev,
 					  struct sk_buff *skb,
 					  struct net_device *sb_dev,
