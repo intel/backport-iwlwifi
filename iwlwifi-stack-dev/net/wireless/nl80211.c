@@ -29,6 +29,11 @@
 #include "reg.h"
 #include "rdev-ops.h"
 
+
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+#define nla_parse_nested nla_parse_nested_deprecated
+#endif
+
 static int nl80211_crypto_settings(struct cfg80211_registered_device *rdev,
 				   struct genl_info *info,
 				   struct cfg80211_crypto_settings *settings,
