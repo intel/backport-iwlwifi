@@ -7,6 +7,7 @@
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
  * Copyright(c) 2018 Intel Corporation
+ * Copyright(c) 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -28,6 +29,7 @@
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
  * Copyright(c) 2018 Intel Corporation
+ * Copyright(c) 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -491,25 +493,52 @@ struct iwl_profiling_umac_metrics_report {
 
 /**
  * struct iwl_ps_report {
- * @sleep_allowed_count: number of times NIC actually went to PD - accumulator
- * @sleep_time: total sleep time in usec - accumulator
- * @max_sleep_time: max sleep time in usec
- * @missed_beacon_count: number of missed beacons - accumulator
+ * @total_sleep_counter: number of times NIC actually go to PD [cnt]
+ * @total_sleep_duration: total sleep duration of sleep-master CPU [usec]
+ * @report_duration: time since current statistics collection began [usec]
+ * @total_missed_beacon_counter: number of missed-beacons [cnt]
  * @missed_3_consecutive_beacon_count: number of missed-3-consecutive-beacons
- *	events - accumulator
- * @ps_flags: flag bits, divided to 4 bytes - misbehaving AP indication, is
- *	beacon abort mechanism enabled, is LPRX enabled, is uAPSD enabled
- * @max_active_duration: Max time device was active and power save didn't
- *      apply.
+ *	events [cnt]
+ * @ps_flags: 4 bytes of flag bits, 1 for each MAC (4 MACs max)
+ * @phy_inactive_duration: total time PHY is powered down [usec]
+ * @mac_ctdp_sum: UMAC CTDP power consumption sum [uJouls]
+ * @ppm_offset_vs_ap_sum: drift offset from AP clock sum [secs]
+ * @deep_sleep_duration: UMAC time in deep sleep during the report interval
+ *	[usecs]
+ * @received_beacon_counter: number of received beacons [cnt]
+ * @bcon_in_lprx_counter: number of beacons in LPRX [cnt]
+ * @bcon_abort_counter: number of beacon aborts [cnt]
+ * @multicast_indication_tim_counter: number of multicast indications in TIM
+ *	information element from AP [cnt]
+ * @missed_multicast_counter: number of missed multicasts [cnt]
+ * @misbehave_counter: number of instances of misbehave AP, which forces
+ *	PM to change mode [cnt]
+ * @reserved1: reserved1
+ * @reserved2: reserved2
+ * @reserved3: reserved3
+ * @reserved4: reserved4
  */
 struct iwl_ps_report {
-	__le32 sleep_allowed_count;
-	__le32 sleep_time;
-	__le32 max_sleep_time;
-	__le32 missed_beacon_count;
+	__le32 total_sleep_counter;
+	__le32 total_sleep_duration;
+	__le32 report_duration;
+	__le32 total_missed_beacon_counter;
 	__le32 missed_3_consecutive_beacon_count;
 	__le32 ps_flags;
-	__le32 max_active_duration;
+	__le32 phy_inactive_duration;
+	__le32 mac_ctdp_sum;
+	__le32 ppm_offset_vs_ap_sum;
+	__le32 deep_sleep_duration;
+	__le32 received_beacon_counter;
+	__le16 bcon_in_lprx_counter;
+	__le16 bcon_abort_counter;
+	__le16 multicast_indication_tim_counter;
+	__le16 missed_multicast_counter;
+	__le32 misbehave_counter;
+	__le32 reserved1;
+	__le32 reserved2;
+	__le32 reserved3;
+	__le32 reserved4;
 } __packed; /* PS_REPORT_API_S */
 
 /**

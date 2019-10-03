@@ -140,7 +140,7 @@ static bool iwl_fmac_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	iwl_fw_lmac1_set_alive_err_table(fmac->trans, lmac_error_event_table);
 
 	if (lmac2)
-		fmac->trans->lmac_error_event_table[1] =
+		fmac->trans->dbg.lmac_error_event_table[1] =
 			le32_to_cpu(lmac2->dbg_ptrs.error_event_table_ptr);
 	alive_data->scd_base_addr = le32_to_cpu(lmac1->dbg_ptrs.scd_base_ptr);
 
@@ -165,6 +165,8 @@ static bool iwl_fmac_alive_fn(struct iwl_notif_wait_data *notif_wait,
 		     "UMAC version: Major - 0x%x, Minor - 0x%x\n",
 		     le32_to_cpu(umac->umac_major),
 		     le32_to_cpu(umac->umac_minor));
+
+	iwl_fwrt_update_fw_versions(&fmac->fwrt, lmac1, umac);
 
 	return true;
 }
@@ -818,13 +820,9 @@ int iwl_fmac_run_rt_fw(struct iwl_fmac *fmac)
 		if (ret)
 			goto error;
 
-		/*
-		 * Stop and start the transport without entering low power
-		 * mode. This will save the state of other components on the
-		 * device that are triggered by the INIT firwmare (MFUART).
-		 */
-		_iwl_trans_stop_device(fmac->trans, false);
-		ret = _iwl_trans_start_hw(fmac->trans, false);
+		iwl_fw_dbg_stop_sync(&fmac->fwrt);
+		iwl_trans_stop_device(fmac->trans);
+		ret = iwl_trans_start_hw(fmac->trans);
 		if (ret)
 			goto error;
 
@@ -907,7 +905,8 @@ void iwl_fmac_stop_device(struct iwl_fmac *fmac)
 {
 	lockdep_assert_held(&fmac->mutex);
 	iwl_fw_cancel_timestamp(&fmac->fwrt);
-	iwl_fwrt_stop_device(&fmac->fwrt);
+	iwl_fw_dbg_stop_sync(&fmac->fwrt);
+	iwl_trans_stop_device(fmac->trans);
 	iwl_free_fw_paging(&fmac->fwrt);
 }
 
@@ -1129,7 +1128,7 @@ static void iwl_fmac_dump_umac_error_log(struct iwl_fmac *fmac)
 {
 	struct iwl_trans *trans = fmac->trans;
 	struct iwl_umac_error_event_table table;
-	u32 base = fmac->trans->umac_error_event_table;
+	u32 base = fmac->trans->dbg.umac_error_event_table;
 
 	if (base < trans->cfg->min_umac_error_event_table) {
 		IWL_ERR(fmac,
@@ -1166,7 +1165,7 @@ static void iwl_fmac_dump_lmac_error_log(struct iwl_fmac *fmac, u8 lmac_num)
 {
 	struct iwl_trans *trans = fmac->trans;
 	struct iwl_error_event_table table;
-	u32 base = fmac->trans->lmac_error_event_table[lmac_num];
+	u32 base = fmac->trans->dbg.lmac_error_event_table[lmac_num];
 
 	if (base < 0x400000) {
 		IWL_ERR(fmac,
@@ -1227,7 +1226,7 @@ static void iwl_fmac_dump_lmac_error_log(struct iwl_fmac *fmac, u8 lmac_num)
 void iwl_fmac_dump_nic_error_log(struct iwl_fmac *fmac)
 {
 	iwl_fmac_dump_lmac_error_log(fmac, 0);
-	if (fmac->trans->lmac_error_event_table[1])
+	if (fmac->trans->dbg.lmac_error_event_table[1])
 		iwl_fmac_dump_lmac_error_log(fmac, 1);
 	iwl_fmac_dump_umac_error_log(fmac);
 	iwl_fw_error_print_fseq_regs(&fmac->fwrt);

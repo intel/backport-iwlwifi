@@ -189,7 +189,7 @@ struct iwl_fmac_sta_info {
  */
 
 struct iwl_fmac_amsdu_data {
-	ktime_t deadline;
+	u64 deadline;
 	struct sk_buff *skb;
 	bool csum;
 	unsigned int amsdu_subframes;
@@ -442,7 +442,7 @@ struct iwl_fmac_vif {
 	struct iwl_fmac *fmac;
 
 	struct sk_buff_head pending_skbs[AC_NUM];
-	struct tasklet_hrtimer amsdu_timer;
+	struct hrtimer amsdu_timer;
 	u64 cookie;
 
 	union {

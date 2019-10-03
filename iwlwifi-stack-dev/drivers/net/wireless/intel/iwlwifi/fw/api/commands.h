@@ -8,7 +8,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -489,6 +489,13 @@ enum iwl_legacy_cmds {
 	REPLY_RX_MPDU_CMD = 0xc1,
 
 	/**
+	 * @BAR_FRAME_RELEASE: Frame release from BAR notification, used for
+	 *	multi-TID BAR (previously, the BAR frame itself was reported
+	 *	instead). Uses &struct iwl_bar_frame_release.
+	 */
+	BAR_FRAME_RELEASE = 0xc2,
+
+	/**
 	 * @FRAME_RELEASE:
 	 * Frame release (reorder helper) notification, uses
 	 * &struct iwl_frame_release
@@ -539,35 +546,6 @@ enum iwl_legacy_cmds {
 	 * @BT_COEX_CI: &struct iwl_bt_coex_ci_cmd
 	 */
 	BT_COEX_CI = 0x5d,
-
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-	/**
-	 * @LTE_COEX_CONFIG_CMD: &struct iwl_lte_coex_config_cmd
-	 */
-	LTE_COEX_CONFIG_CMD = 0x4a,
-
-	/**
-	 * @LTE_COEX_WIFI_REPORTED_CHANNEL_CMD:
-	 * &struct iwl_lte_coex_wifi_reported_channel_cmd
-	 */
-	LTE_COEX_WIFI_REPORTED_CHANNEL_CMD = 0X4b,
-
-	/**
-	 * @LTE_COEX_STATIC_PARAMS_CMD: &struct iwl_lte_coex_static_params_cmd
-	 */
-	LTE_COEX_STATIC_PARAMS_CMD = 0x4c,
-
-	/**
-	 * @LTE_COEX_SPS_CMD: struct iwl_lte_coex_sps_cmd
-	 */
-	LTE_COEX_SPS_CMD = 0x4d,
-
-	/**
-	 * @LTE_COEX_FINE_TUNING_PARAMS_CMD:
-	 * &struct iwl_lte_coex_fine_tuning_params_cmd
-	 */
-	LTE_COEX_FINE_TUNING_PARAMS_CMD = 0x57,
-#endif
 
 	/**
 	 * @REPLY_SF_CFG_CMD: &struct iwl_sf_cfg_cmd

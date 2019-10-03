@@ -488,9 +488,7 @@ static void iwl_fmac_store_xmit_skb(struct iwl_fmac *fmac,
 	memset(store, 0, sizeof(*store));
 	store->skb = skb;
 	store->csum = iwl_fmac_csum_prepare(fmac, skb);
-	store->deadline =
-		ktime_add_ns(ktime_get(),
-			     iwlfmac_mod_params.amsdu_delay * NSEC_PER_MSEC);
+	store->deadline = iwlfmac_mod_params.amsdu_delay * NSEC_PER_MSEC;
 }
 
 static struct sk_buff *iwl_fmac_xmit_amsdu(struct iwl_fmac_vif *vif,
@@ -585,7 +583,7 @@ static void iwl_fmac_set_amsdu_timer(struct iwl_fmac_vif *vif)
 	struct iwl_fmac *fmac = vif->fmac;
 	int sta_id, tid;
 	bool first = true;
-	ktime_t next;
+	u64 next;
 
 	for (sta_id = 0; sta_id < IWL_FMAC_MAX_STA; sta_id++) {
 		struct iwl_fmac_sta *sta = rcu_dereference(fmac->stas[sta_id]);
@@ -600,8 +598,8 @@ static void iwl_fmac_set_amsdu_timer(struct iwl_fmac_vif *vif)
 			if (first) {
 				next = sta->amsdu[tid].deadline;
 				first = false;
-			} else if (ktime_before(sta->amsdu[tid].deadline,
-						next)) {
+			} else if (ktime_before(ns_to_ktime(sta->amsdu[tid].deadline),
+						ns_to_ktime(next))) {
 				next = sta->amsdu[tid].deadline;
 			}
 		}
@@ -611,16 +609,17 @@ static void iwl_fmac_set_amsdu_timer(struct iwl_fmac_vif *vif)
 	if (first)
 		return;
 
-	tasklet_hrtimer_start(&vif->amsdu_timer, next, HRTIMER_MODE_ABS);
+	hrtimer_start(&vif->amsdu_timer, ns_to_ktime(next),
+		      HRTIMER_MODE_ABS_SOFT);
 }
 
 enum hrtimer_restart iwl_fmac_amsdu_xmit_timer(struct hrtimer *timer)
 {
 	struct iwl_fmac_vif *vif = container_of(timer, struct iwl_fmac_vif,
-						amsdu_timer.timer);
+						amsdu_timer);
 	struct iwl_fmac *fmac = vif->fmac;
 	int sta_id, tid;
-	ktime_t cur = ktime_get();
+	u64 cur = ktime_to_ns(ktime_get());
 
 	rcu_read_lock();
 	for (sta_id = 0; sta_id < IWL_FMAC_MAX_STA; sta_id++) {
@@ -637,7 +636,8 @@ enum hrtimer_restart iwl_fmac_amsdu_xmit_timer(struct hrtimer *timer)
 			};
 
 			if (!sta->amsdu[tid].skb ||
-			    ktime_before(cur, sta->amsdu[tid].deadline))
+			    ktime_before(ns_to_ktime(cur),
+					 ns_to_ktime(sta->amsdu[tid].deadline)))
 				continue;
 			iwl_fmac_xmit_one(sta->amsdu[tid].skb, &tx);
 			memset(&sta->amsdu[tid], 0, sizeof(sta->amsdu[tid]));

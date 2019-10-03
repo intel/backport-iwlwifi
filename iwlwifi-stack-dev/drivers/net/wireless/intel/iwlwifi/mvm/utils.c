@@ -88,16 +88,10 @@ int iwl_mvm_send_cmd(struct iwl_mvm *mvm, struct iwl_host_cmd *cmd)
 	 * the mutex, this ensures we don't try to send two
 	 * (or more) synchronous commands at a time.
 	 */
-	if (!(cmd->flags & CMD_ASYNC)) {
+	if (!(cmd->flags & CMD_ASYNC))
 		lockdep_assert_held(&mvm->mutex);
-		if (!(cmd->flags & CMD_SEND_IN_IDLE))
-			iwl_mvm_ref(mvm, IWL_MVM_REF_SENDING_CMD);
-	}
 
 	ret = iwl_trans_send_cmd(mvm->trans, cmd);
-
-	if (!(cmd->flags & (CMD_ASYNC | CMD_SEND_IN_IDLE)))
-		iwl_mvm_unref(mvm, IWL_MVM_REF_SENDING_CMD);
 
 	/*
 	 * If the caller wants the SKB, then don't hide any problems, the
@@ -469,10 +463,10 @@ static void iwl_mvm_dump_umac_error_log(struct iwl_mvm *mvm)
 {
 	struct iwl_trans *trans = mvm->trans;
 	struct iwl_umac_error_event_table table;
-	u32 base = mvm->trans->umac_error_event_table;
+	u32 base = mvm->trans->dbg.umac_error_event_table;
 
 	if (!mvm->support_umac_log &&
-	    !(mvm->trans->error_event_table_tlv_status &
+	    !(mvm->trans->dbg.error_event_table_tlv_status &
 	      IWL_ERROR_EVENT_TABLE_UMAC))
 		return;
 
@@ -508,7 +502,7 @@ static void iwl_mvm_dump_lmac_error_log(struct iwl_mvm *mvm, u8 lmac_num)
 {
 	struct iwl_trans *trans = mvm->trans;
 	struct iwl_error_event_table table;
-	u32 val, base = mvm->trans->lmac_error_event_table[lmac_num];
+	u32 val, base = mvm->trans->dbg.lmac_error_event_table[lmac_num];
 
 	if (mvm->fwrt.cur_fw_img == IWL_UCODE_INIT) {
 		if (!base)
@@ -604,7 +598,7 @@ void iwl_mvm_dump_nic_error_log(struct iwl_mvm *mvm)
 
 	iwl_mvm_dump_lmac_error_log(mvm, 0);
 
-	if (mvm->trans->lmac_error_event_table[1])
+	if (mvm->trans->dbg.lmac_error_event_table[1])
 		iwl_mvm_dump_lmac_error_log(mvm, 1);
 
 	iwl_mvm_dump_umac_error_log(mvm);
@@ -1471,12 +1465,7 @@ void iwl_mvm_get_sync_time(struct iwl_mvm *mvm, u32 *gp2, u64 *boottime)
 	}
 
 	*gp2 = iwl_mvm_get_systime(mvm);
-#if LINUX_VERSION_IS_GEQ(5,3,0)
-
-	*boottime = ktime_get_boottime_ns();
-#else
 	*boottime = ktime_get_boot_ns();
-#endif
 
 	if (!ps_disabled) {
 		mvm->ps_disabled = ps_disabled;

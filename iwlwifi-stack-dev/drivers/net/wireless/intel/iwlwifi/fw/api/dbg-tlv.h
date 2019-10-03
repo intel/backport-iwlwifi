@@ -291,6 +291,28 @@ struct iwl_fw_ini_trigger_tlv {
 	struct iwl_fw_ini_trigger trigger_config[];
 } __packed; /* FW_TLV_DEBUG_TRIGGERS_API_S_VER_1 */
 
+#define IWL_FW_INI_MAX_IMG_NAME_LEN 32
+#define IWL_FW_INI_MAX_DBG_CFG_NAME_LEN 64
+
+/**
+ * struct iwl_fw_ini_debug_info_tlv - (IWL_UCODE_TLV_TYPE_DEBUG_INFO)
+ *
+ * holds image name and debug configuration name
+ *
+ * @header: header
+ * @img_name_len: length of the image name string
+ * @img_name: image name string
+ * @dbg_cfg_name_len : length of the debug configuration name string
+ * @dbg_cfg_name: debug configuration name string
+ */
+struct iwl_fw_ini_debug_info_tlv {
+	struct iwl_fw_ini_header header;
+	__le32 img_name_len;
+	u8 img_name[IWL_FW_INI_MAX_IMG_NAME_LEN];
+	__le32 dbg_cfg_name_len;
+	u8 dbg_cfg_name[IWL_FW_INI_MAX_DBG_CFG_NAME_LEN];
+} __packed; /* FW_DEBUG_TLV_INFO_API_S_VER_1 */
+
 /**
  * enum iwl_fw_ini_trigger_id
  *
@@ -417,6 +439,7 @@ enum iwl_fw_ini_apply_point {
  * @IWL_FW_INI_ALLOCATION_ID_SDFX: for SDFX module
  * @IWL_FW_INI_ALLOCATION_ID_FW_DUMP: used for crash and runtime dumps
  * @IWL_FW_INI_ALLOCATION_ID_USER_DEFINED: for future user scenarios
+ * @IWL_FW_INI_ALLOCATION_NUM: number of allocation ids
 */
 enum iwl_fw_ini_allocation_id {
 	IWL_FW_INI_ALLOCATION_INVALID,
@@ -426,6 +449,7 @@ enum iwl_fw_ini_allocation_id {
 	IWL_FW_INI_ALLOCATION_ID_SDFX,
 	IWL_FW_INI_ALLOCATION_ID_FW_DUMP,
 	IWL_FW_INI_ALLOCATION_ID_USER_DEFINED,
+	IWL_FW_INI_ALLOCATION_NUM,
 }; /* FW_DEBUG_TLV_ALLOCATION_ID_E_VER_1 */
 
 /**
@@ -473,6 +497,8 @@ enum iwl_fw_ini_debug_flow {
  * @IWL_FW_INI_REGION_CSR: CSR registers
  * @IWL_FW_INI_REGION_NOTIFICATION: FW notification data
  * @IWL_FW_INI_REGION_DHC: dhc response to dump
+ * @IWL_FW_INI_REGION_LMAC_ERROR_TABLE: lmac error table
+ * @IWL_FW_INI_REGION_UMAC_ERROR_TABLE: umac error table
  * @IWL_FW_INI_REGION_NUM: number of region types
  */
 enum iwl_fw_ini_region_type {
@@ -490,6 +516,8 @@ enum iwl_fw_ini_region_type {
 	IWL_FW_INI_REGION_CSR,
 	IWL_FW_INI_REGION_NOTIFICATION,
 	IWL_FW_INI_REGION_DHC,
+	IWL_FW_INI_REGION_LMAC_ERROR_TABLE,
+	IWL_FW_INI_REGION_UMAC_ERROR_TABLE,
 	IWL_FW_INI_REGION_NUM
 }; /* FW_DEBUG_TLV_REGION_TYPE_E_VER_1 */
 

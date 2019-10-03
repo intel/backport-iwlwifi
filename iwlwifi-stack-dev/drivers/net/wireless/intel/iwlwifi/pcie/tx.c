@@ -65,7 +65,6 @@
 #include <linux/ieee80211.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
-#include <linux/pm_runtime.h>
 #include <net/ip6_checksum.h>
 #include <net/tso.h>
 
@@ -435,6 +434,8 @@ static void iwl_pcie_tfd_unmap(struct iwl_trans *trans,
 					 DMA_TO_DEVICE);
 	}
 
+	meta->tbs = 0;
+
 	if (trans->cfg->use_tfh) {
 		struct iwl_tfh_tfd *tfd_fh = (void *)tfd;
 
@@ -637,12 +638,6 @@ static void iwl_pcie_clear_cmd_in_flight(struct iwl_trans *trans)
 
 	lockdep_assert_held(&trans_pcie->reg_lock);
 
-	if (trans_pcie->ref_cmd_in_flight) {
-		trans_pcie->ref_cmd_in_flight = false;
-		IWL_DEBUG_RPM(trans, "clear ref_cmd_in_flight - unref\n");
-		iwl_trans_unref(trans);
-	}
-
 	if (!trans->cfg->base_params->apmg_wake_up_wa)
 		return;
 	if (WARN_ON(!trans_pcie->cmd_hold_nic_awake))
@@ -681,13 +676,8 @@ static void iwl_pcie_txq_unmap(struct iwl_trans *trans, int txq_id)
 			unsigned long flags;
 
 			spin_lock_irqsave(&trans_pcie->reg_lock, flags);
-			if (txq_id != trans_pcie->cmd_queue) {
-				IWL_DEBUG_RPM(trans, "Q %d - last tx freed\n",
-					      txq->id);
-				iwl_trans_unref(trans);
-			} else {
+			if (txq_id == trans_pcie->cmd_queue)
 				iwl_pcie_clear_cmd_in_flight(trans);
-			}
 			spin_unlock_irqrestore(&trans_pcie->reg_lock, flags);
 		}
 	}
@@ -1223,12 +1213,21 @@ void iwl_trans_pcie_reclaim(struct iwl_trans *trans, int txq_id, int ssn,
 		txq->overflow_tx = false;
 	}
 
-	if (txq->read_ptr == txq->write_ptr) {
-		IWL_DEBUG_RPM(trans, "Q %d - last tx reclaimed\n", txq->id);
-		iwl_trans_unref(trans);
-	}
-
 out:
+	spin_unlock_bh(&txq->lock);
+}
+
+/* Set wr_ptr of specific device and txq  */
+void iwl_trans_pcie_set_q_ptrs(struct iwl_trans *trans, int txq_id, int ptr)
+{
+	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
+	struct iwl_txq *txq = trans_pcie->txq[txq_id];
+
+	spin_lock_bh(&txq->lock);
+
+	txq->write_ptr = ptr;
+	txq->read_ptr = txq->write_ptr;
+
 	spin_unlock_bh(&txq->lock);
 }
 
@@ -1244,13 +1243,6 @@ static int iwl_pcie_set_cmd_in_flight(struct iwl_trans *trans,
 	/* Make sure the NIC is still alive in the bus */
 	if (test_bit(STATUS_TRANS_DEAD, &trans->status))
 		return -ENODEV;
-
-	if (!(cmd->flags & CMD_SEND_IN_IDLE) &&
-	    !trans_pcie->ref_cmd_in_flight) {
-		trans_pcie->ref_cmd_in_flight = true;
-		IWL_DEBUG_RPM(trans, "set ref_cmd_in_flight - ref\n");
-		iwl_trans_ref(trans);
-	}
 
 	/*
 	 * wake up the NIC to make sure that the firmware will see the host
@@ -1865,20 +1857,6 @@ void iwl_pcie_hcmd_complete(struct iwl_trans *trans,
 		wake_up(&trans_pcie->wait_command_queue);
 	}
 
-	if (meta->flags & CMD_MAKE_TRANS_IDLE) {
-		IWL_DEBUG_INFO(trans, "complete %s - mark trans as idle\n",
-			       iwl_get_cmd_string(trans, cmd->hdr.cmd));
-		set_bit(STATUS_TRANS_IDLE, &trans->status);
-		wake_up(&trans_pcie->d0i3_waitq);
-	}
-
-	if (meta->flags & CMD_WAKE_UP_TRANS) {
-		IWL_DEBUG_INFO(trans, "complete %s - clear trans idle flag\n",
-			       iwl_get_cmd_string(trans, cmd->hdr.cmd));
-		clear_bit(STATUS_TRANS_IDLE, &trans->status);
-		wake_up(&trans_pcie->d0i3_waitq);
-	}
-
 	meta->flags = 0;
 
 	spin_unlock_bh(&txq->lock);
@@ -1924,16 +1902,6 @@ static int iwl_pcie_send_hcmd_sync(struct iwl_trans *trans,
 
 	IWL_DEBUG_INFO(trans, "Setting HCMD_ACTIVE for command %s\n",
 		       iwl_get_cmd_string(trans, cmd->id));
-
-	if (pm_runtime_suspended(&trans_pcie->pci_dev->dev)) {
-		ret = wait_event_timeout(trans_pcie->d0i3_waitq,
-				 pm_runtime_active(&trans_pcie->pci_dev->dev),
-				 msecs_to_jiffies(IWL_TRANS_IDLE_TIMEOUT));
-		if (!ret) {
-			IWL_ERR(trans, "Timeout exiting D0i3 before hcmd\n");
-			return -ETIMEDOUT;
-		}
-	}
 
 	cmd_idx = iwl_pcie_enqueue_hcmd(trans, cmd);
 	if (cmd_idx < 0) {
@@ -2517,22 +2485,18 @@ int iwl_trans_pcie_tx(struct iwl_trans *trans, struct sk_buff *skb,
 	wait_write_ptr = ieee80211_has_morefrags(fc);
 
 	/* start timer if queue currently empty */
-	if (txq->read_ptr == txq->write_ptr) {
-		if (txq->wd_timeout) {
-			/*
-			 * If the TXQ is active, then set the timer, if not,
-			 * set the timer in remainder so that the timer will
-			 * be armed with the right value when the station will
-			 * wake up.
-			 */
-			if (!txq->frozen)
-				mod_timer(&txq->stuck_timer,
-					  jiffies + txq->wd_timeout);
-			else
-				txq->frozen_expiry_remainder = txq->wd_timeout;
-		}
-		IWL_DEBUG_RPM(trans, "Q: %d first tx - take ref\n", txq->id);
-		iwl_trans_ref(trans);
+	if (txq->read_ptr == txq->write_ptr && txq->wd_timeout) {
+		/*
+		 * If the TXQ is active, then set the timer, if not,
+		 * set the timer in remainder so that the timer will
+		 * be armed with the right value when the station will
+		 * wake up.
+		 */
+		if (!txq->frozen)
+			mod_timer(&txq->stuck_timer,
+				  jiffies + txq->wd_timeout);
+		else
+			txq->frozen_expiry_remainder = txq->wd_timeout;
 	}
 
 	/* Tell device the write index *just past* this latest filled TFD */

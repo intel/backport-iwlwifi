@@ -125,6 +125,7 @@ static const struct iwl_hcmd_names iwl_xvt_cmd_names[] = {
 	HCMD_NAME(BA_NOTIF),
 	HCMD_NAME(DTS_MEASUREMENT_NOTIFICATION),
 	HCMD_NAME(REPLY_DEBUG_XVT_CMD),
+	HCMD_NAME(LDBG_CONFIG_CMD),
 	HCMD_NAME(DEBUG_LOG_MSG),
 };
 
@@ -190,6 +191,10 @@ static const struct iwl_hcmd_names iwl_xvt_xvt_names[] = {
 	HCMD_NAME(IQ_CALIB_CONFIG_NOTIF),
 };
 
+static const struct iwl_hcmd_names iwl_xvt_debug_names[] = {
+	HCMD_NAME(DBGC_SUSPEND_RESUME),
+};
+
 static const struct iwl_hcmd_arr iwl_xvt_cmd_groups[] = {
 	[LEGACY_GROUP] = HCMD_ARR(iwl_xvt_cmd_names),
 	[LONG_GROUP] = HCMD_ARR(iwl_xvt_long_cmd_names),
@@ -199,6 +204,7 @@ static const struct iwl_hcmd_arr iwl_xvt_cmd_groups[] = {
 	[LOCATION_GROUP] = HCMD_ARR(iwl_xvt_location_names),
 	[REGULATORY_AND_NVM_GROUP] = HCMD_ARR(iwl_xvt_regulatory_and_nvm_names),
 	[XVT_GROUP] = HCMD_ARR(iwl_xvt_xvt_names),
+	[DEBUG_GROUP] = HCMD_ARR(iwl_xvt_debug_names),
 };
 
 static int iwl_xvt_tm_send_hcmd(void *op_mode, struct iwl_host_cmd *host_cmd)
@@ -255,7 +261,8 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	trans_cfg.cmd_queue = IWL_MVM_DQA_CMD_QUEUE;
 	IWL_DEBUG_INFO(xvt, "dqa supported\n");
 	trans_cfg.cmd_fifo = IWL_MVM_TX_FIFO_CMD;
-	trans_cfg.bc_table_dword = true;
+	trans_cfg.bc_table_dword =
+		trans->cfg->device_family < IWL_DEVICE_FAMILY_22560;
 	trans_cfg.scd_set_active = true;
 	trans->wide_cmd_header = true;
 
@@ -321,11 +328,11 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	memset(xvt->queue_data, 0, sizeof(xvt->queue_data));
 	init_waitqueue_head(&xvt->tx_done_wq);
 
-	trans->dbg_dest_tlv = xvt->fw->dbg.dest_tlv;
-	trans->dbg_n_dest_reg = xvt->fw->dbg.n_dest_reg;
-	memcpy(trans->dbg_conf_tlv, xvt->fw->dbg.conf_tlv,
-	       sizeof(trans->dbg_conf_tlv));
-	trans->dbg_trigger_tlv = xvt->fw->dbg.trigger_tlv;
+	trans->dbg.dest_tlv = xvt->fw->dbg.dest_tlv;
+	trans->dbg.n_dest_reg = xvt->fw->dbg.n_dest_reg;
+	memcpy(trans->dbg.conf_tlv, xvt->fw->dbg.conf_tlv,
+	       sizeof(trans->dbg.conf_tlv));
+	trans->dbg.trigger_tlv = xvt->fw->dbg.trigger_tlv;
 
 	IWL_INFO(xvt, "Detected %s, REV=0x%X, xVT operation mode\n",
 		 xvt->cfg->name, xvt->trans->hw_rev);
@@ -354,6 +361,7 @@ static void iwl_xvt_stop(struct iwl_op_mode *op_mode)
 			iwl_xvt_txq_disable(xvt);
 			xvt->fw_running = false;
 		}
+		iwl_fw_dbg_stop_sync(&xvt->fwrt);
 		iwl_trans_stop_device(xvt->trans);
 	}
 
@@ -644,7 +652,7 @@ static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode)
 	table_size = sizeof(table_v2);
 
 	if (xvt->support_umac_log ||
-	    (xvt->trans->error_event_table_tlv_status &
+	    (xvt->trans->dbg.error_event_table_tlv_status &
 	     IWL_ERROR_EVENT_TABLE_UMAC)) {
 		iwl_xvt_get_umac_error_log(xvt, &table_umac);
 		iwl_xvt_dump_umac_error_log(xvt, &table_umac);
@@ -798,4 +806,118 @@ void iwl_xvt_txq_disable(struct iwl_xvt *xvt)
 				      IWL_XVT_DEFAULT_TX_QUEUE,
 				      true);
 	}
+}
+
+#ifdef CONFIG_ACPI
+static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
+{
+	u16 cmd_wide_id =  WIDE_ID(PHY_OPS_GROUP, GEO_TX_POWER_LIMIT);
+	union geo_tx_power_profiles_cmd cmd;
+	u16 len;
+
+	cmd.geo_cmd.ops = cpu_to_le32(IWL_PER_CHAIN_OFFSET_SET_TABLES);
+
+	iwl_sar_geo_init(&xvt->fwrt, cmd.geo_cmd.table);
+
+	cmd.geo_cmd.table_revision = cpu_to_le32(xvt->fwrt.geo_rev);
+
+	if (!fw_has_api(&xvt->fwrt.fw->ucode_capa,
+			IWL_UCODE_TLV_API_SAR_TABLE_VER)) {
+		len = sizeof(struct iwl_geo_tx_power_profiles_cmd_v1);
+	} else {
+		len =  sizeof(cmd.geo_cmd);
+	}
+
+	return iwl_xvt_send_cmd_pdu(xvt, cmd_wide_id, 0, len, &cmd);
+}
+#else /* CONFIG_ACPI */
+static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
+{
+	return 0;
+}
+#endif /* CONFIG_ACPI */
+
+static int
+iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b)
+{
+	union {
+		struct iwl_dev_tx_power_cmd v5;
+		struct iwl_dev_tx_power_cmd_v4 v4;
+	} cmd;
+
+	u16 len = 0;
+
+	cmd.v5.v3.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_CHAINS);
+
+	if (fw_has_api(&xvt->fw->ucode_capa,
+		       IWL_UCODE_TLV_API_REDUCE_TX_POWER))
+		len = sizeof(cmd.v5);
+	else if (fw_has_capa(&xvt->fw->ucode_capa,
+			     IWL_UCODE_TLV_CAPA_TX_POWER_ACK))
+		len = sizeof(struct iwl_dev_tx_power_cmd_v4);
+	else
+		len = sizeof(cmd.v4.v3);
+
+	if (iwl_sar_select_profile(&xvt->fwrt, cmd.v5.v3.per_chain_restriction,
+				   prof_a, prof_b))
+		return -ENOENT;
+
+	IWL_DEBUG_RADIO(xvt, "Sending REDUCE_TX_POWER_CMD per chain\n");
+	return iwl_xvt_send_cmd_pdu(xvt, REDUCE_TX_POWER_CMD, 0, len, &cmd);
+}
+
+static int iwl_xvt_sar_init(struct iwl_xvt *xvt)
+{
+	int ret;
+
+	ret = iwl_sar_get_wrds_table(&xvt->fwrt);
+	if (ret < 0) {
+		IWL_DEBUG_RADIO(xvt,
+				"WRDS SAR BIOS table invalid or unavailable. (%d)\n",
+				ret);
+		/*
+		 * If not available, don't fail and don't bother with EWRD.
+		 * Return 1 to tell that we can't use WGDS either.
+		 */
+		return 1;
+	}
+
+	ret = iwl_sar_get_ewrd_table(&xvt->fwrt);
+	/* if EWRD is not available, we can still use WRDS, so don't fail */
+	if (ret < 0)
+		IWL_DEBUG_RADIO(xvt,
+				"EWRD SAR BIOS table invalid or unavailable. (%d)\n",
+				ret);
+
+	ret = iwl_xvt_sar_select_profile(xvt, 1, 1);
+	/*
+	 * If we don't have profile 0 from BIOS, just skip it.  This
+	 * means that SAR Geo will not be enabled either, even if we
+	 * have other valid profiles.
+	 */
+	if (ret == -ENOENT)
+		return 1;
+
+	return ret;
+}
+
+int iwl_xvt_init_sar_tables(struct iwl_xvt *xvt)
+{
+	int ret;
+
+	ret = iwl_xvt_sar_init(xvt);
+
+	if (ret == 0) {
+		ret = iwl_xvt_sar_geo_init(xvt);
+	} else if (ret > 0 && !iwl_sar_get_wgds_table(&xvt->fwrt)) {
+		/*
+		 * If basic SAR is not available, we check for WGDS,
+		 * which should *not* be available either.  If it is
+		 * available, issue an error, because we can't use SAR
+		 * Geo without basic SAR.
+		 */
+		IWL_ERR(xvt, "BIOS contains WGDS but no WRDS\n");
+	}
+
+	return ret;
 }

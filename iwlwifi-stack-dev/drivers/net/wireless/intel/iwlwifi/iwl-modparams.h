@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2007 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2018 Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2005 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2018 Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -116,9 +116,6 @@ enum iwl_uapsd_disable {
  * @uapsd_disable: disable U-APSD, see &enum iwl_uapsd_disable, default =
  *	IWL_DISABLE_UAPSD_BSS | IWL_DISABLE_UAPSD_P2P_CLIENT
  * @xvt_default_mode: xVT is the default operation mode, default = false
- * @d0i3_disable: disable d0i3, default = 1,
- * @d0i3_timeout: time to wait after no refs are taken before
- *	entering D0i3 (in msecs)
  * @lar_disable: disable LAR (regulatory), default = 0
  * @fw_monitor: allow to use firmware monitor
  * @disable_11ac: disable VHT capabilities, default = false.
@@ -144,8 +141,6 @@ struct iwl_mod_params {
 #endif
 	char *nvm_file;
 	u32 uapsd_disable;
-	bool d0i3_disable;
-	unsigned int d0i3_timeout;
 	bool lar_disable;
 	bool fw_monitor;
 	bool disable_11ac;

@@ -23,7 +23,6 @@ drivers/net/wireless/intel/iwlwifi/cfg/9000.c
 drivers/net/wireless/intel/iwlwifi/cfg/22000.c
 drivers/net/wireless/intel/iwlwifi/iwl-agn-hw.h
 drivers/net/wireless/intel/iwlwifi/iwl-config.h
-drivers/net/wireless/intel/iwlwifi/iwl-constants.h
 drivers/net/wireless/intel/iwlwifi/iwl-csr.h
 drivers/net/wireless/intel/iwlwifi/iwl-dbg-cfg.c
 drivers/net/wireless/intel/iwlwifi/iwl-dbg-cfg.h
@@ -138,7 +137,6 @@ drivers/net/wireless/intel/iwlwifi/mvm/debugfs-vif.c
 drivers/net/wireless/intel/iwlwifi/mvm/fw-api.h
 drivers/net/wireless/intel/iwlwifi/mvm/fw.c
 drivers/net/wireless/intel/iwlwifi/mvm/led.c
-drivers/net/wireless/intel/iwlwifi/mvm/lte-coex.h
 drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c
 drivers/net/wireless/intel/iwlwifi/mvm/tdls.c
 drivers/net/wireless/intel/iwlwifi/mvm/mac-ctxt.c

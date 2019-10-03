@@ -1053,6 +1053,7 @@ void iwl_fmac_nic_restart(struct iwl_fmac *fmac, bool recover)
 	int i;
 
 	iwl_abort_notification_waits(&fmac->notif_wait);
+	del_timer(&fmac->fwrt.dump.periodic_trig);
 
 	flush_work(&fmac->add_stream_wk);
 
@@ -1271,7 +1272,7 @@ static void iwl_fmac_nic_restart_wk(struct work_struct *work)
 	if (!iwlwifi_mod_params.fw_restart)
 		return;
 
-	iwl_fw_flush_dump(&fmac->fwrt);
+	iwl_fw_flush_dumps(&fmac->fwrt);
 
 	/*
 	 * We are going to free all the Tx / Rx queues,
@@ -1503,6 +1504,7 @@ static const struct iwl_hcmd_names iwl_fmac_regulatory_and_nvm_names[] = {
  * Access is done through binary search
  */
 static const struct iwl_hcmd_names iwl_fmac_debug_names[] = {
+	HCMD_NAME(DBGC_SUSPEND_RESUME),
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 	HCMD_NAME(DEBUG_HOST_NTF),
 #endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
@@ -1782,11 +1784,11 @@ iwl_op_mode_fmac_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	iwl_trans_configure(fmac->trans, &trans_cfg);
 
 	trans->rx_mpdu_cmd = REPLY_RX_MPDU_CMD;
-	trans->dbg_dest_tlv = fmac->fw->dbg.dest_tlv;
-	trans->dbg_n_dest_reg = fmac->fw->dbg.n_dest_reg;
-	memcpy(trans->dbg_conf_tlv, fmac->fw->dbg.conf_tlv,
-	       sizeof(trans->dbg_conf_tlv));
-	trans->dbg_trigger_tlv = fmac->fw->dbg.trigger_tlv;
+	trans->dbg.dest_tlv = fmac->fw->dbg.dest_tlv;
+	trans->dbg.n_dest_reg = fmac->fw->dbg.n_dest_reg;
+	memcpy(trans->dbg.conf_tlv, fmac->fw->dbg.conf_tlv,
+	       sizeof(trans->dbg.conf_tlv));
+	trans->dbg.trigger_tlv = fmac->fw->dbg.trigger_tlv;
 
 	trans->iml = fmac->fw->iml;
 	trans->iml_len = fmac->fw->iml_len;
@@ -1838,7 +1840,8 @@ iwl_op_mode_fmac_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	}
 	mutex_unlock(&fmac->mutex);
 
-	iwl_fwrt_stop_device(&fmac->fwrt);
+	iwl_fw_dbg_stop_sync(&fmac->fwrt);
+	iwl_trans_stop_device(fmac->trans);
 
 	iwl_fmac_setup_wiphy(fmac);
 
@@ -1862,11 +1865,13 @@ iwl_op_mode_fmac_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	return op_mode;
 
 stop_device:
-	if (!iwlfmac_mod_params.init_dbg)
-		iwl_fwrt_stop_device(&fmac->fwrt);
+	if (!iwlfmac_mod_params.init_dbg) {
+		iwl_fw_dbg_stop_sync(&fmac->fwrt);
+		iwl_trans_stop_device(fmac->trans);
+	}
 out_free:
 	iwl_phy_db_free(fmac->phy_db);
-	iwl_fw_flush_dump(&fmac->fwrt);
+	iwl_fw_flush_dumps(&fmac->fwrt);
 	for (baid = 0; baid < IWL_MAX_BAID; baid++)
 		kfree(fmac->reorder_bufs[baid]);
 	iwl_fw_runtime_free(&fmac->fwrt);
@@ -2092,8 +2097,7 @@ static bool iwl_fmac_set_hw_rfkill_state(struct iwl_op_mode *op_mode,
 	if (unified)
 		return false;
 
-	return state && (fmac->fwrt.cur_fw_img != IWL_UCODE_INIT ||
-			 rfkill_safe_init_done);
+	return state && rfkill_safe_init_done;
 }
 
 static void iwl_fmac_free_skb(struct iwl_op_mode *op_mode, struct sk_buff *skb)
@@ -2236,7 +2240,7 @@ static void iwl_op_mode_fmac_stop(struct iwl_op_mode *op_mode)
 
 	cancel_work_sync(&fmac->async_handlers_wk);
 	iwl_fmac_async_handlers_purge(fmac);
-	iwl_fw_cancel_dump(&fmac->fwrt);
+	iwl_fw_cancel_dumps(&fmac->fwrt);
 	cancel_work_sync(&fmac->restart_wk);
 	kfree(fmac->error_recovery_buf);
 	flush_work(&fmac->add_stream_wk);

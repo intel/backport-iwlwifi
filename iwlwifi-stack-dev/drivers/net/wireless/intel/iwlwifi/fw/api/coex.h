@@ -8,7 +8,7 @@
  * Copyright(c) 2013 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2014 Intel Mobile Communications GmbH
  * Copyright(c) 2017        Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2013 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2014 Intel Mobile Communications GmbH
  * Copyright(c) 2017        Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -241,125 +241,5 @@ struct iwl_bt_coex_profile_notif {
 	u8 rrc_status;
 	__le16 reserved;
 } __packed; /* BT_COEX_PROFILE_NTFY_API_S_VER_4 */
-
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR
-/*
- * struct iwl_config_2g_coex_cmd - 2G Coex configuration command
- * (CONFIG_2G_COEX_CMD = 0x71)
- * @enabled: 2g coex is enabled/disabled
- */
-struct iwl_config_2g_coex_cmd {
-	__le32 enabled;
-} __packed; /* CONFIG_2G_COEX_CMD_API_S_VER_1 */
-#endif
-
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-
-#define WIFI_BAND_24_NUM_CHANNELS       14
-#define LTE_COEX_MFUART_CONFIG_LENGTH   12
-#define LTE_COEX_FRAME_STRUCTURE_LENGTH 2
-
-/**
- * struct iwl_lte_coex_config_cmd - LTE Coex configuration command
- * @lte_state: lte modem state
- * @lte_band: lte operating band
- * @lte_chan: lte operating channel
- * @lte_frame_structure: ?
- * @tx_safe_freq_min: ?
- * @tx_safe_freq_max: ?
- * @rx_safe_freq_min: ?
- * @rx_safe_freq_max: ?
- * @max_tx_power: wifi static max tx output power per channel
- *
- * Used for LTE_COEX_CONFIG_CMD command
- */
-struct iwl_lte_coex_config_cmd {
-	__le32 lte_state;
-	__le32 lte_band;
-	__le32 lte_chan;
-	__le32 lte_frame_structure[LTE_COEX_FRAME_STRUCTURE_LENGTH];
-	__le32 tx_safe_freq_min;
-	__le32 tx_safe_freq_max;
-	__le32 rx_safe_freq_min;
-	__le32 rx_safe_freq_max;
-	u8 max_tx_power[WIFI_BAND_24_NUM_CHANNELS];
-} __packed; /* LTE_COEX_CONFIG_CMD_API_S_VER_1 */
-
-/**
- * struct iwl_lte_coex_static_params_cmd - LTE Coex static params configuration
- * command
- * @mfu_config: MFUART config and RT signals assert/de-assert timing
- * @tx_power_in_dbm: Wifi safe power table
- *
- * Used for LTE_COEX_STATIC_PARAMS_CMD command
- */
-struct iwl_lte_coex_static_params_cmd {
-	__le32 mfu_config[LTE_COEX_MFUART_CONFIG_LENGTH];
-	s8 tx_power_in_dbm[32];
-} __packed; /* LTE_COEX_STATIC_PARAMS_CMD_API_S_VER_1 */
-
-/**
- * struct iwl_lte_coex_wifi_reported_channel_cmd - LTE Coex reported channels
- * configuration command
- * @channel: channel number (1-14)
- * @bandwidth: bandwidth (0-3)
- *
- * Used for LTE_COEX_WIFI_REPORTED_CHANNEL_CMD command
- */
-struct iwl_lte_coex_wifi_reported_channel_cmd {
-	__le32 channel;
-	__le32 bandwidth;
-} __packed; /* LTE_COEX_WIFI_REPORTED_CHANNEL_CMD_API_S_VER_1 */
-
-/**
- * struct iwl_lte_coex_sps_cmd - LTE Coex semi persistent info command
- *
- * @lte_semi_persistent_info:
- *
- * Used for LTE_COEX_SPS_CMD command
- */
-struct iwl_lte_coex_sps_cmd {
-	__le32 lte_semi_persistent_info;
-} __packed; /* LTE_COEX_WIFI_SPS_CMD_API_S_VER_1 */
-
-/**
- * struct iwl_lte_coex_fine_tuning_params_cmd - LTE Coex fine tuning parameters
- * @rx_protection_assert_timing: 802_RX_PRI request advance time
- * @tx_protection_assert_timing: 802_TX_ON request advance time
- * @rx_protection_timeout: Cancel Rx Protection request due to no Rx threshold
- * @min_tx_power: Min-Tx-Power threshold for Data/Management frames
- * @lte_ul_load_uapsd_threshold: 'LTE UL Load' counter thresholds
- *  for recommending Power-Manager to enter to UAPSD
- * @rx_failure_during_ul_uapsd_threshold: 'Rx Failure due to UL' counter
- *  thresholds for recommending Power-Manager to enter to UAPSD
- * @rx_failure_during_ul_sc_threshold: 'Rx Failure due to UL'
- *  counter threshold for recommending Scan-Manager to apply compensation
- * @rx_duration_for_ack_protection_us: Tx Ack size for Tx Protection
- * @beacon_failure_during_ul_counter: Failed Rx Beacon threshold
- * @dtim_failure_during_ul_counter: Failed Rx DTIM threshold
- *
- * Used for LTE_COEX_FINE_TUNING_PARAMS_CMD command
- */
-struct iwl_lte_coex_fine_tuning_params_cmd {
-	__le32 rx_protection_assert_timing;
-	__le32 tx_protection_assert_timing;
-	__le32 rx_protection_timeout;
-	__le32 min_tx_power;
-	__le32 lte_ul_load_uapsd_threshold;
-	__le32 rx_failure_during_ul_uapsd_threshold;
-	__le32 rx_failure_during_ul_sc_threshold;
-	__le32 rx_duration_for_ack_protection_us;
-	__le32 beacon_failure_during_ul_counter;
-	__le32 dtim_failure_during_ul_counter;
-} __packed; /* LTE_COEX_FINE_TUNING_PARAMS_CMD_API_S_VER_1 */
-
-/**
- * struct iwl_lte_coex_statistic_ntfy - LTE Coex statistics notification
- * @statistic_placeholder: placeholder
- */
-struct iwl_lte_coex_statistic_ntfy {
-	__le32 statistic_placeholder;
-} __packed; /* LTE_COEX_STATISTIC_NTFY_API_S_VER_1 */
-#endif /* CPTCFG_IWLWIFI_LTE_COEX */
 
 #endif /* __iwl_fw_api_coex_h__ */

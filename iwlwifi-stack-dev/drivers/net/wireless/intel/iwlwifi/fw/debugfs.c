@@ -535,13 +535,26 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 	int ret = 0;
 
 	static const char * const entries[] = {
-		"sleep_allowed_count",
-		"sleep_time",
-		"max_sleep_time",
-		"missed_beacon_count",
+		"total_sleep_counter",
+		"total_sleep_duration",
+		"report_duration",
+		"total_missed_beacon_counter",
 		"missed_3_consecutive_beacon_count",
 		"ps_flags",
-		"max_active_duration"
+		"phy_inactive_duration",
+		"mac_ctdp_sum",
+		"ppm_offset_vs_ap_sum",
+		"deep_sleep_duration",
+		"received_beacon_counter",
+		"bcon_in_lprx_counter",
+		"bcon_abort_counter",
+		"multicast_indication_tim_counter",
+		"missed_multicast_counter",
+		"misbehave_counter",
+		"reserved1",
+		"reserved2",
+		"reserved3",
+		"reserved4"
 	};
 
 	u32 report_size;
@@ -597,7 +610,7 @@ static ssize_t iwl_dbgfs_ps_report_umac_read
 	return iwl_dbgfs_ps_report_read(fwrt, size, buf, DHC_TARGET_UMAC);
 }
 
-FWRT_DEBUGFS_READ_FILE_OPS(ps_report_umac, 268);
+FWRT_DEBUGFS_READ_FILE_OPS(ps_report_umac, 721);
 
 static ssize_t iwl_dbgfs_ps_report_lmac_read
 				(struct iwl_fw_runtime *fwrt,

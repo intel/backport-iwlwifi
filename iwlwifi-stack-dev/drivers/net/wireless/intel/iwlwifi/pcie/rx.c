@@ -434,7 +434,7 @@ static struct page *iwl_pcie_rx_alloc_page(struct iwl_trans *trans,
 		/*
 		 * Issue an error if we don't have enough pre-allocated
 		  * buffers.
-`		 */
+		 */
 		if (!(gfp_mask & __GFP_NOWARN) && net_ratelimit())
 			IWL_CRIT(trans,
 				 "Failed to alloc_pages\n");
@@ -2230,7 +2230,7 @@ irqreturn_t iwl_pcie_irq_msix_handler(int irq, void *dev_id)
 			"Hardware error detected. Restarting.\n");
 
 		isr_stats->hw++;
-		trans->hw_error = true;
+		trans->dbg.hw_error = true;
 		iwl_pcie_irq_handle_error(trans);
 	}
 

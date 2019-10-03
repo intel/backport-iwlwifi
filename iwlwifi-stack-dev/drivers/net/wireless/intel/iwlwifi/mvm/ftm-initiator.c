@@ -93,11 +93,7 @@ void iwl_mvm_ftm_restart(struct iwl_mvm *mvm)
 	struct cfg80211_pmsr_result result = {
 		.status = NL80211_PMSR_STATUS_FAILURE,
 		.final = 1,
-#if LINUX_VERSION_IS_GEQ(5,3,0)
-		.host_time = ktime_get_boottime_ns(),
-#else
 		.host_time = ktime_get_boot_ns(),
-#endif
 		.type = NL80211_PMSR_TYPE_FTM,
 	};
 	int i;
@@ -207,6 +203,10 @@ static void iwl_mvm_ftm_cmd(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		cmd->initiator_flags |=
 			cpu_to_le32(IWL_TOF_INITIATOR_FLAGS_COMMON_CALIB);
 	}
+
+	if (IWL_MVM_FTM_INITIATOR_FAST_ALGO_DISABLE)
+		cmd->initiator_flags |=
+			cpu_to_le32(IWL_TOF_INITIATOR_FLAGS_FAST_ALGO_DISABLED);
 #endif
 
 	if (vif->bss_conf.assoc) {

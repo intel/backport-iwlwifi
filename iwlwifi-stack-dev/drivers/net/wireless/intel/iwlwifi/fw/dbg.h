@@ -73,6 +73,7 @@
 #include "error-dump.h"
 #include "api/commands.h"
 #include "api/dbg-tlv.h"
+#include "api/alive.h"
 
 /**
  * struct iwl_fw_dump_desc - describes the dump
@@ -201,7 +202,7 @@ _iwl_fw_dbg_trigger_on(struct iwl_fw_runtime *fwrt,
 {
 	struct iwl_fw_dbg_trigger_tlv *trig;
 
-	if (fwrt->trans->ini_valid)
+	if (fwrt->trans->dbg.ini_valid)
 		return NULL;
 
 	if (!iwl_fw_dbg_trigger_enabled(fwrt->fw, id))
@@ -228,7 +229,7 @@ iwl_fw_ini_trigger_on(struct iwl_fw_runtime *fwrt,
 	struct iwl_fw_ini_trigger *trig;
 	u32 usec;
 
-	if (!fwrt->trans->ini_valid || id == IWL_FW_TRIGGER_ID_INVALID ||
+	if (!fwrt->trans->dbg.ini_valid || id == IWL_FW_TRIGGER_ID_INVALID ||
 	    id >= IWL_FW_TRIGGER_ID_NUM || !fwrt->dump.active_trigs[id].active)
 		return false;
 
@@ -261,96 +262,19 @@ _iwl_fw_dbg_trigger_simple_stop(struct iwl_fw_runtime *fwrt,
 	_iwl_fw_dbg_trigger_simple_stop((fwrt), (wdev),		\
 					iwl_fw_dbg_get_trigger((fwrt)->fw,\
 							       (trig)))
-
-static inline int
-iwl_fw_dbg_start_stop_hcmd(struct iwl_fw_runtime *fwrt, bool start)
-{
-	struct iwl_ldbg_config_cmd cmd = {
-		.type = start ? cpu_to_le32(START_DEBUG_RECORDING) :
-				cpu_to_le32(STOP_DEBUG_RECORDING),
-	};
-	struct iwl_host_cmd hcmd = {
-		.id = LDBG_CONFIG_CMD,
-		.flags = CMD_ASYNC,
-		.data[0] = &cmd,
-		.len[0] = sizeof(cmd),
-	};
-
-	return iwl_trans_send_cmd(fwrt->trans, &hcmd);
-}
-
-static inline void
-_iwl_fw_dbg_stop_recording(struct iwl_trans *trans,
-			   struct iwl_fw_dbg_params *params)
-{
-	if (trans->cfg->device_family == IWL_DEVICE_FAMILY_7000) {
-		iwl_set_bits_prph(trans, MON_BUFF_SAMPLE_CTL, 0x100);
-		return;
-	}
-
-	if (params) {
-		params->in_sample = iwl_read_umac_prph(trans, DBGC_IN_SAMPLE);
-		params->out_ctrl = iwl_read_umac_prph(trans, DBGC_OUT_CTRL);
-	}
-
-	iwl_write_umac_prph(trans, DBGC_IN_SAMPLE, 0);
-	/* wait for the DBGC to finish writing the internal buffer to DRAM to
-	 * avoid halting the HW while writing
-	 */
-	usleep_range(700, 1000);
-	iwl_write_umac_prph(trans, DBGC_OUT_CTRL, 0);
-#ifdef CPTCFG_IWLWIFI_DEBUGFS
-	trans->dbg_rec_on = false;
-#endif
-}
-
-static inline void
-iwl_fw_dbg_stop_recording(struct iwl_fw_runtime *fwrt,
-			  struct iwl_fw_dbg_params *params)
-{
-	if (fwrt->trans->cfg->device_family < IWL_DEVICE_FAMILY_22560)
-		_iwl_fw_dbg_stop_recording(fwrt->trans, params);
-	else
-		iwl_fw_dbg_start_stop_hcmd(fwrt, false);
-}
-
-static inline void
-_iwl_fw_dbg_restart_recording(struct iwl_trans *trans,
-			      struct iwl_fw_dbg_params *params)
-{
-	if (WARN_ON(!params))
-		return;
-
-	if (trans->cfg->device_family == IWL_DEVICE_FAMILY_7000) {
-		iwl_clear_bits_prph(trans, MON_BUFF_SAMPLE_CTL, 0x100);
-		iwl_clear_bits_prph(trans, MON_BUFF_SAMPLE_CTL, 0x1);
-		iwl_set_bits_prph(trans, MON_BUFF_SAMPLE_CTL, 0x1);
-	} else {
-		iwl_write_umac_prph(trans, DBGC_IN_SAMPLE, params->in_sample);
-		iwl_write_umac_prph(trans, DBGC_OUT_CTRL, params->out_ctrl);
-	}
-}
+int iwl_fw_dbg_stop_restart_recording(struct iwl_fw_runtime *fwrt,
+				      struct iwl_fw_dbg_params *params,
+				      bool stop);
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 static inline void iwl_fw_set_dbg_rec_on(struct iwl_fw_runtime *fwrt)
 {
-	if (fwrt->fw->dbg.dest_tlv && fwrt->cur_fw_img == IWL_UCODE_REGULAR)
-		fwrt->trans->dbg_rec_on = true;
+	if (fwrt->cur_fw_img == IWL_UCODE_REGULAR &&
+	    (fwrt->fw->dbg.dest_tlv ||
+	     fwrt->trans->dbg.ini_dest != IWL_FW_INI_LOCATION_INVALID))
+		fwrt->trans->dbg.rec_on = true;
 }
 #endif
-
-static inline void
-iwl_fw_dbg_restart_recording(struct iwl_fw_runtime *fwrt,
-			     struct iwl_fw_dbg_params *params)
-{
-	if (fwrt->trans->cfg->device_family < IWL_DEVICE_FAMILY_22560)
-		_iwl_fw_dbg_restart_recording(fwrt->trans, params);
-	else
-		iwl_fw_dbg_start_stop_hcmd(fwrt, true);
-#ifdef CPTCFG_IWLWIFI_DEBUGFS
-	iwl_fw_set_dbg_rec_on(fwrt);
-#endif
-}
 
 static inline void iwl_fw_dump_conf_clear(struct iwl_fw_runtime *fwrt)
 {
@@ -361,7 +285,7 @@ void iwl_fw_error_dump_wk(struct work_struct *work);
 
 static inline bool iwl_fw_dbg_type_on(struct iwl_fw_runtime *fwrt, u32 type)
 {
-	return (fwrt->fw->dbg.dump_mask & BIT(type) || fwrt->trans->ini_valid);
+	return (fwrt->fw->dbg.dump_mask & BIT(type));
 }
 
 static inline bool iwl_fw_dbg_is_d3_debug_enabled(struct iwl_fw_runtime *fwrt)
@@ -385,14 +309,26 @@ static inline bool iwl_fw_dbg_is_paging_enabled(struct iwl_fw_runtime *fwrt)
 
 void iwl_fw_dbg_read_d3_debug_data(struct iwl_fw_runtime *fwrt);
 
-static inline void iwl_fw_flush_dump(struct iwl_fw_runtime *fwrt)
+static inline void iwl_fw_flush_dumps(struct iwl_fw_runtime *fwrt)
 {
-	flush_delayed_work(&fwrt->dump.wk);
+	int i;
+
+	del_timer(&fwrt->dump.periodic_trig);
+	for (i = 0; i < IWL_FW_RUNTIME_DUMP_WK_NUM; i++) {
+		flush_delayed_work(&fwrt->dump.wks[i].wk);
+		fwrt->dump.wks[i].ini_trig_id = IWL_FW_TRIGGER_ID_INVALID;
+	}
 }
 
-static inline void iwl_fw_cancel_dump(struct iwl_fw_runtime *fwrt)
+static inline void iwl_fw_cancel_dumps(struct iwl_fw_runtime *fwrt)
 {
-	cancel_delayed_work_sync(&fwrt->dump.wk);
+	int i;
+
+	del_timer(&fwrt->dump.periodic_trig);
+	for (i = 0; i < IWL_FW_RUNTIME_DUMP_WK_NUM; i++) {
+		cancel_delayed_work_sync(&fwrt->dump.wks[i].wk);
+		fwrt->dump.wks[i].ini_trig_id = IWL_FW_TRIGGER_ID_INVALID;
+	}
 }
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
@@ -431,42 +367,57 @@ static inline void iwl_fw_resume_timestamp(struct iwl_fw_runtime *fwrt) {}
 
 #endif /* CPTCFG_IWLWIFI_DEBUGFS */
 
-void iwl_fw_dbg_collect_sync(struct iwl_fw_runtime *fwrt);
 void iwl_fw_dbg_apply_point(struct iwl_fw_runtime *fwrt,
 			    enum iwl_fw_ini_apply_point apply_point);
 
 static inline void iwl_fw_lmac1_set_alive_err_table(struct iwl_trans *trans,
 						    u32 lmac_error_event_table)
 {
-	if (!(trans->error_event_table_tlv_status &
+	if (!(trans->dbg.error_event_table_tlv_status &
 	      IWL_ERROR_EVENT_TABLE_LMAC1) ||
-	    WARN_ON(trans->lmac_error_event_table[0] !=
+	    WARN_ON(trans->dbg.lmac_error_event_table[0] !=
 		    lmac_error_event_table))
-		trans->lmac_error_event_table[0] = lmac_error_event_table;
+		trans->dbg.lmac_error_event_table[0] = lmac_error_event_table;
 }
 
 static inline void iwl_fw_umac_set_alive_err_table(struct iwl_trans *trans,
 						   u32 umac_error_event_table)
 {
-	if (!(trans->error_event_table_tlv_status &
+	if (!(trans->dbg.error_event_table_tlv_status &
 	      IWL_ERROR_EVENT_TABLE_UMAC) ||
-	    WARN_ON(trans->umac_error_event_table !=
+	    WARN_ON(trans->dbg.umac_error_event_table !=
 		    umac_error_event_table))
-		trans->umac_error_event_table = umac_error_event_table;
+		trans->dbg.umac_error_event_table = umac_error_event_table;
 }
 
-void iwl_fwrt_stop_device(struct iwl_fw_runtime *fwrt);
-
-/* This bit is used to differentiate the legacy dump from the ini dump */
-#define INI_DUMP_BIT BIT(31)
+void iwl_fw_dbg_stop_sync(struct iwl_fw_runtime *fwrt);
 
 static inline void iwl_fw_error_collect(struct iwl_fw_runtime *fwrt)
 {
-	if (fwrt->trans->ini_valid && fwrt->trans->hw_error) {
+	if (fwrt->trans->dbg.ini_valid && fwrt->trans->dbg.hw_error) {
 		_iwl_fw_dbg_ini_collect(fwrt, IWL_FW_TRIGGER_ID_FW_HW_ERROR);
-		fwrt->trans->hw_error = false;
+		fwrt->trans->dbg.hw_error = false;
 	} else {
 		iwl_fw_dbg_collect_desc(fwrt, &iwl_dump_desc_assert, false, 0);
+	}
+}
+
+void iwl_fw_dbg_periodic_trig_handler(struct timer_list *t);
+
+static inline void iwl_fwrt_update_fw_versions(struct iwl_fw_runtime *fwrt,
+					       struct iwl_lmac_alive *lmac,
+					       struct iwl_umac_alive *umac)
+{
+	if (lmac) {
+		fwrt->dump.fw_ver.type = lmac->ver_type;
+		fwrt->dump.fw_ver.subtype = lmac->ver_subtype;
+		fwrt->dump.fw_ver.lmac_major = le32_to_cpu(lmac->ucode_major);
+		fwrt->dump.fw_ver.lmac_minor = le32_to_cpu(lmac->ucode_minor);
+	}
+
+	if (umac) {
+		fwrt->dump.fw_ver.umac_major = le32_to_cpu(umac->umac_major);
+		fwrt->dump.fw_ver.umac_minor = le32_to_cpu(umac->umac_minor);
 	}
 }
 

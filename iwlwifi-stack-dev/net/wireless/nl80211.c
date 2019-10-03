@@ -29,10 +29,6 @@
 #include "reg.h"
 #include "rdev-ops.h"
 
-#if LINUX_VERSION_IS_GEQ(5,2,0)
-#define nla_parse_nested nla_parse_nested_deprecated
-#endif
-
 static int nl80211_crypto_settings(struct cfg80211_registered_device *rdev,
 				   struct genl_info *info,
 				   struct cfg80211_crypto_settings *settings,
@@ -8043,7 +8039,7 @@ static int nl80211_notify_radar_detection(struct sk_buff *skb,
 
 	cfg80211_sched_dfs_chan_update(rdev);
 
-	memcpy(&rdev->radar_chandef, &chandef, sizeof(rdev->radar_chandef));
+	rdev->radar_chandef = chandef;
 
 	/* Propagate this notification to other radios as well */
 	queue_work(cfg80211_wq, &rdev->propagate_radar_detect_wk);

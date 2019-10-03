@@ -2585,7 +2585,7 @@ static inline void u64_to_ether_addr(u64 u, u8 *addr)
 }
 #endif /* < 4,11,0 */
 
-#if CFG80211_VERSION < KERNEL_VERSION(5,0,0)
+#if CFG80211_VERSION < KERNEL_VERSION(4, 19, 0)
 static inline void
 ieee80211_sband_set_num_iftypes_data(struct ieee80211_supported_band *sband,
 				     u16 n)
@@ -2618,7 +2618,7 @@ ieee80211_sband_get_iftypes_data_entry(struct ieee80211_supported_band *sband,
 		  "Tried to use unsupported sband iftype data\n");
 	return NULL;
 }
-#else  /* CFG80211_VERSION < KERNEL_VERSION(5,0,0) */
+#else  /* CFG80211_VERSION < KERNEL_VERSION(4,19,0) */
 static inline void
 ieee80211_sband_set_num_iftypes_data(struct ieee80211_supported_band *sband,
 				     u16 n)
@@ -2651,7 +2651,7 @@ ieee80211_sband_get_iftypes_data_entry(struct ieee80211_supported_band *sband,
 {
 	return &sband->iftype_data[i];
 }
-#endif /* CFG80211_VERSION < KERNEL_VERSION(5,0,0) */
+#endif /* CFG80211_VERSION < KERNEL_VERSION(4,19,0) */
 
 #if CFG80211_VERSION < KERNEL_VERSION(5,1,0)
 static inline int cfg80211_vendor_cmd_get_sender(struct wiphy *wiphy)

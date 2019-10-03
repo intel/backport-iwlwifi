@@ -8,7 +8,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -200,19 +200,6 @@ static ssize_t iwl_dbgfs_tx_pwr_lmt_read(struct file *file,
 
 	pos = scnprintf(buf, bufsz, "bss limit = %d\n",
 			vif->bss_conf.txpower);
-
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR
-	{
-	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-	struct iwl_mvm *mvm = mvmvif->mvm;
-
-	mutex_lock(&mvm->mutex);
-	if (mvmvif->phy_ctxt)
-		pos += scnprintf(buf + pos, bufsz - pos, "fm limit = %d\n",
-				mvmvif->phy_ctxt->fm_tx_power_limit);
-	mutex_unlock(&mvm->mutex);
-	}
-#endif
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }

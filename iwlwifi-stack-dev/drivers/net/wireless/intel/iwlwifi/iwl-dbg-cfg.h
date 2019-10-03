@@ -208,15 +208,13 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(bool, MVM_FTM_INITIATOR_DYNACK)
 	IWL_DBG_CFG_NODEF(bool, MVM_FTM_INITIATOR_MCSI_ENABLED)
 	IWL_DBG_CFG_NODEF(int, MVM_FTM_INITIATOR_COMMON_CALIB)
+	IWL_DBG_CFG_NODEF(bool, MVM_FTM_INITIATOR_FAST_ALGO_DISABLE)
 	IWL_DBG_CFG(bool, MVM_D3_DEBUG)
 	IWL_DBG_CFG(bool, MVM_USE_TWT)
 	IWL_MVM_MOD_PARAM(int, power_scheme)
 	IWL_MVM_MOD_PARAM(bool, init_dbg)
 	IWL_MVM_MOD_PARAM(bool, tfd_q_hang_detect)
 #endif /* CPTCFG_IWLMVM */
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR_TEST
-	IWL_DBG_CFG_NODEF(u8, fm_debug_mode)
-#endif
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
 	/* XXX: should be dbgm_ or dbg_mon_ for consistency? */
@@ -272,7 +270,6 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_STR(fw_dbg_conf)
 	IWL_DBG_CFG_STR(nvm_file)
 	IWL_DBG_CFG_STR(fw_file_pre)
-	IWL_DBG_CFG_NODEF(u32, d0i3_debug)
 	IWL_DBG_CFG_NODEF(u32, valid_ants)
 	IWL_DBG_CFG_NODEF(u32, no_ack_en)
 	IWL_DBG_CFG_NODEF(bool, no_ldpc)
@@ -284,7 +281,6 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(u16, tx_mcs_160)
 	IWL_DBG_CFG_NODEF(u32, secure_boot_cfg)
 	IWL_MOD_PARAM(u32, uapsd_disable)
-	IWL_MOD_PARAM(bool, d0i3_disable)
 	IWL_MOD_PARAM(bool, lar_disable)
 	IWL_MOD_PARAM(bool, fw_monitor)
 	IWL_MOD_PARAM(bool, fw_restart)
@@ -296,7 +292,6 @@ struct iwl_dbg_cfg {
 	IWL_MOD_PARAM(int, amsdu_size)
 	IWL_MOD_PARAM(int, swcrypto)
 	IWL_MOD_PARAM(uint, disable_11n)
-	IWL_MOD_PARAM(uint, d0i3_timeout)
 	IWL_DBG_CFG_BIN(he_ppe_thres)
 	IWL_DBG_CFG_NODEF(u8, he_chan_width_dis)
 	IWL_DBG_CFG_NODEF(u32, vht_cap_flip)

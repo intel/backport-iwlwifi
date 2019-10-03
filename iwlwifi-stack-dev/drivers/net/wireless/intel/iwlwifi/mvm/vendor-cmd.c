@@ -67,10 +67,6 @@
 #include "mvm.h"
 #include "iwl-vendor-cmd.h"
 
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-#include "lte-coex.h"
-#endif
-
 #include "iwl-io.h"
 #include "iwl-prph.h"
 
@@ -266,360 +262,6 @@ free:
 	kfree(tb);
 	return retval;
 }
-
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-static int iwl_vendor_lte_coex_state_cmd(struct wiphy *wiphy,
-					 struct wireless_dev *wdev,
-					 const void *data, int data_len)
-{
-	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
-	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	const struct lte_coex_state_cmd *cmd = data;
-	struct sk_buff *skb;
-	int err = LTE_OK;
-
-	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, 100);
-	if (!skb)
-		return -ENOMEM;
-
-	if (data_len != sizeof(*cmd)) {
-		err = LTE_INVALID_DATA;
-		goto out;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-COEX: state cmd:\n\tstate: %d\n",
-		       cmd->lte_state);
-
-	switch (cmd->lte_state) {
-	case LTE_OFF:
-		if (mvm->lte_state.has_config &&
-		    mvm->lte_state.state != LTE_CONNECTED) {
-			err = LTE_STATE_ERR;
-			goto out;
-		}
-		mvm->lte_state.state = LTE_OFF;
-		mvm->lte_state.has_config = 0;
-		mvm->lte_state.has_rprtd_chan = 0;
-		mvm->lte_state.has_sps = 0;
-		mvm->lte_state.has_ft = 0;
-		break;
-	case LTE_IDLE:
-		if (!mvm->lte_state.has_static ||
-		    (mvm->lte_state.has_config &&
-		     mvm->lte_state.state != LTE_CONNECTED)) {
-			err = LTE_STATE_ERR;
-			goto out;
-		}
-		mvm->lte_state.has_config = 0;
-		mvm->lte_state.has_sps = 0;
-		mvm->lte_state.state = LTE_IDLE;
-		break;
-	case LTE_CONNECTED:
-		if (!(mvm->lte_state.has_config)) {
-			err = LTE_STATE_ERR;
-			goto out;
-		}
-		mvm->lte_state.state = LTE_CONNECTED;
-		break;
-	default:
-		err = LTE_ILLEGAL_PARAMS;
-		goto out;
-	}
-
-	mvm->lte_state.config.lte_state = cpu_to_le32(mvm->lte_state.state);
-
-	mutex_lock(&mvm->mutex);
-	if (iwl_mvm_send_lte_coex_config_cmd(mvm))
-		err = LTE_OTHER_ERR;
-	mutex_unlock(&mvm->mutex);
-
-out:
-	if (err)
-		iwl_mvm_reset_lte_state(mvm);
-
-	if (nla_put_u8(skb, NLA_BINARY, err)) {
-		kfree_skb(skb);
-		return -ENOBUFS;
-	}
-
-	return cfg80211_vendor_cmd_reply(skb);
-}
-
-static int iwl_vendor_lte_coex_config_cmd(struct wiphy *wiphy,
-					  struct wireless_dev *wdev,
-					  const void *data, int data_len)
-{
-	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
-	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	const struct lte_coex_config_info_cmd *cmd = data;
-	struct iwl_lte_coex_static_params_cmd *stat = &mvm->lte_state.stat;
-	struct sk_buff *skb;
-	int err = LTE_OK;
-	int i, j;
-
-	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, 100);
-	if (!skb)
-		return -ENOMEM;
-
-	if (data_len != sizeof(*cmd)) {
-		err = LTE_INVALID_DATA;
-		goto out;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-COEX: config cmd:\n");
-
-	/* send static config only once in the FW life */
-	if (mvm->lte_state.has_static)
-		goto out;
-
-	for (i = 0; i < LTE_MWS_CONF_LENGTH; i++) {
-		IWL_DEBUG_COEX(mvm, "\tmws config data[%d]: %d\n", i,
-			       cmd->mws_conf_data[i]);
-		stat->mfu_config[i] = cpu_to_le32(cmd->mws_conf_data[i]);
-	}
-
-	if (cmd->safe_power_table[0] != LTE_SAFE_PT_FIRST ||
-	    cmd->safe_power_table[LTE_SAFE_PT_LENGTH - 1] !=
-							LTE_SAFE_PT_LAST) {
-		err = LTE_ILLEGAL_PARAMS;
-		goto out;
-	}
-
-	/* power table must be ascending ordered */
-	j = LTE_SAFE_PT_FIRST;
-	for (i = 0; i < LTE_SAFE_PT_LENGTH; i++) {
-		IWL_DEBUG_COEX(mvm, "\tsafe power table[%d]: %d\n", i,
-			       cmd->safe_power_table[i]);
-		if (cmd->safe_power_table[i] < j) {
-			err = LTE_ILLEGAL_PARAMS;
-			goto out;
-		}
-		j = cmd->safe_power_table[i];
-		stat->tx_power_in_dbm[i] = cmd->safe_power_table[i];
-	}
-
-	mutex_lock(&mvm->mutex);
-	if (iwl_mvm_send_lte_coex_static_params_cmd(mvm))
-		err = LTE_OTHER_ERR;
-	else
-		mvm->lte_state.has_static = 1;
-	mutex_unlock(&mvm->mutex);
-
-out:
-	if (err)
-		iwl_mvm_reset_lte_state(mvm);
-
-	if (nla_put_u8(skb, NLA_BINARY, err)) {
-		kfree_skb(skb);
-		return -ENOBUFS;
-	}
-
-	return cfg80211_vendor_cmd_reply(skb);
-}
-
-static int in_range(int val, int min, int max)
-{
-	return (val >= min) && (val <= max);
-}
-
-static bool is_valid_lte_range(u16 min, u16 max)
-{
-	return (min == 0 && max == 0) ||
-	       (max >= min &&
-		in_range(min, LTE_FRQ_MIN, LTE_FRQ_MAX) &&
-		in_range(max, LTE_FRQ_MIN, LTE_FRQ_MAX));
-}
-
-static int iwl_vendor_lte_coex_dynamic_info_cmd(struct wiphy *wiphy,
-						struct wireless_dev *wdev,
-						const void *data, int data_len)
-{
-	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
-	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	const struct lte_coex_dynamic_info_cmd *cmd = data;
-	struct iwl_lte_coex_config_cmd *config = &mvm->lte_state.config;
-	struct sk_buff *skb;
-	int err = LTE_OK;
-	int i;
-
-	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, 100);
-	if (!skb)
-		return -ENOMEM;
-
-	if (data_len != sizeof(*cmd)) {
-		err = LTE_INVALID_DATA;
-		goto out;
-	}
-
-	if (!mvm->lte_state.has_static ||
-	    (mvm->lte_state.has_config &&
-	     mvm->lte_state.state != LTE_CONNECTED)) {
-		err = LTE_STATE_ERR;
-		goto out;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-COEX: dynamic cmd:\n"
-		       "\tlte band[0]: %d, chan[0]: %d\n\ttx range: %d - %d\n"
-		       "\trx range: %d - %d\n", cmd->lte_connected_bands[0],
-		       cmd->lte_connected_bands[1], cmd->wifi_tx_safe_freq_min,
-		       cmd->wifi_tx_safe_freq_max, cmd->wifi_rx_safe_freq_min,
-		       cmd->wifi_rx_safe_freq_max);
-
-	/* TODO: validate lte connected bands and channel, and frame struct */
-	config->lte_band = cpu_to_le32(cmd->lte_connected_bands[0]);
-	config->lte_chan = cpu_to_le32(cmd->lte_connected_bands[1]);
-	for (i = 0; i < LTE_FRAME_STRUCT_LENGTH; i++) {
-		IWL_DEBUG_COEX(mvm, "\tframe structure[%d]: %d\n", i,
-			       cmd->lte_frame_structure[i]);
-		config->lte_frame_structure[i] =
-				cpu_to_le32(cmd->lte_frame_structure[i]);
-	}
-	if (!is_valid_lte_range(cmd->wifi_tx_safe_freq_min,
-				cmd->wifi_tx_safe_freq_max) ||
-	    !is_valid_lte_range(cmd->wifi_rx_safe_freq_min,
-				cmd->wifi_rx_safe_freq_max)) {
-		err = LTE_ILLEGAL_PARAMS;
-		goto out;
-	}
-	config->tx_safe_freq_min = cpu_to_le32(cmd->wifi_tx_safe_freq_min);
-	config->tx_safe_freq_max = cpu_to_le32(cmd->wifi_tx_safe_freq_max);
-	config->rx_safe_freq_min = cpu_to_le32(cmd->wifi_rx_safe_freq_min);
-	config->rx_safe_freq_max = cpu_to_le32(cmd->wifi_rx_safe_freq_max);
-	for (i = 0; i < LTE_TX_POWER_LENGTH; i++) {
-		IWL_DEBUG_COEX(mvm, "\twifi max tx power[%d]: %d\n", i,
-			       cmd->wifi_max_tx_power[i]);
-		if (!in_range(cmd->wifi_max_tx_power[i], LTE_MAX_TX_MIN,
-			      LTE_MAX_TX_MAX)) {
-			err = LTE_ILLEGAL_PARAMS;
-			goto out;
-		}
-		config->max_tx_power[i] = cmd->wifi_max_tx_power[i];
-	}
-
-	mvm->lte_state.has_config = 1;
-
-	if (mvm->lte_state.state == LTE_CONNECTED) {
-		mutex_lock(&mvm->mutex);
-		if (iwl_mvm_send_lte_coex_config_cmd(mvm))
-			err = LTE_OTHER_ERR;
-		mutex_unlock(&mvm->mutex);
-	}
-out:
-	if (err)
-		iwl_mvm_reset_lte_state(mvm);
-
-	if (nla_put_u8(skb, NLA_BINARY, err)) {
-		kfree_skb(skb);
-		return -ENOBUFS;
-	}
-
-	return cfg80211_vendor_cmd_reply(skb);
-}
-
-static int iwl_vendor_lte_sps_cmd(struct wiphy *wiphy,
-				  struct wireless_dev *wdev, const void *data,
-				  int data_len)
-{
-	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
-	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	const struct lte_coex_sps_info_cmd *cmd = data;
-	struct iwl_lte_coex_sps_cmd *sps = &mvm->lte_state.sps;
-	struct sk_buff *skb;
-	int err = LTE_OK;
-
-	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, 100);
-	if (!skb)
-		return -ENOMEM;
-
-	if (data_len != sizeof(*cmd)) {
-		err = LTE_INVALID_DATA;
-		goto out;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-COEX: sps cmd:\n\tsps info: %d\n",
-		       cmd->sps_info);
-
-	if (mvm->lte_state.state != LTE_CONNECTED) {
-		err = LTE_STATE_ERR;
-		goto out;
-	}
-
-	/* TODO: validate SPS */
-	sps->lte_semi_persistent_info = cpu_to_le32(cmd->sps_info);
-
-	mutex_lock(&mvm->mutex);
-	if (iwl_mvm_send_lte_sps_cmd(mvm))
-		err = LTE_OTHER_ERR;
-	else
-		mvm->lte_state.has_sps = 1;
-	mutex_unlock(&mvm->mutex);
-
-out:
-	if (err)
-		iwl_mvm_reset_lte_state(mvm);
-
-	if (nla_put_u8(skb, NLA_BINARY, err)) {
-		kfree_skb(skb);
-		return -ENOBUFS;
-	}
-
-	return cfg80211_vendor_cmd_reply(skb);
-}
-
-static int
-iwl_vendor_lte_coex_wifi_reported_channel_cmd(struct wiphy *wiphy,
-					      struct wireless_dev *wdev,
-					      const void *data, int data_len)
-{
-	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
-	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	const struct lte_coex_wifi_reported_chan_cmd *cmd = data;
-	struct iwl_lte_coex_wifi_reported_channel_cmd *rprtd_chan =
-						&mvm->lte_state.rprtd_chan;
-	struct sk_buff *skb;
-	int err = LTE_OK;
-
-	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, 100);
-	if (!skb)
-		return -ENOMEM;
-
-	if (data_len != sizeof(*cmd)) {
-		err = LTE_INVALID_DATA;
-		goto out;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-COEX: wifi reported channel cmd:\n"
-		       "\tchannel: %d, bandwidth: %d\n", cmd->chan,
-		       cmd->bandwidth);
-
-	if (!in_range(cmd->chan, LTE_RC_CHAN_MIN, LTE_RC_CHAN_MAX) ||
-	    !in_range(cmd->bandwidth, LTE_RC_BW_MIN, LTE_RC_BW_MAX)) {
-		err = LTE_ILLEGAL_PARAMS;
-		goto out;
-	}
-
-	rprtd_chan->channel = cpu_to_le32(cmd->chan);
-	rprtd_chan->bandwidth = cpu_to_le32(cmd->bandwidth);
-
-	mutex_lock(&mvm->mutex);
-	if (iwl_mvm_send_lte_coex_wifi_reported_channel_cmd(mvm))
-		err = LTE_OTHER_ERR;
-	else
-		mvm->lte_state.has_rprtd_chan = 1;
-	mutex_unlock(&mvm->mutex);
-
-out:
-	if (err)
-		iwl_mvm_reset_lte_state(mvm);
-
-	if (nla_put_u8(skb, NLA_BINARY, err)) {
-		kfree_skb(skb);
-		return -ENOBUFS;
-	}
-
-	return cfg80211_vendor_cmd_reply(skb);
-}
-#endif /* CPTCFG_IWLWIFI_LTE_COEX */
 
 static int iwl_vendor_frame_filter_cmd(struct wiphy *wiphy,
 				       struct wireless_dev *wdev,
@@ -1205,16 +847,18 @@ static int iwl_mvm_vendor_set_dynamic_txp_profile(struct wiphy *wiphy,
 	chain_a = nla_get_u8(tb[IWL_MVM_VENDOR_ATTR_SAR_CHAIN_A_PROFILE]);
 	chain_b = nla_get_u8(tb[IWL_MVM_VENDOR_ATTR_SAR_CHAIN_B_PROFILE]);
 
-	if (mvm->sar_chain_a_profile == chain_a &&
-	    mvm->sar_chain_b_profile == chain_b) {
+	if (mvm->fwrt.sar_chain_a_profile == chain_a &&
+	    mvm->fwrt.sar_chain_b_profile == chain_b) {
 		err = 0;
 		goto free;
 	}
 
-	mvm->sar_chain_a_profile = chain_a;
-	mvm->sar_chain_b_profile = chain_b;
+	mvm->fwrt.sar_chain_a_profile = chain_a;
+	mvm->fwrt.sar_chain_b_profile = chain_b;
 
+	mutex_lock(&mvm->mutex);
 	err = iwl_mvm_sar_select_profile(mvm, chain_a, chain_b);
+	mutex_unlock(&mvm->mutex);
 free:
 	kfree(tb);
 	return err;
@@ -1232,7 +876,7 @@ static int iwl_mvm_vendor_get_sar_profile_info(struct wiphy *wiphy,
 	u32 n_profiles = 0;
 
 	for (i = 0; i < ACPI_SAR_PROFILE_NUM; i++) {
-		if (mvm->sar_profiles[i].enabled)
+		if (mvm->fwrt.sar_profiles[i].enabled)
 			n_profiles++;
 	}
 
@@ -1242,9 +886,9 @@ static int iwl_mvm_vendor_get_sar_profile_info(struct wiphy *wiphy,
 	if (nla_put_u8(skb, IWL_MVM_VENDOR_ATTR_SAR_ENABLED_PROFILE_NUM,
 		       n_profiles) ||
 	    nla_put_u8(skb, IWL_MVM_VENDOR_ATTR_SAR_CHAIN_A_PROFILE,
-		       mvm->sar_chain_a_profile) ||
+		       mvm->fwrt.sar_chain_a_profile) ||
 	    nla_put_u8(skb, IWL_MVM_VENDOR_ATTR_SAR_CHAIN_B_PROFILE,
-		       mvm->sar_chain_b_profile)) {
+		       mvm->fwrt.sar_chain_b_profile)) {
 		kfree_skb(skb);
 		return -ENOBUFS;
 	}
@@ -1291,7 +935,7 @@ static int iwl_mvm_vendor_get_geo_profile_info(struct wiphy *wiphy,
 			return -ENOBUFS;
 		}
 
-		value =  &mvm->geo_profiles[tbl_idx - 1].values[idx];
+		value =  &mvm->fwrt.geo_profiles[tbl_idx - 1].values[idx];
 
 		nla_put_u8(skb, IWL_VENDOR_SAR_GEO_MAX_TXP, value[0]);
 		nla_put_u8(skb, IWL_VENDOR_SAR_GEO_CHAIN_A_OFFSET, value[1]);
@@ -1303,7 +947,6 @@ out:
 
 	return cfg80211_vendor_cmd_reply(skb);
 }
-#endif
 
 static const struct nla_policy
 iwl_mvm_vendor_fips_hw_policy[NUM_IWL_VENDOR_FIPS_TEST_VECTOR_HW] = {
@@ -1537,6 +1180,7 @@ free:
 	kfree(tb);
 	return ret;
 }
+#endif
 
 static int iwl_mvm_vendor_csi_register(struct wiphy *wiphy,
 				       struct wireless_dev *wdev,
@@ -1569,53 +1213,6 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_get_low_latency,
 	},
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-	{
-		.info = {
-			.vendor_id = INTEL_OUI,
-			.subcmd = IWL_MVM_VENDOR_CMD_LTE_STATE,
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
-			 WIPHY_VENDOR_CMD_NEED_RUNNING,
-		.doit = iwl_vendor_lte_coex_state_cmd,
-	},
-	{
-		.info = {
-			.vendor_id = INTEL_OUI,
-			.subcmd = IWL_MVM_VENDOR_CMD_LTE_COEX_CONFIG_INFO,
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
-			 WIPHY_VENDOR_CMD_NEED_RUNNING,
-		.doit = iwl_vendor_lte_coex_config_cmd,
-	},
-	{
-		.info = {
-			.vendor_id = INTEL_OUI,
-			.subcmd = IWL_MVM_VENDOR_CMD_LTE_COEX_DYNAMIC_INFO,
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
-			 WIPHY_VENDOR_CMD_NEED_RUNNING,
-		.doit = iwl_vendor_lte_coex_dynamic_info_cmd,
-	},
-	{
-		.info = {
-			.vendor_id = INTEL_OUI,
-			.subcmd = IWL_MVM_VENDOR_CMD_LTE_COEX_SPS_INFO,
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
-			 WIPHY_VENDOR_CMD_NEED_RUNNING,
-		.doit = iwl_vendor_lte_sps_cmd,
-	},
-	{
-		.info = {
-			.vendor_id = INTEL_OUI,
-			.subcmd = IWL_MVM_VENDOR_CMD_LTE_COEX_WIFI_RPRTD_CHAN,
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
-			 WIPHY_VENDOR_CMD_NEED_RUNNING,
-		.doit = iwl_vendor_lte_coex_wifi_reported_channel_cmd,
-	},
-#endif /* CPTCFG_IWLWIFI_LTE_COEX */
 	{
 		.info = {
 			.vendor_id = INTEL_OUI,

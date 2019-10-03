@@ -7,7 +7,7 @@
  *
  * Copyright(c) 2013 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -29,7 +29,7 @@
  *
  * Copyright(c) 2013 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -68,10 +68,6 @@
 #include "iwl-modparams.h"
 #include "mvm.h"
 #include "iwl-debug.h"
-
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-#include "lte-coex.h"
-#endif
 
 /* 20MHz / 40MHz below / 40Mhz above*/
 static const __le64 iwl_ci_mask[][3] = {
@@ -622,11 +618,6 @@ u16 iwl_mvm_coex_agg_time_limit(struct iwl_mvm *mvm,
 	if (mvm->last_bt_notif.ttc_status & BIT(phy_ctxt->id))
 		return LINK_QUAL_AGG_TIME_LIMIT_DEF;
 
-#ifdef CPTCFG_IWLWIFI_FRQ_MGR
-	/* 2G coex */
-	if (mvm->coex_2g_enabled)
-		return LINK_QUAL_AGG_TIME_LIMIT_BT_ACT;
-#endif
 	if (le32_to_cpu(mvm->last_bt_notif.bt_activity_grading) <
 	    BT_HIGH_TRAFFIC)
 		return LINK_QUAL_AGG_TIME_LIMIT_DEF;
@@ -751,150 +742,3 @@ void iwl_mvm_bt_coex_vif_change(struct iwl_mvm *mvm)
 	iwl_mvm_bt_coex_notif_handle(mvm);
 }
 
-#ifdef CPTCFG_IWLWIFI_LTE_COEX
-int iwl_mvm_send_lte_coex_config_cmd(struct iwl_mvm *mvm)
-{
-	const struct iwl_lte_coex_config_cmd *cmd = &mvm->lte_state.config;
-
-	if (!(mvm->fw->ucode_capa.flags & IWL_UCODE_TLV_FLAGS_LTE_COEX)) {
-		IWL_DEBUG_COEX(mvm, "LTE-Coex not supported!\n");
-		return -EOPNOTSUPP;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-Coex: lte_coex_config_cmd:\n"
-		       "\tstate: %d\n\tband: %d\n\tchan: %d\n",
-		       le32_to_cpu(cmd->lte_state), le32_to_cpu(cmd->lte_band),
-		       le32_to_cpu(cmd->lte_chan));
-
-	IWL_DEBUG_COEX(mvm, "\ttx safe freq min: %d\n\ttx safe freq max: %d\n"
-		       "\trx safe freq min: %d\n\trx safe freq max: %d\n",
-		       le32_to_cpu(cmd->tx_safe_freq_min),
-		       le32_to_cpu(cmd->tx_safe_freq_max),
-		       le32_to_cpu(cmd->rx_safe_freq_min),
-		       le32_to_cpu(cmd->rx_safe_freq_max));
-
-	return iwl_mvm_send_cmd_pdu(mvm, LTE_COEX_CONFIG_CMD, 0, sizeof(*cmd),
-				    cmd);
-}
-
-int iwl_mvm_send_lte_coex_wifi_reported_channel_cmd(struct iwl_mvm *mvm)
-{
-	const struct iwl_lte_coex_wifi_reported_channel_cmd *cmd =
-						&mvm->lte_state.rprtd_chan;
-
-	if (!(mvm->fw->ucode_capa.flags & IWL_UCODE_TLV_FLAGS_LTE_COEX)) {
-		IWL_DEBUG_COEX(mvm, "LTE-Coex not supported!\n");
-		return -EOPNOTSUPP;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-COEX: lte_coex_wifi_reported_channel_cmd:\n"
-		       "\tchannel: %d\n\tbandwidth: %d\n",
-		       le32_to_cpu(cmd->channel), le32_to_cpu(cmd->bandwidth));
-
-	return iwl_mvm_send_cmd_pdu(mvm, LTE_COEX_WIFI_REPORTED_CHANNEL_CMD,
-				    0, sizeof(*cmd), cmd);
-}
-
-int iwl_mvm_send_lte_coex_static_params_cmd(struct iwl_mvm *mvm)
-{
-	const struct iwl_lte_coex_static_params_cmd *cmd = &mvm->lte_state.stat;
-
-	if (!(mvm->fw->ucode_capa.flags & IWL_UCODE_TLV_FLAGS_LTE_COEX)) {
-		IWL_DEBUG_COEX(mvm, "LTE-Coex not supported!\n");
-		return -EOPNOTSUPP;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-COEX: lte_coex_static_params_cmd:\n"
-		       "\tmfu config[0]: %d\n\ttx power[0]: %d\n",
-		       le32_to_cpu(cmd->mfu_config[0]),
-		       cmd->tx_power_in_dbm[0]);
-
-	return iwl_mvm_send_cmd_pdu(mvm, LTE_COEX_STATIC_PARAMS_CMD, 0,
-				    sizeof(*cmd), cmd);
-}
-
-int iwl_mvm_send_lte_fine_tuning_params_cmd(struct iwl_mvm *mvm)
-{
-	const struct iwl_lte_coex_fine_tuning_params_cmd *cmd =
-							&mvm->lte_state.ft;
-
-	if (!(mvm->fw->ucode_capa.flags & IWL_UCODE_TLV_FLAGS_LTE_COEX)) {
-		IWL_DEBUG_COEX(mvm, "LTE-Coex not supported!\n");
-		return -EOPNOTSUPP;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-COEX: lte_fine_tuning_params_cmd:\n"
-		       "\trx protection assert timing: %d\n",
-		       le32_to_cpu(cmd->rx_protection_assert_timing));
-
-	IWL_DEBUG_COEX(mvm, "\ttx protection assert timing: %d\n"
-		       "\trx protection timeout: %d\n\tmin tx power: %d\n",
-		       le32_to_cpu(cmd->tx_protection_assert_timing),
-		       le32_to_cpu(cmd->rx_protection_timeout),
-		       le32_to_cpu(cmd->min_tx_power));
-
-	IWL_DEBUG_COEX(mvm, "\tul load uapsd threshold: %d\n"
-		       "\trx failure during ul uapsd threshold: %d\n",
-		       le32_to_cpu(cmd->lte_ul_load_uapsd_threshold),
-		       le32_to_cpu(cmd->rx_failure_during_ul_uapsd_threshold));
-
-	IWL_DEBUG_COEX(mvm,
-		       "\trx failure during ul scan compensation threshold: %d\n"
-		       "\trx duration for ack protection: %d\n",
-		       le32_to_cpu(cmd->rx_failure_during_ul_sc_threshold),
-		       le32_to_cpu(cmd->rx_duration_for_ack_protection_us));
-
-	IWL_DEBUG_COEX(mvm, "\tbeacon failure during ul counter: %d\n"
-		       "\tdtim failure during ul counter: %d\n",
-		       le32_to_cpu(cmd->beacon_failure_during_ul_counter),
-		       le32_to_cpu(cmd->dtim_failure_during_ul_counter));
-
-	return iwl_mvm_send_cmd_pdu(mvm, LTE_COEX_FINE_TUNING_PARAMS_CMD,
-				    0, sizeof(*cmd), cmd);
-}
-
-int iwl_mvm_send_lte_sps_cmd(struct iwl_mvm *mvm)
-{
-	const struct iwl_lte_coex_sps_cmd *cmd = &mvm->lte_state.sps;
-
-	if (!(mvm->fw->ucode_capa.flags & IWL_UCODE_TLV_FLAGS_LTE_COEX)) {
-		IWL_DEBUG_COEX(mvm, "LTE-Coex not supported!\n");
-		return -EOPNOTSUPP;
-	}
-
-	IWL_DEBUG_COEX(mvm, "LTE-COEX: lte_sps_cmd:\n\tsps info: %d\n",
-		       le32_to_cpu(cmd->lte_semi_persistent_info));
-
-	return iwl_mvm_send_cmd_pdu(mvm, LTE_COEX_SPS_CMD, 0, sizeof(*cmd),
-				    cmd);
-}
-
-void iwl_mvm_reset_lte_state(struct iwl_mvm *mvm)
-{
-	struct lte_coex_state *lte_state = &mvm->lte_state;
-
-	lte_state->state = LTE_OFF;
-	lte_state->has_config = 0;
-	lte_state->has_rprtd_chan = 0;
-	lte_state->has_sps = 0;
-	lte_state->has_ft = 0;
-}
-
-void iwl_mvm_send_lte_commands(struct iwl_mvm *mvm)
-{
-	struct lte_coex_state *lte_state = &mvm->lte_state;
-
-	lockdep_assert_held(&mvm->mutex);
-
-	if (lte_state->has_static)
-		iwl_mvm_send_lte_coex_static_params_cmd(mvm);
-	if (lte_state->has_rprtd_chan)
-		iwl_mvm_send_lte_coex_wifi_reported_channel_cmd(mvm);
-	if (lte_state->state != LTE_OFF)
-		iwl_mvm_send_lte_coex_config_cmd(mvm);
-	if (lte_state->has_sps)
-		iwl_mvm_send_lte_sps_cmd(mvm);
-	if (lte_state->has_ft)
-		iwl_mvm_send_lte_fine_tuning_params_cmd(mvm);
-}
-#endif /* CPTCFG_IWLWIFI_LTE_COEX */

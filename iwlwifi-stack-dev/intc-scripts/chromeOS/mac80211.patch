@@ -126,7 +126,7 @@ index 53b00329f5c3..0829c21e1d02 100644
  		ieee80211_vht_cap_ie_to_sta_vht_cap(sdata, sband,
  						    params->vht_capa, sta);
  
-+#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(4,19,0)
  	if (params->he_capa)
  		ieee80211_he_cap_ie_to_sta_he_cap(sdata, sband,
  						  (void *)params->he_capa,
@@ -363,7 +363,7 @@ index 94eae956680d..893f997e0563 100644
  	if (ieee80211_hw_check(&local->hw, CHANCTX_STA_CSA))
  		local->ext_capa[0] |= WLAN_EXT_CAPA1_EXT_CHANNEL_SWITCHING;
  
-+#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(5,1,0)
  	/* mac80211 supports multi BSSID, if the driver supports it */
  	if (ieee80211_hw_check(&local->hw, SUPPORTS_MULTI_BSSID)) {
  		local->hw.wiphy->support_mbssid = true;
@@ -409,7 +409,7 @@ index 8fc984741061..c9984c3d9051 100644
  		/* TODO: OPEN: what happens if BSS color disable is set? */
  	}
  
-+#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(5,1,0)
  	if (cbss->transmitted_bss) {
  		bss_conf->nontransmitted = true;
  		ether_addr_copy(bss_conf->transmitter_bssid,
@@ -425,7 +425,7 @@ index 8fc984741061..c9984c3d9051 100644
  {
  	if (ether_addr_equal(tx_bssid, bss->bssid))
  		return true;
-+#if CFG80211_VERSION >= KERNEL_VERSION(9,99,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(5,1,0)
  	if (!bss->transmitted_bss)
  		return false;
  	return ether_addr_equal(tx_bssid, bss->transmitted_bss->bssid);
@@ -475,7 +475,7 @@ index 565bc1e8863e..1f96c6a0ce18 100644
  	bss = (void *)cbss->priv;
  	ieee80211_update_bss_from_elems(local, bss, &elems, rx_status, beacon);
  
-+#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(5,1,0)
  	list_for_each_entry(non_tx_cbss, &cbss->nontrans_list, nontrans_list) {
  		non_tx_bss = (void *)non_tx_cbss->priv;
  
@@ -516,7 +516,7 @@ index a89cf5baad9c..60697a0b2546 100644
  		break;
  		}
  	case STA_STATS_RATE_TYPE_HE:
-+#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(4,19,0)
  		rinfo->flags = RATE_INFO_FLAGS_HE_MCS;
  		rinfo->mcs = STA_STATS_GET(HE_MCS, rate);
  		rinfo->nss = STA_STATS_GET(HE_NSS, rate);

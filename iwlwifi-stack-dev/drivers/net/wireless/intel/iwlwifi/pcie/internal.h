@@ -558,7 +558,6 @@ struct iwl_trans_pcie {
 	bool ucode_write_complete;
 	wait_queue_head_t ucode_write_waitq;
 	wait_queue_head_t wait_command_queue;
-	wait_queue_head_t d0i3_waitq;
 
 	u8 page_offs, dev_cmd_offs;
 
@@ -581,7 +580,6 @@ struct iwl_trans_pcie {
 	/*protect hw register */
 	spinlock_t reg_lock;
 	bool cmd_hold_nic_awake;
-	bool ref_cmd_in_flight;
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	struct cont_rec fw_mon_data;
@@ -696,6 +694,7 @@ void iwl_pcie_hcmd_complete(struct iwl_trans *trans,
 			    struct iwl_rx_cmd_buffer *rxb);
 void iwl_trans_pcie_reclaim(struct iwl_trans *trans, int txq_id, int ssn,
 			    struct sk_buff_head *skbs);
+void iwl_trans_pcie_set_q_ptrs(struct iwl_trans *trans, int txq_id, int ptr);
 void iwl_trans_pcie_tx_reset(struct iwl_trans *trans);
 void iwl_pcie_gen2_update_byte_tbl(struct iwl_trans_pcie *trans_pcie,
 				   struct iwl_txq *txq, u16 byte_cnt,
@@ -1050,7 +1049,7 @@ static inline void __iwl_trans_pcie_set_bit(struct iwl_trans *trans,
 
 static inline bool iwl_pcie_dbg_on(struct iwl_trans *trans)
 {
-	return (trans->dbg_dest_tlv || trans->ini_valid);
+	return (trans->dbg.dest_tlv || trans->dbg.ini_valid);
 }
 
 void iwl_trans_pcie_rf_kill(struct iwl_trans *trans, bool state);
@@ -1062,9 +1061,6 @@ void iwl_trans_pcie_dbgfs_register(struct iwl_trans *trans);
 #else
 static inline void iwl_trans_pcie_dbgfs_register(struct iwl_trans *trans) { }
 #endif
-
-int iwl_pci_fw_exit_d0i3(struct iwl_trans *trans);
-int iwl_pci_fw_enter_d0i3(struct iwl_trans *trans);
 
 void iwl_pcie_rx_allocator_work(struct work_struct *data);
 
@@ -1119,9 +1115,8 @@ int iwl_trans_pcie_gen2_tx(struct iwl_trans *trans, struct sk_buff *skb,
 			   struct iwl_device_cmd *dev_cmd, int txq_id);
 int iwl_trans_pcie_gen2_send_hcmd(struct iwl_trans *trans,
 				  struct iwl_host_cmd *cmd);
-void iwl_trans_pcie_gen2_stop_device(struct iwl_trans *trans,
-				     bool low_power);
-void _iwl_trans_pcie_gen2_stop_device(struct iwl_trans *trans, bool low_power);
+void iwl_trans_pcie_gen2_stop_device(struct iwl_trans *trans);
+void _iwl_trans_pcie_gen2_stop_device(struct iwl_trans *trans);
 void iwl_pcie_gen2_txq_unmap(struct iwl_trans *trans, int txq_id);
 void iwl_pcie_gen2_tx_free(struct iwl_trans *trans);
 void iwl_pcie_gen2_tx_stop(struct iwl_trans *trans);

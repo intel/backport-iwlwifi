@@ -865,6 +865,8 @@ void ieee80211_tx_lat_thrshld_cfg(struct ieee80211_hw *hw,
 	if (iface & BIT(IEEE80211_TX_LATENCY_P2P)) {
 		if (ieee80211_tx_lat_set_thrshld(&tx_thrshld->thresholds_p2p,
 						 tid_bitmap, thrshld)) {
+			/* free thresholds_bss in case it was alloced above */
+			kfree(tx_thrshld->thresholds_bss);
 			kfree(tx_thrshld);
 			return;
 		}

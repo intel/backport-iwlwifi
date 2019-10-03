@@ -7,7 +7,7 @@
  *
  * Copyright(c) 2007 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -29,7 +29,7 @@
  *
  * Copyright(c) 2005 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -410,6 +410,11 @@ struct iwl_xvt {
 	struct tx_queue_data queue_data[IWL_MAX_HW_QUEUES];
 };
 
+union geo_tx_power_profiles_cmd {
+	struct iwl_geo_tx_power_profiles_cmd geo_cmd;
+	struct iwl_geo_tx_power_profiles_cmd_v1 geo_cmd_v1;
+};
+
 #define IWL_OP_MODE_GET_XVT(_op_mode) \
 	((struct iwl_xvt *)((_op_mode)->op_mode_specific))
 
@@ -443,7 +448,7 @@ int iwl_xvt_user_cmd_execute(struct iwl_testmode *testmode, u32 cmd,
 			     struct iwl_tm_data *data_out, bool *supported_cmd);
 
 /* FW */
-int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type,  bool cont_run);
+int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type);
 
 /* NVM */
 int iwl_xvt_nvm_init(struct iwl_xvt *xvt);
@@ -517,3 +522,5 @@ static inline int iwl_xvt_dbgfs_register(struct iwl_xvt *xvt,
 #endif /* CPTCFG_IWLWIFI_DEBUGFS */
 
 #endif
+
+int iwl_xvt_init_sar_tables(struct iwl_xvt *xvt);

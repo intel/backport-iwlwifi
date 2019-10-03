@@ -559,4 +559,8 @@ static inline void *nla_memdup(const struct nlattr *src, gfp_t gfp)
 }
 #endif /* < 4.9 */
 
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+#define nla_parse_nested nla_parse_nested_deprecated
+#endif
+
 #endif /* __BACKPORT_NET_NETLINK_H */

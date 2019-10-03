@@ -909,9 +909,6 @@ static int iwl_parse_tlv_firmware(struct iwl_drv *drv,
 fw_dbg_conf:
 #endif
 
-	if (iwlwifi_mod_params.enable_ini)
-		iwl_alloc_dbg_tlv(drv->trans, len, data, false);
-
 	while (len >= sizeof(*tlv)) {
 		len -= sizeof(*tlv);
 		tlv = (void *)data;
@@ -1441,10 +1438,10 @@ fw_dbg_conf:
 			if (drv->trans->cfg->device_family <
 			    IWL_DEVICE_FAMILY_22000)
 				break;
-			drv->trans->umac_error_event_table =
+			drv->trans->dbg.umac_error_event_table =
 				le32_to_cpu(dbg_ptrs->error_info_addr) &
 				~FW_ADDR_CACHE_CONTROL;
-			drv->trans->error_event_table_tlv_status |=
+			drv->trans->dbg.error_event_table_tlv_status |=
 				IWL_ERROR_EVENT_TABLE_UMAC;
 			break;
 			}
@@ -1457,20 +1454,21 @@ fw_dbg_conf:
 			if (drv->trans->cfg->device_family <
 			    IWL_DEVICE_FAMILY_22000)
 				break;
-			drv->trans->lmac_error_event_table[0] =
+			drv->trans->dbg.lmac_error_event_table[0] =
 				le32_to_cpu(dbg_ptrs->error_event_table_ptr) &
 				~FW_ADDR_CACHE_CONTROL;
-			drv->trans->error_event_table_tlv_status |=
+			drv->trans->dbg.error_event_table_tlv_status |=
 				IWL_ERROR_EVENT_TABLE_LMAC1;
 			break;
 			}
+		case IWL_UCODE_TLV_TYPE_DEBUG_INFO:
 		case IWL_UCODE_TLV_TYPE_BUFFER_ALLOCATION:
 		case IWL_UCODE_TLV_TYPE_HCMD:
 		case IWL_UCODE_TLV_TYPE_REGIONS:
 		case IWL_UCODE_TLV_TYPE_TRIGGERS:
 		case IWL_UCODE_TLV_TYPE_DEBUG_FLOW:
 			if (iwlwifi_mod_params.enable_ini)
-				iwl_fw_dbg_copy_tlv(drv->trans, tlv, false);
+				iwl_dbg_tlv_copy(drv->trans, tlv, false);
 			break;
 		case IWL_UCODE_TLV_CMD_VERSIONS:
 			if (tlv_len % sizeof(struct iwl_fw_cmd_version)) {
@@ -2000,7 +1998,7 @@ struct iwl_drv *iwl_drv_start(struct iwl_trans *trans)
 	trans->dbg_cfg = current_dbg_config;
 	iwl_dbg_cfg_load_ini(drv->trans->dev, &drv->trans->dbg_cfg);
 #endif
-	iwl_load_fw_dbg_tlv(drv->trans->dev, drv->trans);
+	iwl_dbg_tlv_load_bin(drv->trans->dev, drv->trans);
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	/* Create the device debugfs entries. */
@@ -2038,7 +2036,7 @@ err_fw:
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	debugfs_remove_recursive(drv->dbgfs_drv);
 #endif
-	iwl_fw_dbg_free(drv->trans);
+	iwl_dbg_tlv_free(drv->trans);
 	kfree(drv);
 err:
 	return ERR_PTR(ret);
@@ -2071,7 +2069,7 @@ void iwl_drv_stop(struct iwl_drv *drv)
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	iwl_dbg_cfg_free(&drv->trans->dbg_cfg);
 #endif
-	iwl_fw_dbg_free(drv->trans);
+	iwl_dbg_tlv_free(drv->trans);
 
 #if IS_ENABLED(CPTCFG_IWLXVT)
 	iwl_remove_sysfs_file(drv);
@@ -2090,8 +2088,6 @@ struct iwl_mod_params iwlwifi_mod_params = {
 	.fw_restart = true,
 	.bt_coex_active = true,
 	.power_level = IWL_POWER_INDEX_1,
-	.d0i3_disable = true,
-	.d0i3_timeout = 1000,
 	.uapsd_disable = IWL_DISABLE_UAPSD_BSS | IWL_DISABLE_UAPSD_P2P_CLIENT,
 	/* the rest are 0 by default */
 };
@@ -2145,7 +2141,7 @@ IWL_EXPORT_SYMBOL(iwl_opmode_deregister);
 
 static int __init iwl_drv_init(void)
 {
-	int i;
+	int i, err;
 
 	mutex_init(&iwlwifi_opmode_table_mtx);
 
@@ -2159,8 +2155,10 @@ static int __init iwl_drv_init(void)
 
 #if IS_ENABLED(CPTCFG_IWLXVT)
 	iwl_kobj = kobject_create_and_add("devices", &THIS_MODULE->mkobj.kobj);
-	if (!iwl_kobj)
-		return -ENOMEM;
+	if (!iwl_kobj) {
+		err = -ENOMEM;
+		goto cleanup_tm_gnl;
+	}
 #endif
 
 	pr_info(DRV_DESCRIPTION "\n");
@@ -2171,7 +2169,24 @@ static int __init iwl_drv_init(void)
 	iwl_dbgfs_root = debugfs_create_dir(DRV_NAME, NULL);
 #endif
 
-	return iwl_pci_register_driver();
+	err = iwl_pci_register_driver();
+	if (err)
+		goto cleanup_debugfs;
+
+	return 0;
+
+cleanup_debugfs:
+#if IS_ENABLED(CPTCFG_IWLXVT)
+	kobject_put(iwl_kobj);
+cleanup_tm_gnl:
+#endif
+#ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
+	iwl_tm_gnl_exit();
+#endif
+#ifdef CPTCFG_IWLWIFI_DEBUGFS
+	debugfs_remove_recursive(iwl_dbgfs_root);
+#endif
+	return err;
 }
 module_init(iwl_drv_init);
 
@@ -2225,9 +2240,6 @@ MODULE_PARM_DESC(antenna_coupling,
 module_param_named(nvm_file, iwlwifi_mod_params.nvm_file, charp, 0444);
 MODULE_PARM_DESC(nvm_file, "NVM file name");
 
-module_param_named(d0i3_disable, iwlwifi_mod_params.d0i3_disable, bool, 0444);
-MODULE_PARM_DESC(d0i3_disable, "disable d0i3 functionality (default: N)");
-
 module_param_named(lar_disable, iwlwifi_mod_params.lar_disable, bool, 0444);
 MODULE_PARM_DESC(lar_disable, "disable LAR functionality (default: N)");
 
@@ -2274,9 +2286,6 @@ MODULE_PARM_DESC(power_level,
 module_param_named(fw_monitor, iwlwifi_mod_params.fw_monitor, bool, 0444);
 MODULE_PARM_DESC(fw_monitor,
 		 "firmware monitor - to debug FW (default: false - needs lots of memory)");
-
-module_param_named(d0i3_timeout, iwlwifi_mod_params.d0i3_timeout, uint, 0444);
-MODULE_PARM_DESC(d0i3_timeout, "Timeout to D0i3 entry when idle (ms)");
 
 module_param_named(disable_11ac, iwlwifi_mod_params.disable_11ac, bool, 0444);
 MODULE_PARM_DESC(disable_11ac, "Disable VHT capabilities (default: false)");

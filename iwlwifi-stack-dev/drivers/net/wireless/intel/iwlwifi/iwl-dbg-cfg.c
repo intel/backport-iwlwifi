@@ -5,7 +5,7 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2013 - 2015 Intel Corporation. All rights reserved.
+ * Copyright(c) 2013 - 2015, 2019 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016        Intel Deutschland GmbH
  *
@@ -27,7 +27,7 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2013 - 2015 Intel Corporation. All rights reserved.
+ * Copyright(c) 2013 - 2015, 2019  Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016        Intel Deutschland GmbH
  * All rights reserved.
@@ -68,7 +68,6 @@
 
 /* grab default values */
 #undef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
-#include "iwl-constants.h"
 #if IS_ENABLED(CPTCFG_IWLXVT)
 #include "xvt/constants.h"
 #endif

@@ -395,7 +395,11 @@ static u16 iwl_fmac_select_queue(struct net_device *dev,
 	return iwl_fmac_tid_to_tx_fifo[skb->priority];
 }
 
-#if LINUX_VERSION_IS_GEQ(4,19,0)
+#if LINUX_VERSION_IS_GEQ(5,2,0)
+static u16 iwl_fmac_netdev_select_queue(struct net_device *dev,
+					struct sk_buff *skb,
+					struct net_device *sb_dev)
+#elif LINUX_VERSION_IS_GEQ(4,19,0)
 static u16 iwl_fmac_netdev_select_queue(struct net_device *dev,
 					struct sk_buff *skb,
 					struct net_device *sb_dev,
@@ -535,8 +539,10 @@ struct net_device *iwl_fmac_create_netdev(struct iwl_fmac *fmac,
 	vif->fmac = fmac;
 	for (i = 0; i < txqs; i++)
 		__skb_queue_head_init(&vif->pending_skbs[i]);
-	tasklet_hrtimer_init(&vif->amsdu_timer, iwl_fmac_amsdu_xmit_timer,
-			     CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
+
+	hrtimer_init(&vif->amsdu_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_SOFT);
+	vif->amsdu_timer.function = iwl_fmac_amsdu_xmit_timer;
+
 	vif->id = FMAC_VIF_ID_INVALID;
 	dev->ieee80211_ptr = &vif->wdev;
 	SET_NETDEV_DEV(dev, wiphy_dev(wiphy_from_fmac(fmac)));
@@ -617,7 +623,7 @@ void iwl_fmac_destroy_vif(struct iwl_fmac_vif *vif)
 {
 	if (vif->wdev.netdev) {
 		unregister_netdevice(vif->wdev.netdev);
-		tasklet_hrtimer_cancel(&vif->amsdu_timer);
+		hrtimer_cancel(&vif->amsdu_timer);
 	} else {
 		cfg80211_unregister_wdev(&vif->wdev);
 		kfree(vif);
