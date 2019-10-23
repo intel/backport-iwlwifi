@@ -15,6 +15,9 @@
 #include <linux/list.h>
 #include <linux/crypto.h>
 #include <linux/rcupdate.h>
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+#include <crypto/arc4.h>
+#endif
 #include <net/mac80211.h>
 
 #define NUM_DEFAULT_KEYS 4

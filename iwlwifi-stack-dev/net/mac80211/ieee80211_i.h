@@ -1345,9 +1345,13 @@ struct ieee80211_local {
 	atomic_t iff_allmultis;
 
 	struct rate_control_ref *rate_ctrl;
-
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+	struct arc4_ctx wep_tx_ctx;
+	struct arc4_ctx wep_rx_ctx;
+#elif
 	struct crypto_cipher *wep_tx_tfm;
 	struct crypto_cipher *wep_rx_tfm;
+#endif
 	u32 wep_iv;
 
 	/* see iface.c */

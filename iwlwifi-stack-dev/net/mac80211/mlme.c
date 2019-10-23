@@ -15,6 +15,9 @@
  */
 
 #include <linux/delay.h>
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+#include <linux/fips.h>
+#endif
 #include <linux/if_ether.h>
 #include <linux/skbuff.h>
 #include <linux/if_arp.h>
@@ -5064,7 +5067,11 @@ int ieee80211_mgd_auth(struct ieee80211_sub_if_data *sdata,
 		auth_alg = WLAN_AUTH_OPEN;
 		break;
 	case NL80211_AUTHTYPE_SHARED_KEY:
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+		if (fips_enabled)
+#elif
 		if (IS_ERR(local->wep_tx_tfm))
+#endif
 			return -EOPNOTSUPP;
 		auth_alg = WLAN_AUTH_SHARED_KEY;
 		break;

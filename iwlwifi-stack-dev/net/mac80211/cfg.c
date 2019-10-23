@@ -15,6 +15,9 @@
 #include <linux/slab.h>
 #include <net/net_namespace.h>
 #include <linux/rcupdate.h>
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+#include <linux/fips.h>
+#endif
 #include <linux/if_ether.h>
 #include <net/cfg80211.h>
 #include "ieee80211_i.h"
@@ -376,7 +379,11 @@ static int ieee80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 	case WLAN_CIPHER_SUITE_WEP40:
 	case WLAN_CIPHER_SUITE_TKIP:
 	case WLAN_CIPHER_SUITE_WEP104:
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+		if (IS_ERR(fips_enabled)) 
+#elif
 		if (IS_ERR(local->wep_tx_tfm))
+#endif
 			return -EINVAL;
 		break;
 	case WLAN_CIPHER_SUITE_CCMP:

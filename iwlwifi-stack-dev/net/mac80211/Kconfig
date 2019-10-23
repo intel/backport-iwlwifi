@@ -3,7 +3,11 @@ config MAC80211
 	depends on m
 	depends on CFG80211
 	depends on CRYPTO
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+	depends on CRYPTO_LIB_ARC4
+#elif
 	depends on CRYPTO_ARC4
+#endif
 	depends on CRYPTO_AES
 	depends on CRYPTO_CCM
 	depends on CRYPTO_GCM

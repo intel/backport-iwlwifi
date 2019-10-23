@@ -222,28 +222,48 @@ EXPORT_SYMBOL(ieee80211_get_tkip_p2k);
  * @payload_len is the length of payload (_not_ including IV/ICV length).
  * @ta is the transmitter addresses.
  */
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+int ieee80211_tkip_encrypt_data(struct arc4_ctx *ctx,
+ 				struct ieee80211_key *key,
+ 				struct sk_buff *skb,
+ 				u8 *payload, size_t payload_len)
+#elif
 int ieee80211_tkip_encrypt_data(struct crypto_cipher *tfm,
 				struct ieee80211_key *key,
 				struct sk_buff *skb,
 				u8 *payload, size_t payload_len)
+#endif
 {
 	u8 rc4key[16];
 
 	ieee80211_get_tkip_p2k(&key->conf, skb, rc4key);
-
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+	return ieee80211_wep_encrypt_data(ctx, rc4key, 16,
+ 					  payload, payload_len);
+#elif
 	return ieee80211_wep_encrypt_data(tfm, rc4key, 16,
 					  payload, payload_len);
+#endif
+
 }
 
 /* Decrypt packet payload with TKIP using @key. @pos is a pointer to the
  * beginning of the buffer containing IEEE 802.11 header payload, i.e.,
  * including IV, Ext. IV, real data, Michael MIC, ICV. @payload_len is the
  * length of payload, including IV, Ext. IV, MIC, ICV.  */
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+int ieee80211_tkip_decrypt_data(struct arc4_ctx *ctx,
+ 				struct ieee80211_key *key,
+ 				u8 *payload, size_t payload_len, u8 *ta,
+ 				u8 *ra, int only_iv, int queue,
+				u32 *out_iv32, u16 *out_iv16)
+#elif
 int ieee80211_tkip_decrypt_data(struct crypto_cipher *tfm,
 				struct ieee80211_key *key,
 				u8 *payload, size_t payload_len, u8 *ta,
 				u8 *ra, int only_iv, int queue,
 				u32 *out_iv32, u16 *out_iv16)
+#endif
 {
 	u32 iv32;
 	u32 iv16;
@@ -296,8 +316,11 @@ int ieee80211_tkip_decrypt_data(struct crypto_cipher *tfm,
 	}
 
 	tkip_mixing_phase2(tk, &rx_ctx->ctx, iv16, rc4key);
-
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+	res = ieee80211_wep_decrypt_data(ctx, rc4key, 16, pos, payload_len - 12);
+#elif
 	res = ieee80211_wep_decrypt_data(tfm, rc4key, 16, pos, payload_len - 12);
+#endif
  done:
 	if (res == TKIP_DECRYPT_OK) {
 		/*

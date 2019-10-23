@@ -17,14 +17,21 @@
 #include "key.h"
 
 int ieee80211_wep_init(struct ieee80211_local *local);
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,2,21)
+int ieee80211_wep_encrypt_data(struct arc4_ctx *ctx, u8 *rc4key,
+ 				size_t klen, u8 *data, size_t data_len);
+int ieee80211_wep_decrypt_data(struct arc4_ctx *ctx, u8 *rc4key,
+ 			       size_t klen, u8 *data, size_t data_len);
+#elif
 void ieee80211_wep_free(struct ieee80211_local *local);
 int ieee80211_wep_encrypt_data(struct crypto_cipher *tfm, u8 *rc4key,
 				size_t klen, u8 *data, size_t data_len);
+int ieee80211_wep_decrypt_data(struct crypto_cipher *tfm, u8 *rc4key,
+			       size_t klen, u8 *data, size_t data_len);
+#endif
 int ieee80211_wep_encrypt(struct ieee80211_local *local,
 			  struct sk_buff *skb,
 			  const u8 *key, int keylen, int keyidx);
-int ieee80211_wep_decrypt_data(struct crypto_cipher *tfm, u8 *rc4key,
-			       size_t klen, u8 *data, size_t data_len);
 
 ieee80211_rx_result
 ieee80211_crypto_wep_decrypt(struct ieee80211_rx_data *rx);
