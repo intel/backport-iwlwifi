@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016        Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016        Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -335,7 +335,7 @@ int iwl_fmac_nvm_init(struct iwl_fmac *fmac, bool read_nvm_from_nic)
 		/* Read From FW NVM */
 		IWL_DEBUG_EEPROM(fmac->trans->dev, "Read from NVM\n");
 
-		nvm_buffer = kmalloc(fmac->cfg->base_params->eeprom_size,
+		nvm_buffer = kmalloc(fmac->trans->trans_cfg->base_params->eeprom_size,
 				     GFP_KERNEL);
 		if (!nvm_buffer)
 			return -ENOMEM;

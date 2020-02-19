@@ -61,18 +61,6 @@ void eth_commit_mac_addr_change(struct net_device *dev, void *p)
 }
 EXPORT_SYMBOL_GPL(eth_commit_mac_addr_change);
 
-void inet_frag_maybe_warn_overflow(struct inet_frag_queue *q,
-				   const char *prefix)
-{
-	static const char msg[] = "inet_frag_find: Fragment hash bucket"
-		" list length grew over limit " __stringify(INETFRAGS_MAXDEPTH)
-		". Dropping fragment.\n";
-
-	if (PTR_ERR(q) == -ENOBUFS)
-		LIMIT_NETDEBUG(KERN_WARNING "%s%s", prefix, msg);
-}
-EXPORT_SYMBOL_GPL(inet_frag_maybe_warn_overflow);
-
 void __sg_page_iter_start(struct sg_page_iter *piter,
 			  struct scatterlist *sglist, unsigned int nents,
 			  unsigned long pgoffset)

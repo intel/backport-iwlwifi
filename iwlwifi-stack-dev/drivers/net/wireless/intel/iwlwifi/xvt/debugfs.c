@@ -106,6 +106,9 @@ static ssize_t iwl_dbgfs_fw_dbg_collect_write(struct iwl_xvt *xvt,
 	if (count == 0)
 		return 0;
 
+	iwl_dbg_tlv_time_point(&xvt->fwrt, IWL_FW_INI_TIME_POINT_USER_TRIGGER,
+			       NULL);
+
 	iwl_fw_dbg_collect(&xvt->fwrt, FW_DBG_TRIGGER_USER, buf,
 			   (count - 1), NULL);
 

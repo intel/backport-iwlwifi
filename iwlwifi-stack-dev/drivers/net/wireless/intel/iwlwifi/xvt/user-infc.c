@@ -165,6 +165,11 @@ void iwl_xvt_send_user_rx_notif(struct iwl_xvt *xvt,
 					IWL_TM_USER_CMD_NOTIF_IQ_CALIB,
 					data, size, GFP_ATOMIC);
 		break;
+	case WIDE_ID(XVT_GROUP, RUN_TIME_CALIB_DONE_NOTIF):
+		iwl_xvt_user_send_notif(xvt,
+					IWL_TM_USER_CMD_NOTIF_RUN_TIME_CALIB_DONE,
+					data, size, GFP_ATOMIC);
+		break;
 	case WIDE_ID(PHY_OPS_GROUP, CT_KILL_NOTIFICATION):
 		iwl_xvt_user_send_notif(xvt,
 					IWL_TM_USER_CMD_NOTIF_CT_KILL,
@@ -735,15 +740,14 @@ static int iwl_xvt_get_phy_db(struct iwl_xvt *xvt,
 	return 0;
 }
 
-static struct iwl_device_cmd *iwl_xvt_init_tx_dev_cmd(struct iwl_xvt *xvt)
+static struct iwl_device_tx_cmd *iwl_xvt_init_tx_dev_cmd(struct iwl_xvt *xvt)
 {
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 
 	dev_cmd = iwl_trans_alloc_tx_cmd(xvt->trans);
 	if (unlikely(!dev_cmd))
 		return NULL;
 
-	memset(dev_cmd, 0, sizeof(*dev_cmd));
 	dev_cmd->hdr.cmd = TX_CMD;
 
 	return dev_cmd;
@@ -773,12 +777,12 @@ static u16 iwl_xvt_get_offload_assist(struct ieee80211_hdr *hdr)
 	return offload_assist;
 }
 
-static struct iwl_device_cmd *
+static struct iwl_device_tx_cmd *
 iwl_xvt_set_tx_params_gen3(struct iwl_xvt *xvt, struct sk_buff *skb,
 			   u32 rate_flags, u32 tx_flags)
 
 {
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 	struct iwl_tx_cmd_gen3 *cmd;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
 	struct iwl_xvt_skb_info *skb_info = (void *)skb->cb;
@@ -813,11 +817,11 @@ iwl_xvt_set_tx_params_gen3(struct iwl_xvt *xvt, struct sk_buff *skb,
 	return dev_cmd;
 }
 
-static struct iwl_device_cmd *
+static struct iwl_device_tx_cmd *
 iwl_xvt_set_tx_params_gen2(struct iwl_xvt *xvt, struct sk_buff *skb,
 			   u32 rate_flags, u32 flags)
 {
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 	struct iwl_xvt_skb_info *skb_info = (void *)skb->cb;
 	struct iwl_tx_cmd_gen2 *tx_cmd;
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
@@ -851,11 +855,11 @@ iwl_xvt_set_tx_params_gen2(struct iwl_xvt *xvt, struct sk_buff *skb,
 /*
  * Allocates and sets the Tx cmd the driver data pointers in the skb
  */
-static struct iwl_device_cmd *
+static struct iwl_device_tx_cmd *
 iwl_xvt_set_mod_tx_params(struct iwl_xvt *xvt, struct sk_buff *skb,
 			  u8 sta_id, u32 rate_flags, u32 flags)
 {
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 	struct iwl_xvt_skb_info *skb_info = (void *)skb->cb;
 	struct iwl_tx_cmd *tx_cmd;
 
@@ -915,7 +919,7 @@ static int iwl_xvt_send_packet(struct iwl_xvt *xvt,
 			       u32 *status, struct tx_meta_data *meta_tx)
 {
 	struct sk_buff *skb;
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 	int time_remain, err = 0;
 	u32 flags = 0;
 	u32 rate_flags = tx_req->rate_flags;
@@ -940,7 +944,8 @@ static int iwl_xvt_send_packet(struct iwl_xvt *xvt,
 	if (iwl_xvt_is_unified_fw(xvt)) {
 		flags |= IWL_TX_FLAGS_CMD_RATE;
 
-		if (xvt->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560)
+		if (xvt->trans->trans_cfg->device_family >=
+		    IWL_DEVICE_FAMILY_AX210)
 			dev_cmd = iwl_xvt_set_tx_params_gen3(xvt, skb,
 							     rate_flags,
 							     flags);
@@ -1011,11 +1016,11 @@ err:
 	return err;
 }
 
-static struct iwl_device_cmd *
+static struct iwl_device_tx_cmd *
 iwl_xvt_set_tx_params(struct iwl_xvt *xvt, struct sk_buff *skb,
 		      struct iwl_xvt_tx_start *tx_start, u8 packet_index)
 {
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 	struct iwl_xvt_skb_info *skb_info = (void *)skb->cb;
 	struct iwl_tx_cmd *tx_cmd;
 	/* the skb should already hold the data */
@@ -1149,7 +1154,7 @@ static int iwl_xvt_transmit_packet(struct iwl_xvt *xvt,
 				   u8 frag_num,
 				   u32 *status)
 {
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 	int time_remain, err = 0;
 	u8 queue = tx_start->frames_data[packet_index].queue;
 	struct tx_queue_data *queue_data = &xvt->queue_data[queue];
@@ -1161,7 +1166,8 @@ static int iwl_xvt_transmit_packet(struct iwl_xvt *xvt,
 			       frag_num);
 
 	if (iwl_xvt_is_unified_fw(xvt)) {
-		if (xvt->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560)
+		if (xvt->trans->trans_cfg->device_family >=
+		    IWL_DEVICE_FAMILY_AX210)
 			dev_cmd = iwl_xvt_set_tx_params_gen3(xvt, skb,
 							     rate_flags,
 							     tx_flags);

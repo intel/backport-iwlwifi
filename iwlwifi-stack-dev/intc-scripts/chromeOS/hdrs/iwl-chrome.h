@@ -4,7 +4,7 @@
  *
  * ChromeOS backport definitions
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018      Intel Corporation
+ * Copyright (C) 2018-2019 Intel Corporation
  */
 
 #include <linux/version.h>
@@ -17,6 +17,34 @@
 #include <hdrs/config.h>
 
 #include <hdrs/mac80211-exp.h>
+
+#define LINUX_VERSION_IS_LESS(x1,x2,x3) (LINUX_VERSION_CODE < KERNEL_VERSION(x1,x2,x3))
+#define LINUX_VERSION_IS_GEQ(x1,x2,x3)  (LINUX_VERSION_CODE >= KERNEL_VERSION(x1,x2,x3))
+#define LINUX_VERSION_IN_RANGE(x1,x2,x3, y1,y2,y3) \
+        (LINUX_VERSION_IS_GEQ(x1,x2,x3) && LINUX_VERSION_IS_LESS(y1,y2,y3))
+#define LINUX_BACKPORT(sym) backport_ ## sym
+
+/* this must be before including rhashtable.h */
+#if LINUX_VERSION_IS_LESS(4,15,0)
+#ifndef CONFIG_LOCKDEP
+struct lockdep_map { };
+#endif /* CONFIG_LOCKDEP */
+#endif /* LINUX_VERSION_IS_LESS(4,15,0) */
+
+/* also this... */
+#if LINUX_VERSION_IS_LESS(3,12,0)
+#ifdef CONFIG_PROVE_LOCKING
+ #define lock_acquire_exclusive(l, s, t, n, i)         lock_acquire(l, s, t, 0, 2, n, i)
+ #define lock_acquire_shared(l, s, t, n, i)            lock_acquire(l, s, t, 1, 2, n, i)
+ #define lock_acquire_shared_recursive(l, s, t, n, i)  lock_acquire(l, s, t, 2, 2, n, i)
+#else
+# define spin_acquire(l, s, t, i)              do { } while (0)
+# define spin_release(l, n, i)                 do { } while (0)
+ #define lock_acquire_exclusive(l, s, t, n, i)         lock_acquire(l, s, t, 0, 1, n, i)
+ #define lock_acquire_shared(l, s, t, n, i)            lock_acquire(l, s, t, 1, 1, n, i)
+ #define lock_acquire_shared_recursive(l, s, t, n, i)  lock_acquire(l, s, t, 2, 1, n, i)
+#endif
+#endif
 
 /* include rhashtable this way to get our copy if another exists */
 #include <linux/list_nulls.h>
@@ -35,12 +63,6 @@
 #include <linux/if_vlan.h>
 #include <linux/overflow.h>
 #include "net/fq.h"
-
-#define LINUX_VERSION_IS_LESS(x1,x2,x3) (LINUX_VERSION_CODE < KERNEL_VERSION(x1,x2,x3))
-#define LINUX_VERSION_IS_GEQ(x1,x2,x3)  (LINUX_VERSION_CODE >= KERNEL_VERSION(x1,x2,x3))
-#define LINUX_VERSION_IN_RANGE(x1,x2,x3, y1,y2,y3) \
-        (LINUX_VERSION_IS_GEQ(x1,x2,x3) && LINUX_VERSION_IS_LESS(y1,y2,y3))
-#define LINUX_BACKPORT(sym) backport_ ## sym
 
 #if LINUX_VERSION_IS_LESS(3,20,0)
 #define get_net_ns_by_fd LINUX_BACKPORT(get_net_ns_by_fd)
@@ -184,6 +206,7 @@ size_t sg_pcopy_to_buffer(struct scatterlist *sgl, unsigned int nents,
 #define PCI_EXP_DEVCTL2_LTR_EN PCI_EXP_LTR_EN
 
 #define PTR_ERR_OR_ZERO(p) PTR_RET(p)
+
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
@@ -227,6 +250,16 @@ static inline bool ether_addr_equal_unaligned(const u8 *addr1, const u8 *addr2)
 	return memcmp(addr1, addr2, ETH_ALEN) == 0;
 }
 #endif
+
+#if LINUX_VERSION_IS_GEQ(5,3,0)
+/*
+ * In v5.3, this function was renamed, so rename it here for v5.3+.
+ * When we merge v5.3 back from upstream, the opposite should be done
+ * (i.e. we will have _boottime_ and need to rename to _boot_ in <
+ * v5.3 instead).
+*/
+#define ktime_get_boot_ns ktime_get_boottime_ns
+#endif /* > 5.3.0 */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0)
 #define kvfree __iwl7000_kvfree
@@ -840,7 +873,6 @@ static inline int nla_validate_nested4(const struct nlattr *start, int maxtype,
 #define nla_validate_nested(...) \
 	macro_dispatcher(nla_validate_nested, __VA_ARGS__)(__VA_ARGS__)
 
-#if LINUX_VERSION_IS_LESS(4,12,0)
 #define kvmalloc LINUX_BACKPORT(kvmalloc)
 static inline void *kvmalloc(size_t size, gfp_t flags)
 {
@@ -870,7 +902,6 @@ static inline void *kvmalloc_array(size_t n, size_t size, gfp_t flags)
 
 	return kvmalloc(bytes, flags);
 }
-#endif
 
 #define kvzalloc LINUX_BACKPORT(kvzalloc)
 static inline void *kvzalloc(size_t size, gfp_t flags)
@@ -879,6 +910,13 @@ static inline void *kvzalloc(size_t size, gfp_t flags)
 }
 
 #endif /* LINUX_VERSION_IS_LESS(4,12,0) */
+
+#if LINUX_VERSION_IS_LESS(4,14,0)
+static inline void *kvcalloc(size_t n, size_t size, gfp_t flags)
+{
+	return kvmalloc_array(n, size, flags | __GFP_ZERO);
+}
+#endif /* LINUX_VERSION_IS_LESS(4,14,0) */
 
 /* avoid conflicts with other headers */
 #ifdef is_signed_type
@@ -990,4 +1028,25 @@ static inline int atomic_fetch_add_unless(atomic_t *v, int a, int u)
 }
 #endif
 #endif /* LINUX_VERSION_IS_LESS(4,19,0) */
+
+#if LINUX_VERSION_IS_LESS(4,20,0)
+static inline void rcu_head_init(struct rcu_head *rhp)
+{
+	rhp->func = (void *)~0L;
+}
+
+static inline bool
+rcu_head_after_call_rcu(struct rcu_head *rhp, void *f)
+{
+	if (READ_ONCE(rhp->func) == f)
+		return true;
+	WARN_ON_ONCE(READ_ONCE(rhp->func) != (void *)~0L);
+	return false;
+}
+#endif /* LINUX_VERSION_IS_LESS(4,20,0) */
+
+#if LINUX_VERSION_IS_LESS(5,4,0)
+#include <linux/pci-aspm.h>
+#endif
+
 #endif /* __IWL_CHROME */

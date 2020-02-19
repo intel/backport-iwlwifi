@@ -391,4 +391,12 @@ static inline struct sk_buff *__skb_peek(const struct sk_buff_head *list_)
 }
 #endif
 
+#if LINUX_VERSION_IS_LESS(5,4,0)
+#define nf_reset_ct LINUX_BACKPORT(nf_reset_ct)
+static inline void nf_reset_ct(struct sk_buff *skb)
+{
+	nf_reset(skb);
+}
+#endif
+
 #endif /* __BACKPORT_SKBUFF_H */

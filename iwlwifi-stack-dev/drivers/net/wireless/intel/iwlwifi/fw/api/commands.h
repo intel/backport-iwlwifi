@@ -688,6 +688,13 @@ enum iwl_system_subcmd_ids {
  */
 enum iwl_xvt_subcmd_ids {
 	/**
+	 * @RUN_TIME_CALIB_DONE_NOTIF : Notification about
+	 * runtime calib finished
+	 * Handled by user space component
+	 */
+	RUN_TIME_CALIB_DONE_NOTIF = 0xFE,
+
+	/**
 	 * @IQ_CALIB_CONFIG_NOTIF : Notification about IQ calibration finished
 	 * Handled by user space component
 	 */

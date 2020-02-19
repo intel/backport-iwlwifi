@@ -188,11 +188,13 @@ static const struct iwl_hcmd_names iwl_xvt_system_names[] = {
 };
 
 static const struct iwl_hcmd_names iwl_xvt_xvt_names[] = {
+	HCMD_NAME(RUN_TIME_CALIB_DONE_NOTIF),
 	HCMD_NAME(IQ_CALIB_CONFIG_NOTIF),
 };
 
 static const struct iwl_hcmd_names iwl_xvt_debug_names[] = {
 	HCMD_NAME(DBGC_SUSPEND_RESUME),
+	HCMD_NAME(BUFFER_ALLOCATION),
 };
 
 static const struct iwl_hcmd_arr iwl_xvt_cmd_groups[] = {
@@ -262,7 +264,7 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	IWL_DEBUG_INFO(xvt, "dqa supported\n");
 	trans_cfg.cmd_fifo = IWL_MVM_TX_FIFO_CMD;
 	trans_cfg.bc_table_dword =
-		trans->cfg->device_family < IWL_DEVICE_FAMILY_22560;
+		trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210;
 	trans_cfg.scd_set_active = true;
 	trans->wide_cmd_header = true;
 
@@ -283,11 +285,11 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 		trans_cfg.rx_buf_size = IWL_AMSDU_4K;
 	}
 	/* the hardware splits the A-MSDU */
-	if (xvt->trans->cfg->mq_rx_supported)
+	if (xvt->trans->trans_cfg->mq_rx_supported)
 		trans_cfg.rx_buf_size = IWL_AMSDU_4K;
 
 	trans->rx_mpdu_cmd_hdr_size =
-		(trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560) ?
+		(trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) ?
 		sizeof(struct iwl_rx_mpdu_desc) : IWL_RX_DESC_SIZE_V1;
 
 	trans_cfg.cb_data_offs = offsetof(struct iwl_xvt_skb_info, trans);
@@ -335,7 +337,7 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	trans->dbg.trigger_tlv = xvt->fw->dbg.trigger_tlv;
 
 	IWL_INFO(xvt, "Detected %s, REV=0x%X, xVT operation mode\n",
-		 xvt->cfg->name, xvt->trans->hw_rev);
+		 xvt->trans->name, xvt->trans->hw_rev);
 
 	err = iwl_xvt_dbgfs_register(xvt, dbgfs_dir);
 	if (err)
@@ -607,7 +609,7 @@ static void iwl_xvt_nic_config(struct iwl_op_mode *op_mode)
 	 * unrelated errors. Need to further investigate this, but for now
 	 * we'll separate cases.
 	 */
-	if (xvt->trans->cfg->device_family < IWL_DEVICE_FAMILY_8000)
+	if (xvt->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_8000)
 		reg_val |= CSR_HW_IF_CONFIG_REG_BIT_RADIO_SI;
 
 	iwl_trans_set_bits_mask(xvt->trans, CSR_HW_IF_CONFIG_REG,

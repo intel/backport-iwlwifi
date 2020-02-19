@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -75,9 +75,6 @@ iwl_fmac_cfg_add_virtual_intf(struct wiphy *wiphy, const char *name,
 
 	if (fmac->shutdown)
 		return ERR_PTR(-ESHUTDOWN);
-
-	if (type == NL80211_IFTYPE_P2P_DEVICE)
-		return iwl_fmac_create_non_netdev_iface(fmac, params, type);
 
 	dev = iwl_fmac_create_netdev(fmac, name, name_assign_type,
 				     type, params);
@@ -743,247 +740,6 @@ u8 cfg_width_to_iwl_width(enum nl80211_chan_width cfg_width)
 	return IWL_NUM_CHAN_WIDTH;
 }
 
-static int cfg_chan_to_iwl_chan(const struct cfg80211_chan_def *cfg_chandef,
-				struct iwl_fmac_chandef *iwl_chandef)
-{
-	enum iwl_fmac_chan_width bandwidth =
-			cfg_width_to_iwl_width(cfg_chandef->width);
-
-	if (bandwidth >= IWL_NUM_CHAN_WIDTH)
-		return -EINVAL;
-
-	iwl_chandef->control_freq =
-			cpu_to_le16(cfg_chandef->chan->center_freq);
-	iwl_chandef->bandwidth = bandwidth;
-	iwl_chandef->center_freq1 = cpu_to_le16(cfg_chandef->center_freq1);
-
-	return 0;
-}
-
-static int iwl_width_to_cfg_width(enum iwl_fmac_chan_width iwl_width)
-{
-	switch (iwl_width) {
-	case IWL_CHAN_WIDTH_20_NOHT:
-		return NL80211_CHAN_WIDTH_20_NOHT;
-	case IWL_CHAN_WIDTH_20:
-		return NL80211_CHAN_WIDTH_20;
-	case IWL_CHAN_WIDTH_40:
-		return NL80211_CHAN_WIDTH_40;
-	case IWL_CHAN_WIDTH_80:
-		return NL80211_CHAN_WIDTH_80;
-	case IWL_CHAN_WIDTH_160:
-		return NL80211_CHAN_WIDTH_160;
-	default:
-		WARN_ON(1); /* shouldn't get here */
-		return -1;
-	}
-}
-
-static int
-iwl_fmac_host_ap_update_beacon(struct iwl_fmac *fmac, struct iwl_fmac_vif *vif,
-			       const struct cfg80211_beacon_data *params,
-			       struct iwl_fmac_host_ap_cmd *cmd,
-			       struct iwl_host_cmd *hcmd)
-{
-	u8 *tmp;
-
-	if (!params->head && !params->tail)
-		return 0;
-
-	if (params->head)
-		vif->u.ap.head_len = params->head_len;
-	/* else keep the old value */
-
-	if (params->tail)
-		vif->u.ap.tail_len = params->tail_len;
-	/* else keep the old value */
-
-	tmp = vif->u.ap.beacon;
-	vif->u.ap.beacon = kzalloc(vif->u.ap.head_len + vif->u.ap.tail_len,
-				   GFP_KERNEL);
-
-	if (!vif->u.ap.beacon)
-		return -ENOMEM;
-
-	if (params->head)
-		memcpy(vif->u.ap.beacon, params->head, vif->u.ap.head_len);
-	else
-		memcpy(vif->u.ap.beacon, vif->u.ap.head, vif->u.ap.head_len);
-	vif->u.ap.head = vif->u.ap.beacon;
-
-	if (params->tail)
-		memcpy(vif->u.ap.beacon + vif->u.ap.head_len, params->tail,
-		       vif->u.ap.tail_len);
-	else
-		memcpy(vif->u.ap.beacon + vif->u.ap.head_len, vif->u.ap.tail,
-		       vif->u.ap.tail_len);
-	vif->u.ap.tail = vif->u.ap.head + vif->u.ap.head_len;
-
-	kfree(tmp);
-
-	cmd->byte_cnt = cpu_to_le16(vif->u.ap.head_len + vif->u.ap.tail_len);
-	cmd->tim_idx = cpu_to_le16(params->head_len);
-	cmd->changed |= cpu_to_le32(IWL_FMAC_BEACON_CHANGED);
-
-	hcmd->dataflags[1] = IWL_HCMD_DFL_DUP;
-	hcmd->len[1] = vif->u.ap.head_len + vif->u.ap.tail_len;
-	hcmd->data[1] = vif->u.ap.beacon;
-
-	return 0;
-}
-
-static int iwl_fmac_start_ap(struct wiphy *wiphy, struct net_device *dev,
-			     struct cfg80211_ap_settings *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	enum iwl_fmac_chan_width bandwidth;
-	struct iwl_fmac_host_ap_cmd cmd = {
-		.vif_id = vif->id,
-		.action = IWL_FMAC_START_HOST_BASED_AP,
-		.dtim_period = params->dtim_period,
-		.beacon_int = cpu_to_le16(params->beacon_interval),
-		.inactivity_timeout = cpu_to_le32(params->inactivity_timeout),
-		.chandef.control_freq =
-			cpu_to_le16(params->chandef.chan->center_freq),
-		.chandef.center_freq1 =
-			cpu_to_le16(params->chandef.center_freq1),
-
-	};
-	struct iwl_fmac_host_ap_resp *resp;
-	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_HOST_BASED_AP, FMAC_GROUP, 0),
-		.flags = CMD_WANT_SKB,
-		.data = { &cmd, },
-		.len = { sizeof(cmd), },
-	};
-	int ret;
-
-	bandwidth = cfg_width_to_iwl_width(params->chandef.width);
-	if (bandwidth >= IWL_NUM_CHAN_WIDTH)
-		return -EINVAL;
-
-	mutex_lock(&fmac->mutex);
-
-	if (cfg_chan_to_iwl_chan(&params->chandef, &vif->chandef)) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	vif->chan = params->chandef.chan;
-
-	if (vif->u.ap.state != IWL_FMAC_AP_STOPPED) {
-		ret = -EALREADY;
-		goto out;
-	}
-
-	ret = iwl_fmac_host_ap_update_beacon(fmac, vif, &params->beacon,
-					     &cmd, &hcmd);
-	if (ret)
-		goto out;
-
-	ret = iwl_fmac_send_cmd(fmac, &hcmd);
-	if (ret)
-		goto out;
-	resp = (void *)((struct iwl_rx_packet *)hcmd.resp_pkt)->data;
-
-	switch (le32_to_cpu(resp->status)) {
-	case IWL_FMAC_START_AP_SUCCESS:
-		break;
-	default:
-		ret = -EINVAL;
-		WARN(1, "Bad response to START AP: %d",
-		     le32_to_cpu(resp->status));
-		goto out_free_resp;
-	}
-
-	ret = iwl_fmac_add_mcast_sta(fmac, vif, &vif->u.ap.mcast_sta,
-				     resp->mcast_sta_id, NULL,
-				     resp->mcast_queue, false);
-	if (ret)
-		goto out_free_resp;
-
-	ret = iwl_fmac_add_mcast_sta(fmac, vif, &vif->u.ap.bcast_sta,
-				     resp->bcast_sta_id, NULL,
-				     resp->bcast_queue, true);
-	if (ret)
-		goto out_free_mcast_sta;
-
-	vif->control_port_ethertype = params->crypto.control_port_ethertype;
-	vif->u.ap.state = IWL_FMAC_AP_STARTED;
-	netif_carrier_on(vif->wdev.netdev);
-	netif_tx_start_all_queues(vif->wdev.netdev);
-
-	/* TODO handle response... */
-
-	mutex_unlock(&fmac->mutex);
-	return ret;
-
-out_free_mcast_sta:
-	iwl_fmac_remove_mcast_sta(fmac, &vif->u.ap.mcast_sta);
-out_free_resp:
-	iwl_free_resp(&hcmd);
-out:
-	mutex_unlock(&fmac->mutex);
-	return ret;
-}
-
-static int iwl_fmac_change_beacon(struct wiphy *wiphy, struct net_device *dev,
-				  struct cfg80211_beacon_data *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	struct iwl_fmac_host_ap_cmd cmd = {
-		.vif_id = vif->id,
-		.action = IWL_FMAC_MODIFY_HOST_BASED_AP,
-	};
-	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_HOST_BASED_AP, FMAC_GROUP, 0),
-		.data = { &cmd, },
-		.len = { sizeof(cmd), },
-	};
-	int ret;
-
-	mutex_lock(&fmac->mutex);
-
-	ret = iwl_fmac_host_ap_update_beacon(fmac, vif, params, &cmd, &hcmd);
-	if (ret)
-		goto out;
-
-	ret = iwl_fmac_send_cmd(fmac, &hcmd);
-out:
-	mutex_unlock(&fmac->mutex);
-
-	return ret;
-}
-
-static int iwl_fmac_stop_ap(struct wiphy *wiphy, struct net_device *dev)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	struct iwl_fmac_host_ap_cmd cmd = {
-		.vif_id = vif->id,
-		.action = IWL_FMAC_STOP_HOST_BASED_AP,
-	};
-	int ret = 0;
-
-	mutex_lock(&fmac->mutex);
-
-	if (vif->u.ap.state == IWL_FMAC_AP_STOPPED)
-		goto out;
-
-	iwl_fmac_clear_ap_state(fmac, vif);
-	iwl_fmac_free_stas(fmac, vif, false);
-	ret = iwl_fmac_send_cmd_pdu(fmac, iwl_cmd_id(FMAC_HOST_BASED_AP,
-						     FMAC_GROUP, 0),
-				    0, sizeof(cmd), &cmd);
-
-out:
-	mutex_unlock(&fmac->mutex);
-
-	return ret;
-}
-
 u16 iwl_fmac_parse_rates(struct wiphy *wiphy, struct iwl_fmac_vif *vif,
 			 const u8 *rates, u8 rates_len)
 {
@@ -1008,158 +764,6 @@ u16 iwl_fmac_parse_rates(struct wiphy *wiphy, struct iwl_fmac_vif *vif,
 	return rates_bm;
 }
 
-static int iwl_fmac_change_bss_host(struct wiphy *wiphy,
-				    struct net_device *dev,
-				    struct bss_parameters *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	struct iwl_fmac_host_ap_cmd cmd = {
-		.vif_id = vif->id,
-		.action = IWL_FMAC_MODIFY_HOST_BASED_AP,
-	};
-	struct iwl_fmac_host_ap_resp *resp;
-	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_HOST_BASED_AP, FMAC_GROUP, 0),
-		.flags = CMD_WANT_SKB,
-		.data = { &cmd, },
-		.len = { sizeof(cmd), },
-	};
-	int ret;
-
-	if (params->use_cts_prot >= 0) {
-		cmd.use_cts_prot = params->use_cts_prot;
-		cmd.changed |= cpu_to_le32(IWL_FMAC_CTS_PROT_CHANGED);
-	}
-
-	if (params->use_short_preamble >= 0) {
-		cmd.use_short_preamble = params->use_short_preamble;
-		cmd.changed |= cpu_to_le32(IWL_FMAC_SHORT_PREAMBLE_CHANGED);
-	}
-
-	if (params->use_short_slot_time >= 0) {
-		cmd.use_short_slot = params->use_short_slot_time;
-		cmd.changed |= cpu_to_le32(IWL_FMAC_SHORT_SLOT_CHANGED);
-	}
-
-	if (params->ht_opmode >= 0) {
-		cmd.ht_opmode = cpu_to_le16(params->ht_opmode);
-		cmd.changed |= cpu_to_le32(IWL_FMAC_HT_OPMODE_CHANGED);
-	}
-
-	if (params->basic_rates_len) {
-		u16 basic_rates_bm;
-
-		basic_rates_bm =
-			iwl_fmac_parse_rates(wiphy, vif, params->basic_rates,
-					     params->basic_rates_len);
-		cmd.basic_rates_bitmap = cpu_to_le16(basic_rates_bm);
-		cmd.changed |= cpu_to_le32(IWL_FMAC_BASIC_RATES_CHANGED);
-	}
-
-	ret = iwl_fmac_send_cmd(fmac, &hcmd);
-	if (ret)
-		return ret;
-
-	resp = (void *)((struct iwl_rx_packet *)hcmd.resp_pkt)->data;
-
-	switch (le32_to_cpu(resp->status)) {
-	case IWL_FMAC_START_AP_SUCCESS:
-		break;
-	default:
-		WARN(1, "Bad response to FMAC_HOST_BASED_AP: %d",
-		     le32_to_cpu(resp->status));
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int iwl_fmac_change_bss(struct wiphy *wiphy,
-			       struct net_device *dev,
-			       struct bss_parameters *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	int ret;
-
-	mutex_lock(&fmac->mutex);
-	vif->u.ap.isolate = params->ap_isolate;
-	ret = iwl_fmac_change_bss_host(wiphy, dev, params);
-	mutex_unlock(&fmac->mutex);
-
-	return ret;
-}
-
-static int iwl_fmac_set_txq_params(struct wiphy *wiphy,
-				   struct net_device *dev,
-				   struct ieee80211_txq_params *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-
-	struct iwl_fmac_host_ap_cmd cmd = {
-		.vif_id = vif->id,
-		.action = IWL_FMAC_MODIFY_HOST_BASED_AP,
-	};
-	struct iwl_fmac_host_ap_resp *resp;
-	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_HOST_BASED_AP, FMAC_GROUP, 0),
-		.flags = CMD_WANT_SKB,
-		.data = { &cmd, },
-		.len = { sizeof(cmd), },
-	};
-	struct iwl_fmac_ac_params *ac_param;
-	int ret;
-
-	switch (params->ac) {
-	case NL80211_AC_VO:
-		ac_param = &cmd.ac_params[AC_VO];
-		cmd.changed = cpu_to_le32(IWL_FMAC_AC_PARAMS_CHANGED_VO);
-		break;
-	case NL80211_AC_VI:
-		ac_param = &cmd.ac_params[AC_VI];
-		cmd.changed = cpu_to_le32(IWL_FMAC_AC_PARAMS_CHANGED_VI);
-		break;
-	case NL80211_AC_BE:
-		ac_param = &cmd.ac_params[AC_BE];
-		cmd.changed = cpu_to_le32(IWL_FMAC_AC_PARAMS_CHANGED_BE);
-		break;
-	case NL80211_AC_BK:
-		ac_param = &cmd.ac_params[AC_BK];
-		cmd.changed = cpu_to_le32(IWL_FMAC_AC_PARAMS_CHANGED_BK);
-		break;
-	default:
-		WARN_ON(1);
-		return -EINVAL;
-	}
-
-	ac_param->txop = cpu_to_le16(params->txop);
-	ac_param->cw_min = cpu_to_le16(params->cwmin);
-	ac_param->cw_max = cpu_to_le16(params->cwmax);
-	ac_param->aifs = params->aifs;
-
-	mutex_lock(&fmac->mutex);
-	ret = iwl_fmac_send_cmd(fmac, &hcmd);
-	mutex_unlock(&fmac->mutex);
-
-	if (ret)
-		return ret;
-
-	resp = (void *)hcmd.resp_pkt->data;
-
-	switch (le32_to_cpu(resp->status)) {
-	case IWL_FMAC_START_AP_SUCCESS:
-		break;
-	default:
-		WARN(1, "Bad response to FMAC_HOST_BASED_AP: %d",
-		     le32_to_cpu(resp->status));
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 static int iwl_fmac_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 				   bool enabled, int timeout)
 {
@@ -1181,169 +785,11 @@ static int iwl_fmac_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 	return ret;
 }
 
-static int iwl_fmac_add_key(struct wiphy *wiphy, struct net_device *dev,
-			    u8 key_index, bool pairwise, const u8 *mac_addr,
-			    struct key_params *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	struct iwl_fmac_temporal_key_cmd cmd = {
-		.action = IWL_FMAC_ADD_TEMPORAL_KEY,
-		.keyidx = key_index,
-		.keylen = params->key_len,
-	};
-	struct iwl_fmac_key fmac_key = {
-		.valid = true,
-		.keyidx = key_index,
-		.rx_pn_len = (u8)params->seq_len,
-	};
-	struct iwl_fmac_sta *sta;
-	u32 hw_keyidx;
-	int ret = 0;
-	u16 cmd_len;
-
-	if (vif->wdev.iftype != NL80211_IFTYPE_AP)
-		return -EOPNOTSUPP;
-
-	if (WARN_ON(params->seq_len > sizeof(fmac_key.rx_pn)))
-		return -EINVAL;
-
-	if (WARN_ON(params->key_len > sizeof(cmd.key)))
-		return -EINVAL;
-
-	/* we don't handle iGTK */
-	if (key_index > 3)
-		return -EOPNOTSUPP;
-
-	memcpy(fmac_key.rx_pn, params->seq, params->seq_len);
-
-	mutex_lock(&fmac->mutex);
-	if (pairwise) {
-		sta = iwl_get_sta(fmac, mac_addr);
-		cmd.key_type = IWL_FMAC_TEMPORAL_KEY_TYPE_PTK;
-	} else {
-		sta = &vif->u.ap.mcast_sta;
-		cmd.key_type = IWL_FMAC_TEMPORAL_KEY_TYPE_GTK;
-	}
-
-	if (!sta) {
-		ret = -ENOENT;
-		goto out;
-	}
-
-	switch (params->cipher) {
-	case WLAN_CIPHER_SUITE_CCMP:
-		fmac_key.cipher = cpu_to_le32(IWL_FMAC_CIPHER_CCMP);
-		break;
-	case WLAN_CIPHER_SUITE_GCMP:
-		fmac_key.cipher = cpu_to_le32(IWL_FMAC_CIPHER_GCMP);
-		break;
-	case WLAN_CIPHER_SUITE_GCMP_256:
-		fmac_key.cipher = cpu_to_le32(IWL_FMAC_CIPHER_GCMP_256);
-		break;
-	default:
-		ret = -EOPNOTSUPP;
-		goto out;
-	}
-
-	cmd.cipher = fmac_key.cipher;
-	cmd.sta_id = sta->sta_id;
-	cmd.vif_id = vif->id;
-	memcpy(cmd.key, params->key, params->key_len);
-
-	/* This code is temp, until API change is complete */
-	if (vif->fmac->fw->ucode_capa.fmac_api_version < 8)
-		cmd_len = offsetof(struct iwl_fmac_temporal_key_cmd, key_type);
-	else
-		cmd_len = sizeof(cmd);
-
-	ret = iwl_fmac_send_cmd_pdu_status(fmac,
-					   iwl_cmd_id(FMAC_TEMPORAL_KEY,
-						      FMAC_GROUP, 0),
-					   cmd_len, &cmd, &hw_keyidx);
-
-	fmac_key.hw_keyidx = (u8)hw_keyidx;
-
-	/* TODO - Send the key material to the FW and get the hw key offsed */
-
-	iwl_fmac_sta_add_key(fmac, sta, pairwise, &fmac_key);
-
-out:
-	mutex_unlock(&fmac->mutex);
-
-	return ret;
-}
-
-static int iwl_fmac_del_key(struct wiphy *wiphy, struct net_device *dev,
-			    u8 key_index, bool pairwise, const u8 *mac_addr)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	struct iwl_fmac_temporal_key_cmd cmd = {
-		.action = IWL_FMAC_REM_TEMPORAL_KEY,
-		.keyidx = key_index,
-	};
-	struct iwl_fmac_sta *sta;
-	int ret;
-	u16 cmd_len;
-
-	if (vif->wdev.iftype != NL80211_IFTYPE_AP)
-		return -EOPNOTSUPP;
-
-	/* we don't handle iGTK */
-	if (key_index > 3)
-		return -EOPNOTSUPP;
-
-	mutex_lock(&fmac->mutex);
-	if (pairwise) {
-		sta = iwl_get_sta(fmac, mac_addr);
-		cmd.key_type = IWL_FMAC_TEMPORAL_KEY_TYPE_PTK;
-	} else {
-		sta = &vif->u.ap.mcast_sta;
-		cmd.key_type = IWL_FMAC_TEMPORAL_KEY_TYPE_GTK;
-	}
-
-	if (!sta) {
-		ret = -ENOENT;
-		goto out;
-	}
-
-	cmd.sta_id = sta->sta_id;
-	cmd.vif_id = vif->id;
-	ret = iwl_fmac_sta_rm_key(fmac, sta, pairwise, key_index);
-	if (ret)
-		goto out;
-
-	/* This code is temp, until API change is complete */
-	if (vif->fmac->fw->ucode_capa.fmac_api_version < 8)
-		cmd_len = offsetof(struct iwl_fmac_temporal_key_cmd, key_type);
-	else
-		cmd_len = sizeof(cmd);
-
-	ret = iwl_fmac_send_cmd_pdu(fmac, iwl_cmd_id(FMAC_TEMPORAL_KEY,
-						     FMAC_GROUP, 0), 0,
-				    cmd_len, &cmd);
-
-out:
-	mutex_unlock(&fmac->mutex);
-	return ret;
-}
-
-static int iwl_fmac_set_default_key(struct wiphy *wiphy,
-				    struct net_device *netdev,
-				    u8 key_index, bool unicast, bool multicast)
-{
-	return 0;
-}
-
 static int iwl_fmac_set_wdev_tx_power(struct iwl_fmac *fmac,
 				      struct wireless_dev *wdev,
 				      int user_power_level)
 {
 	struct iwl_fmac_vif *vif = vif_from_wdev(wdev);
-
-	if (wdev->iftype == NL80211_IFTYPE_AP)
-		return -EOPNOTSUPP;
 
 	return iwl_fmac_send_config_u32(fmac, vif->id,
 					IWL_FMAC_CONFIG_VIF_TXPOWER_USER,
@@ -1387,39 +833,6 @@ static int iwl_fmac_set_tx_power(struct wiphy *wiphy,
 	return 0;
 }
 
-static int iwl_fmac_get_channel(struct wiphy *wiphy,
-				struct wireless_dev *wdev,
-				struct cfg80211_chan_def *chandef)
-{
-	struct iwl_fmac_vif *vif = vif_from_wdev(wdev);
-
-	if (!(wdev->iftype == NL80211_IFTYPE_AP &&
-	      vif->u.ap.state == IWL_FMAC_AP_STARTED))
-		return -ENODATA;
-	/*
-	 * TODO: support other vif types
-	 */
-
-	memset(chandef, 0, sizeof(*chandef));
-
-	chandef->chan =
-		ieee80211_get_channel(wiphy,
-				      le16_to_cpu(vif->chandef.control_freq));
-	chandef->center_freq1 = le16_to_cpu(vif->chandef.center_freq1);
-	chandef->width = iwl_width_to_cfg_width(vif->chandef.bandwidth);
-
-	return 0;
-}
-
-static int iwl_fmac_probe_client(struct wiphy *wiphy, struct net_device *dev,
-				 const u8 *peer, u64 *cookie)
-{
-	/* TODO */
-
-	WARN_ON_ONCE(1);
-	return 0;
-}
-
 static int iwl_fmac_mgmt_tx(struct wiphy *wiphy,
 			    struct wireless_dev *wdev,
 			    struct cfg80211_mgmt_tx_params *params,
@@ -1432,18 +845,11 @@ static int iwl_fmac_mgmt_tx(struct wiphy *wiphy,
 	struct iwl_fmac_tx_data tx = {};
 	struct iwl_fmac_skb_info *info;
 	struct sk_buff *skb;
-	bool ap_iface = vif->wdev.iftype == NL80211_IFTYPE_AP ||
-			vif->wdev.iftype == NL80211_IFTYPE_P2P_GO;
 
-	if (!ap_iface && vif->wdev.iftype != NL80211_IFTYPE_STATION)
+	if (vif->wdev.iftype != NL80211_IFTYPE_STATION)
 		return -EOPNOTSUPP;
 
 	mutex_lock(&fmac->mutex);
-
-	if (ap_iface && vif->u.ap.state != IWL_FMAC_AP_STARTED) {
-		mutex_unlock(&fmac->mutex);
-		return -EBUSY;
-	}
 
 	skb = dev_alloc_skb(params->len);
 	if (!skb) {
@@ -1454,26 +860,6 @@ static int iwl_fmac_mgmt_tx(struct wiphy *wiphy,
 	memset(info, 0, sizeof(*info));
 
 	tx.sta = iwl_get_sta(fmac, mgmt->da);
-
-	/*
-	 * The non bufferable management frames should be sent on the bcast
-	 * station since this is the station that sends frames immediately
-	 * without considering the peer's power save state or without waiting
-	 * for the DTIM.
-	 * Route the deauth / disassoc frames to that same bcast station since
-	 * we want to be able to send those frames even if we think it is in
-	 * power save to overcome cases in which we are out of sync with the
-	 * peer.
-	 * Multicast management frames should obviously be sent on the bcast
-	 * station, and also frames for stations that we have not added.
-	 */
-	if (ap_iface &&
-	    (!ieee80211_is_bufferable_mmpdu(mgmt->frame_control) ||
-	     ieee80211_is_disassoc(mgmt->frame_control) ||
-	     ieee80211_is_deauth(mgmt->frame_control) ||
-	     is_multicast_ether_addr(mgmt->da) ||
-	     !tx.sta))
-		tx.sta = &vif->u.ap.bcast_sta;
 
 	*cookie = ++vif->cookie;
 	info->cookie = *cookie;
@@ -1494,90 +880,6 @@ static int iwl_fmac_mgmt_tx(struct wiphy *wiphy,
 	skb_put_data(skb, params->buf, params->len);
 
 	iwl_fmac_tx_skb(fmac, skb, &tx);
-
-	mutex_unlock(&fmac->mutex);
-
-	return 0;
-}
-
-static int iwl_fmac_change_station(struct wiphy *wiphy, struct net_device *dev,
-				   const u8 *mac,
-				   struct station_parameters *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	enum cfg80211_station_type statype;
-	struct iwl_fmac_sta *sta;
-	int ret;
-
-	if (is_multicast_ether_addr(mac))
-		return -EINVAL;
-
-	if (vif->wdev.iftype != NL80211_IFTYPE_AP)
-		return -EOPNOTSUPP;
-
-	mutex_lock(&fmac->mutex);
-
-	sta = iwl_get_sta(fmac, mac);
-	if (sta && sta->associated)
-		statype = CFG80211_STA_AP_CLIENT;
-	else
-		statype = CFG80211_STA_AP_CLIENT_UNASSOC;
-
-	ret = cfg80211_check_station_change(wiphy, params, statype);
-	if (ret)
-		goto out_err;
-
-	ret = iwl_fmac_host_ap_mod_sta(wiphy, dev, mac, params);
-
-out_err:
-	mutex_unlock(&fmac->mutex);
-	return ret;
-}
-
-static int iwl_fmac_add_station(struct wiphy *wiphy, struct net_device *dev,
-				const u8 *mac,
-				struct station_parameters *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	int ret;
-
-	if (is_multicast_ether_addr(mac))
-		return -EINVAL;
-
-	if (vif->wdev.iftype != NL80211_IFTYPE_AP)
-		return -EOPNOTSUPP;
-
-	mutex_lock(&fmac->mutex);
-	ret = iwl_fmac_host_ap_add_sta(wiphy, dev, mac, params);
-	mutex_unlock(&fmac->mutex);
-
-	return ret;
-}
-
-static int iwl_fmac_del_station(struct wiphy *wiphy, struct net_device *dev,
-				struct station_del_parameters *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	struct iwl_fmac_sta *sta;
-
-	if (!params->mac)
-		return -EINVAL;
-
-	if (is_multicast_ether_addr(params->mac))
-		return -EINVAL;
-
-	mutex_lock(&fmac->mutex);
-
-	sta = iwl_get_sta(fmac, params->mac);
-	if (!sta) {
-		mutex_unlock(&fmac->mutex);
-		return -ENOENT;
-	}
-
-	iwl_fmac_host_ap_del_sta(fmac, vif, sta);
 
 	mutex_unlock(&fmac->mutex);
 
@@ -1692,36 +994,6 @@ static int iwl_fmac_del_pmk(struct wiphy *wiphy, struct net_device *dev,
 	return -ENOTSUPP;
 }
 
-static int iwl_fmac_set_monitor_channel(struct wiphy *wiphy,
-					struct cfg80211_chan_def *chandef)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	int ret;
-	struct iwl_fmac_set_monitor_chan_cmd cmd = {};
-
-	ret = cfg_chan_to_iwl_chan(chandef, &cmd.chandef);
-	if (ret)
-		return ret;
-
-	mutex_lock(&fmac->mutex);
-	if (WARN_ON(!rcu_access_pointer(fmac->monitor_vif))) {
-		ret = -EINVAL;
-	} else {
-		struct iwl_fmac_vif *mvif;
-
-		mvif = rcu_dereference_protected(fmac->monitor_vif,
-						 lockdep_is_held(&fmac->mutex));
-		cmd.vif_id = mvif->id;
-		ret = iwl_fmac_send_cmd_pdu(fmac,
-					    iwl_cmd_id(FMAC_SET_MONITOR_CHAN,
-						       FMAC_GROUP, 0),
-					    0, sizeof(cmd), &cmd);
-	}
-	mutex_unlock(&fmac->mutex);
-
-	return ret;
-}
-
 static int iwl_fmac_external_auth(struct wiphy *wiphy, struct net_device *dev,
 				  struct cfg80211_external_auth_params *params)
 {
@@ -1769,27 +1041,13 @@ const struct cfg80211_ops iwl_fmac_cfg_ops = {
 	.dump_station = iwl_fmac_dump_station,
 	.set_wiphy_params = iwl_fmac_set_wiphy_params,
 	.set_power_mgmt = iwl_fmac_set_power_mgmt,
-	.set_txq_params = iwl_fmac_set_txq_params,
 	.suspend = iwl_fmac_suspend,
 	.resume = iwl_fmac_resume,
-	.start_ap = iwl_fmac_start_ap,
-	.change_beacon = iwl_fmac_change_beacon,
-	.stop_ap = iwl_fmac_stop_ap,
-	.change_bss = iwl_fmac_change_bss,
 	.set_tx_power = iwl_fmac_set_tx_power,
-	.get_channel = iwl_fmac_get_channel,
 	.set_qos_map = iwl_fmac_set_qos_map,
 	.set_pmk = iwl_fmac_set_pmk,
 	.del_pmk = iwl_fmac_del_pmk,
-	.set_monitor_channel = iwl_fmac_set_monitor_channel,
-	.probe_client = iwl_fmac_probe_client,
 	.mgmt_tx = iwl_fmac_mgmt_tx,
-	.add_station = iwl_fmac_add_station,
-	.del_station = iwl_fmac_del_station,
-	.change_station = iwl_fmac_change_station,
-	.add_key = iwl_fmac_add_key,
-	.del_key = iwl_fmac_del_key,
-	.set_default_key = iwl_fmac_set_default_key,
 	.external_auth = iwl_fmac_external_auth,
 };
 
@@ -1840,9 +1098,7 @@ void iwl_fmac_setup_wiphy(struct iwl_fmac *fmac)
 
 	/* iface_combinations, software_iftypes */
 
-	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION) |
-				 BIT(NL80211_IFTYPE_AP) |
-				 BIT(NL80211_IFTYPE_MONITOR);
+	wiphy->interface_modes = BIT(NL80211_IFTYPE_STATION);
 
 	wiphy->flags = WIPHY_FLAG_NETNS_OK |
 		       /* WIPHY_FLAG_SUPPORTS_SCHED_SCAN | */
@@ -1852,7 +1108,6 @@ void iwl_fmac_setup_wiphy(struct iwl_fmac *fmac)
 	wiphy->features = NL80211_FEATURE_SCAN_RANDOM_MAC_ADDR |
 			  NL80211_FEATURE_MAC_ON_CREATE |
 			  NL80211_FEATURE_SK_TX_STATUS |
-			  NL80211_FEATURE_INACTIVITY_TIMER |
 			  NL80211_FEATURE_SAE;
 
 	if (iwlfmac_mod_params.power_scheme == FMAC_PS_MODE_CAM)
@@ -1861,7 +1116,6 @@ void iwl_fmac_setup_wiphy(struct iwl_fmac *fmac)
 		wiphy->flags |= WIPHY_FLAG_PS_ON_BY_DEFAULT;
 
 	wiphy->flags |= WIPHY_FLAG_REPORTS_OBSS;
-	wiphy->features |= NL80211_FEATURE_FULL_AP_CLIENT_STATE;
 
 	/* LAR (DRS) is always supported in FMAC FWs */
 	wiphy->regulatory_flags |= REGULATORY_WIPHY_SELF_MANAGED |

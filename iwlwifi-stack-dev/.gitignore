@@ -11,6 +11,7 @@ Kconfig.versions
 *.cmd
 *.tmp
 *.ver
+*.mod
 modules.order
 backport-include/backport/autoconf.h
 modules
@@ -25,3 +26,5 @@ __pycache__
 # cscope files
 cscope.*
 ncscope.*
+# gcc profile objects
+*.gcno

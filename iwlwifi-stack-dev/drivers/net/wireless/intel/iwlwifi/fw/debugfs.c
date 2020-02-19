@@ -617,7 +617,7 @@ static ssize_t iwl_dbgfs_ps_report_lmac_read
 				size_t size,
 				char *buf)
 {
-	// LMAC value is 0 for backwards compatibility
+	/* LMAC value is 0 for backwards compatibility */
 	return iwl_dbgfs_ps_report_read(fwrt, size, buf, 0);
 }
 
@@ -625,12 +625,22 @@ FWRT_DEBUGFS_READ_FILE_OPS(ps_report_lmac, 268);
 
 #endif
 
+static ssize_t iwl_dbgfs_fw_dbg_domain_read(struct iwl_fw_runtime *fwrt,
+					    size_t size, char *buf)
+{
+	return scnprintf(buf, size, "0x%08x\n",
+			 fwrt->trans->dbg.domains_bitmap);
+}
+
+FWRT_DEBUGFS_READ_FILE_OPS(fw_dbg_domain, 20);
+
 void iwl_fwrt_dbgfs_register(struct iwl_fw_runtime *fwrt,
 			    struct dentry *dbgfs_dir)
 {
 	INIT_DELAYED_WORK(&fwrt->timestamp.wk, iwl_fw_timestamp_marker_wk);
 	FWRT_DEBUGFS_ADD_FILE(timestamp_marker, dbgfs_dir, 0200);
 	FWRT_DEBUGFS_ADD_FILE(send_hcmd, dbgfs_dir, 0200);
+	FWRT_DEBUGFS_ADD_FILE(fw_dbg_domain, dbgfs_dir, 0400);
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 	if (fw_has_capa(&fwrt->fw->ucode_capa,
 			IWL_UCODE_TLV_CAPA_TLC_OFFLOAD)) {

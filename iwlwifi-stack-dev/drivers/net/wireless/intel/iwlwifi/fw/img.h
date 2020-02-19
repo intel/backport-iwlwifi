@@ -236,18 +236,6 @@ struct iwl_fw_dbg {
 };
 
 /**
- * struct iwl_fw_ini_active_triggers
- * @active: is this trigger active
- * @size: allocated memory size of the trigger
- * @trig: trigger
- */
-struct iwl_fw_ini_active_triggers {
-	bool active;
-	size_t size;
-	struct iwl_fw_ini_trigger *trig;
-};
-
-/**
  * struct iwl_fw - variables associated with the firmware
  *
  * @ucode_ver: ucode version from the ucode file
@@ -271,7 +259,7 @@ struct iwl_fw_ini_active_triggers {
 struct iwl_fw {
 	u32 ucode_ver;
 
-	char fw_version[ETHTOOL_FWVERS_LEN];
+	char fw_version[64];
 
 	/* ucode images */
 	struct fw_img img[IWL_UCODE_TYPE_MAX];
@@ -333,4 +321,7 @@ iwl_get_ucode_image(const struct iwl_fw *fw, enum iwl_ucode_type ucode_type)
 	return &fw->img[ucode_type];
 }
 
+u8 iwl_fw_lookup_cmd_ver(const struct iwl_fw *fw, u8 grp, u8 cmd);
+
+u8 iwl_fw_lookup_notif_ver(const struct iwl_fw *fw, u8 grp, u8 cmd, u8 def);
 #endif  /* __iwl_fw_img_h__ */

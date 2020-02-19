@@ -9,17 +9,19 @@ iwlwifi-objs		+= iwl-phy-db.o iwl-nvm-parse.o
 iwlwifi-objs		+= iwl-dbg-tlv.o
 iwlwifi-objs		+= iwl-trans.o
 
-iwlwifi-objs		+= fw/notif-wait.o
-iwlwifi-$(CPTCFG_IWLMVM)	+= fw/paging.o fw/smem.o fw/init.o fw/dbg.o
-iwlwifi-$(CPTCFG_IWLFMAC)	+= fw/paging.o fw/smem.o fw/init.o fw/dbg.o
+iwlwifi-objs		+= fw/img.o fw/notif-wait.o
+iwlwifi-objs		+= fw/dbg.o
+iwlwifi-$(CPTCFG_IWLMVM)	+= fw/paging.o fw/smem.o fw/init.o
+iwlwifi-$(CPTCFG_IWLFMAC)	+= fw/paging.o fw/smem.o fw/init.o
 iwlwifi-$(CPTCFG_IWLXVT)	+= fw/init.o
 iwlwifi-$(CPTCFG_IWLWIFI_DEBUGFS) += fw/debugfs.o
 
 iwlwifi-$(CONFIG_ACPI)	+= fw/acpi.o
 
 # Bus
-iwlwifi-objs			+= pcie/drv.o pcie/rx.o pcie/tx.o pcie/trans.o
-iwlwifi-objs			+= pcie/ctxt-info.o pcie/ctxt-info-gen3.o pcie/trans-gen2.o pcie/tx-gen2.o
+iwlwifi-$(CONFIG_PCI) += pcie/drv.o pcie/rx.o pcie/tx.o pcie/trans.o
+iwlwifi-$(CONFIG_PCI) += pcie/ctxt-info.o pcie/ctxt-info-gen3.o pcie/trans-gen2.o pcie/tx-gen2.o
+
 iwlwifi-$(CPTCFG_IWLDVM) += cfg/1000.o cfg/2000.o
 iwlwifi-$(CPTCFG_IWLDVM) += cfg/5000.o cfg/6000.o
 iwlwifi-$(CPTCFG_IWLMVM) += cfg/7000.o cfg/8000.o
@@ -28,7 +30,10 @@ iwlwifi-$(CPTCFG_IWLFMAC) += cfg/9000.o cfg/22000.o
 
 iwlwifi-$(CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES) += iwl-dbg-cfg.o
 
+iwlwifi-$(CPTCFG_IWLWIFI_VIRTIO) += virtio/drv.o
+
 iwlwifi-objs += $(iwlwifi-m)
+iwlwifi-objs += $(iwlwifi-y)
 
 iwlwifi-$(CPTCFG_IWLWIFI_DEVICE_TRACING) += iwl-devtrace.o
 iwlwifi-$(CPTCFG_IWLWIFI_DEVICE_TESTMODE) += iwl-tm-gnl.o iwl-dnt-cfg.o iwl-dnt-dispatch.o

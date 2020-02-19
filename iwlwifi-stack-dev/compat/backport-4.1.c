@@ -12,7 +12,6 @@
 #include <linux/netdevice.h>
 #include <linux/tty.h>
 
-#if RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
 netdev_features_t passthru_features_check(struct sk_buff *skb,
 					  struct net_device *dev,
 					  netdev_features_t features)
@@ -20,7 +19,6 @@ netdev_features_t passthru_features_check(struct sk_buff *skb,
 	return features;
 }
 EXPORT_SYMBOL_GPL(passthru_features_check);
-#endif /* RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6) */
 
 #ifdef CONFIG_TTY
 #if LINUX_VERSION_IS_GEQ(4,0,0)

@@ -1,14 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright 2002-2005, Instant802 Networks, Inc.
  * Copyright 2005-2006, Devicescape Software, Inc.
  * Copyright 2006-2007	Jiri Benc <jbenc@suse.cz>
- * Copyright 2008-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2015  Intel Mobile Communications GmbH
- * Copyright 2018       Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright 2018-2019  Intel Corporation
  */
 
 #include <linux/export.h>
@@ -609,7 +605,7 @@ tx_consec_loss_msrmnt(struct ieee80211_tx_consec_loss_ranges *tx_consec,
 	 */
 
 	if (send_failed ||
-	    (!send_failed && tx_consec->late_threshold < msrmnt)) {
+	    (!send_failed && tx_consec->late_threshold < msrmnt / 1000)) {
 		tx_csc->consec_total_loss++;
 	} else {
 		update_consec_bins(tx_csc->total_loss_bins, bin_ranges,
@@ -630,7 +626,7 @@ tx_consec_loss_msrmnt(struct ieee80211_tx_consec_loss_ranges *tx_consec,
 	if (send_failed) /* only count packets sent successfully */
 		return;
 
-	if (tx_consec->late_threshold < msrmnt) {
+	if (tx_consec->late_threshold < msrmnt / 1000) {
 		tx_csc->consec_late_loss++;
 	} else {
 		update_consec_bins(tx_csc->late_bins, bin_ranges,
@@ -658,7 +654,7 @@ tx_latency_msrmnt(struct ieee80211_tx_latency_bin_ranges *tx_latency,
 
 	if (tx_lat->max < msrmnt) { /* update stats */
 		tx_lat->max = msrmnt;
-		tx_lat->max_ts = ktime_to_ms(ktime_get());
+		tx_lat->max_ts = ktime_to_us(ktime_get());
 	}
 	tx_lat->counter++;
 	tx_lat->sum += msrmnt;
@@ -696,15 +692,15 @@ tx_latency_threshold(struct ieee80211_local *local, struct sk_buff *skb,
 	    !sta->tx_lat_thrshld[tid])
 		return;
 
-	if (sta->tx_lat_thrshld[tid] < msrmnt) {
+	if (sta->tx_lat_thrshld[tid] < msrmnt / 1000) {
 		struct ieee80211_event event = {
 			.type = TX_LATENCY_EVENT,
 			.u.tx_lat.mode = tx_thrshld->monitor_record_mode,
 			.u.tx_lat.monitor_collec_wind =
 				tx_thrshld->monitor_collec_wind,
-			.u.tx_lat.pkt_start = ktime_to_ms(skb->tstamp),
-			.u.tx_lat.pkt_end = ktime_to_ms(skb->tstamp) + msrmnt,
-			.u.tx_lat.msrmnt = msrmnt,
+			.u.tx_lat.pkt_start = ktime_to_us(skb->tstamp),
+			.u.tx_lat.pkt_end = ktime_to_us(skb->tstamp) + msrmnt,
+			.u.tx_lat.msrmnt = msrmnt / 1000,
 			.u.tx_lat.tid = tid,
 			.u.tx_lat.seq = (le16_to_cpu(hdr->seq_ctrl) &
 					 IEEE80211_SCTL_SEQ) >> 4,
@@ -722,7 +718,7 @@ static u32 ieee80211_calc_tx_latency(struct ieee80211_local *local,
 	s64 ts[IEEE80211_TX_LAT_MAX_POINT];
 	u32 msrmnt;
 
-	ts[IEEE80211_TX_LAT_DEL] = ktime_to_ms(ktime_get());
+	ts[IEEE80211_TX_LAT_DEL] = ktime_to_us(ktime_get());
 
 	/* extract previous time stamps */
 	ts[IEEE80211_TX_LAT_ENTER] = ktime_to_ns(skb_arv) >> 32;
@@ -1148,6 +1144,12 @@ static void __ieee80211_tx_status(struct ieee80211_hw *hw,
 		    ieee80211_hw_check(&local->hw, REPORTS_TX_ACK_STATUS))
 			ieee80211_sta_tx_notify(sta->sdata, (void *) skb->data,
 						acked, info->status.tx_time);
+
+		if (info->status.tx_time &&
+		    wiphy_ext_feature_isset(local->hw.wiphy,
+					    NL80211_EXT_FEATURE_AIRTIME_FAIRNESS))
+			ieee80211_sta_register_airtime(&sta->sta, tid,
+						       info->status.tx_time, 0);
 
 		if (ieee80211_hw_check(&local->hw, REPORTS_TX_ACK_STATUS)) {
 			if (info->flags & IEEE80211_TX_STAT_ACK) {

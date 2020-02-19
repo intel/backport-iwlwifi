@@ -360,6 +360,9 @@ int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type)
 		iwl_trans_stop_device(xvt->trans);
 	}
 
+	iwl_dbg_tlv_time_point(&xvt->fwrt, IWL_FW_INI_TIME_POINT_AFTER_ALIVE,
+			       NULL);
+
 	if (iwl_xvt_is_unified_fw(xvt)) {
 		ret = iwl_xvt_send_extended_config(xvt);
 		if (ret) {
@@ -377,11 +380,13 @@ int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type)
 			  IWL_UCODE_TLV_CAPA_SET_LTR_GEN2)))
 		WARN_ON(iwl_xvt_config_ltr(xvt));
 
-	xvt->fwrt.dump.conf = FW_DBG_INVALID;
-	/* if we have a destination, assume EARLY START */
-	if (xvt->fw->dbg.dest_tlv)
-		xvt->fwrt.dump.conf = FW_DBG_START_FROM_ALIVE;
-	iwl_fw_start_dbg_conf(&xvt->fwrt, FW_DBG_START_FROM_ALIVE);
+	if (!iwl_trans_dbg_ini_valid(xvt->trans)) {
+		xvt->fwrt.dump.conf = FW_DBG_INVALID;
+		/* if we have a destination, assume EARLY START */
+		if (xvt->fw->dbg.dest_tlv)
+			xvt->fwrt.dump.conf = FW_DBG_START_FROM_ALIVE;
+		iwl_fw_start_dbg_conf(&xvt->fwrt, FW_DBG_START_FROM_ALIVE);
+	}
 
 	return ret;
 }

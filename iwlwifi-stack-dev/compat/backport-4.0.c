@@ -334,7 +334,6 @@ trace_seq_buffer_ptr(struct trace_seq *s)
 }
 #endif
 
-#if RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
 const char *
 ftrace_print_array_seq(struct trace_seq *p, const void *buf, int buf_len,
 		       size_t el_size)
@@ -378,4 +377,3 @@ ftrace_print_array_seq(struct trace_seq *p, const void *buf, int buf_len,
 	return ret;
 }
 EXPORT_SYMBOL(ftrace_print_array_seq);
-#endif /* RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6) */

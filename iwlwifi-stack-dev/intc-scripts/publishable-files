@@ -97,6 +97,7 @@ drivers/net/wireless/intel/iwlwifi/fw/dbg.h
 drivers/net/wireless/intel/iwlwifi/fw/error-dump.h
 drivers/net/wireless/intel/iwlwifi/fw/file.h
 drivers/net/wireless/intel/iwlwifi/fw/img.h
+drivers/net/wireless/intel/iwlwifi/fw/img.c
 drivers/net/wireless/intel/iwlwifi/fw/init.c
 drivers/net/wireless/intel/iwlwifi/fw/notif-wait.c
 drivers/net/wireless/intel/iwlwifi/fw/notif-wait.h

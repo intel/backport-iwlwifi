@@ -29,8 +29,7 @@ static const char __UNIQUE_ID(name)[]					  \
 #endif
 #endif /* < 3.8 */
 
-#if LINUX_VERSION_IS_LESS(3,17,0) && \
-	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
+#if LINUX_VERSION_IS_LESS(3,17,0)
 extern struct kernel_param_ops param_ops_ullong;
 extern int param_set_ullong(const char *val, const struct kernel_param *kp);
 extern int param_get_ullong(char *buffer, const struct kernel_param *kp);

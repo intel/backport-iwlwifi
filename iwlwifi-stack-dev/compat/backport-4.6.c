@@ -76,8 +76,7 @@ int kstrtobool_from_user(const char __user *s, size_t count, bool *res)
 }
 EXPORT_SYMBOL_GPL(kstrtobool_from_user);
 
-#if RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
- /**
+/**
  * match_string - matches given string in an array
  * @array:	array of strings
  * @n:		number of strings in the array or -1 for NULL terminated arrays
@@ -102,4 +101,3 @@ int match_string(const char * const *array, size_t n, const char *string)
 	return -EINVAL;
 }
 EXPORT_SYMBOL(match_string);
-#endif /* RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6) */

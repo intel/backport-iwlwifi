@@ -105,10 +105,6 @@ module_param_named(power_scheme, iwlfmac_mod_params.power_scheme,
 MODULE_PARM_DESC(init_dbg,
 		 "set to true to debug an ASSERT in INIT fw (default: false)");
 module_param_named(init_dbg, iwlfmac_mod_params.init_dbg, bool, S_IRUGO);
-module_param_named(host_based_ap, iwlfmac_mod_params.host_based_ap,
-		   bool, S_IRUGO);
-MODULE_PARM_DESC(host_based_ap,
-		 "set to true if the AP mode should be host_based (default: false)");
 module_param_named(amsdu_delay, iwlfmac_mod_params.amsdu_delay,
 		   int, 0644);
 MODULE_PARM_DESC(amsdu_delay,
@@ -479,8 +475,8 @@ static void iwl_fmac_cleanup_ap_sta(struct iwl_fmac *fmac,
 		for (i = 0; i < AC_NUM; i++)
 			iwl_fmac_stop_ac_queue(fmac, wdev, i);
 
-			RCU_INIT_POINTER(vif->u.mgd.ap_sta, NULL);
-			iwl_fmac_free_sta(fmac, ap_sta->sta_id, false);
+		RCU_INIT_POINTER(vif->u.mgd.ap_sta, NULL);
+		iwl_fmac_free_sta(fmac, ap_sta->sta_id, false);
 	} else if (warn) {
 		WARN_ON(1);
 	}
@@ -787,7 +783,7 @@ static void iwl_fmac_rx_reg_update(struct iwl_fmac *fmac,
 	regd = iwl_parse_nvm_mcc_info(fmac->dev, fmac->cfg,
 				      __le32_to_cpu(rsp->n_channels),
 				      rsp->channels,
-				      __le16_to_cpu(rsp->mcc), 0);
+				      __le16_to_cpu(rsp->mcc), 0, 0);
 	if (IS_ERR_OR_NULL(regd)) {
 		IWL_ERR(fmac, "Could not parse notif from FW %d\n",
 			PTR_ERR_OR_ZERO(regd));
@@ -960,33 +956,6 @@ void iwl_fmac_remove_mcast_sta(struct iwl_fmac *fmac,
 	mc_sta->encryption = false;
 }
 
-void iwl_fmac_clear_ap_state(struct iwl_fmac *fmac, struct iwl_fmac_vif *vif)
-{
-	lockdep_assert_held(&fmac->mutex);
-
-	if (vif->u.ap.state == IWL_FMAC_AP_STARTED) {
-		netif_carrier_off(vif->wdev.netdev);
-		netif_tx_stop_all_queues(vif->wdev.netdev);
-		synchronize_net();
-		iwl_fmac_remove_mcast_sta(fmac, &vif->u.ap.mcast_sta);
-		iwl_fmac_remove_mcast_sta(fmac, &vif->u.ap.bcast_sta);
-	}
-
-	kfree(vif->u.ap.beacon);
-	vif->u.ap.beacon = NULL;
-
-	vif->u.ap.state = IWL_FMAC_AP_STOPPED;
-}
-
-static void iwl_fmac_restart_ap(struct iwl_fmac *fmac,
-				struct wireless_dev *wdev)
-{
-	iwl_fmac_clear_ap_state(fmac, vif_from_wdev(wdev));
-	iwl_fmac_free_stas(fmac, vif_from_wdev(wdev), true);
-	/* tell userspace - will call back into stop but we'll ignore that */
-	cfg80211_stop_iface(wiphy_from_fmac(fmac), wdev, GFP_KERNEL);
-}
-
 static void iwl_fmac_rx_trigger_notif(struct iwl_fmac *fmac,
 				      struct iwl_rx_cmd_buffer *rxb)
 {
@@ -1053,7 +1022,7 @@ void iwl_fmac_nic_restart(struct iwl_fmac *fmac, bool recover)
 	int i;
 
 	iwl_abort_notification_waits(&fmac->notif_wait);
-	del_timer(&fmac->fwrt.dump.periodic_trig);
+	iwl_dbg_tlv_del_timers(fmac->trans);
 
 	flush_work(&fmac->add_stream_wk);
 
@@ -1121,14 +1090,6 @@ void iwl_fmac_nic_restart(struct iwl_fmac *fmac, bool recover)
 		switch (wdev->iftype) {
 		case NL80211_IFTYPE_STATION:
 			recover_cmd->vif_types[vif->id] = IWL_FMAC_IFTYPE_MGD;
-			break;
-		case NL80211_IFTYPE_AP:
-			recover_cmd->vif_types[vif->id] =
-				IWL_FMAC_IFTYPE_HOST_BASED_AP;
-			break;
-		case NL80211_IFTYPE_P2P_GO:
-			recover_cmd->vif_types[vif->id] =
-				IWL_FMAC_IFTYPE_P2P_GO;
 			break;
 		default:
 			WARN_ON(1);
@@ -1222,10 +1183,6 @@ do_not_recover:
 			case NL80211_IFTYPE_STATION:
 				iwl_fmac_restart_station(fmac, wdev);
 			break;
-			case NL80211_IFTYPE_AP:
-			case NL80211_IFTYPE_P2P_GO:
-				iwl_fmac_restart_ap(fmac, wdev);
-				break;
 			default:
 				WARN_ON(1);
 				break;
@@ -1240,12 +1197,9 @@ do_not_recover:
 					IWL_FMAC_CONFIG_VIF_POWER_DISABLED,
 					wdev->ps ? 0 : 1);
 
-		/* host based AP doesn't support VIF_TXPOWER_USER */
-		if (vif != rcu_dereference_protected(fmac->host_based_ap_vif,
-					lockdep_is_held(&fmac->mutex)))
-			iwl_fmac_send_config_u32(fmac, vif->id,
-						 IWL_FMAC_CONFIG_VIF_TXPOWER_USER,
-						 vif->user_power_level);
+		iwl_fmac_send_config_u32(fmac, vif->id,
+					 IWL_FMAC_CONFIG_VIF_TXPOWER_USER,
+					 vif->user_power_level);
 
 		if (BIT(vif->id) & complete_notif.vif_id_bitmap)
 			netif_tx_wake_all_queues(vif->wdev.netdev);
@@ -1505,6 +1459,7 @@ static const struct iwl_hcmd_names iwl_fmac_regulatory_and_nvm_names[] = {
  */
 static const struct iwl_hcmd_names iwl_fmac_debug_names[] = {
 	HCMD_NAME(DBGC_SUSPEND_RESUME),
+	HCMD_NAME(BUFFER_ALLOCATION),
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 	HCMD_NAME(DEBUG_HOST_NTF),
 #endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
@@ -1532,9 +1487,6 @@ static const struct iwl_hcmd_names iwl_fmac_mlme_names[] = {
 	HCMD_NAME(FMAC_ACK_STA_REMOVED),
 	HCMD_NAME(FMAC_TEST_FIPS),
 	HCMD_NAME(FMAC_MIC_FAILURE),
-	HCMD_NAME(FMAC_SET_MONITOR_CHAN),
-	HCMD_NAME(FMAC_HOST_BASED_AP),
-	HCMD_NAME(FMAC_HOST_BASED_AP_STA),
 	HCMD_NAME(FMAC_TEMPORAL_KEY),
 	HCMD_NAME(FMAC_EXTERNAL_AUTH_STATUS),
 
@@ -1612,36 +1564,6 @@ static int iwl_fmac_tm_send_hcmd(void *op_mode, struct iwl_host_cmd *host_cmd)
 
 static const struct ieee80211_txrx_stypes
 iwl_fmac_mgmt_stypes[NUM_NL80211_IFTYPES] = {
-	[NL80211_IFTYPE_AP] = {
-		.tx = 0xffff,
-		.rx = BIT(IEEE80211_STYPE_ASSOC_REQ >> 4) |
-			BIT(IEEE80211_STYPE_REASSOC_REQ >> 4) |
-			BIT(IEEE80211_STYPE_PROBE_REQ >> 4) |
-			BIT(IEEE80211_STYPE_DISASSOC >> 4) |
-			BIT(IEEE80211_STYPE_AUTH >> 4) |
-			BIT(IEEE80211_STYPE_DEAUTH >> 4) |
-			BIT(IEEE80211_STYPE_ACTION >> 4),
-	},
-	[NL80211_IFTYPE_P2P_CLIENT] = {
-		.tx = 0xffff,
-		.rx = BIT(IEEE80211_STYPE_ACTION >> 4) |
-			BIT(IEEE80211_STYPE_PROBE_REQ >> 4),
-	},
-	[NL80211_IFTYPE_P2P_GO] = {
-		.tx = 0xffff,
-		.rx = BIT(IEEE80211_STYPE_ASSOC_REQ >> 4) |
-			BIT(IEEE80211_STYPE_REASSOC_REQ >> 4) |
-			BIT(IEEE80211_STYPE_PROBE_REQ >> 4) |
-			BIT(IEEE80211_STYPE_DISASSOC >> 4) |
-			BIT(IEEE80211_STYPE_AUTH >> 4) |
-			BIT(IEEE80211_STYPE_DEAUTH >> 4) |
-			BIT(IEEE80211_STYPE_ACTION >> 4),
-	},
-	[NL80211_IFTYPE_P2P_DEVICE] = {
-		.tx = 0xffff,
-		.rx = BIT(IEEE80211_STYPE_ACTION >> 4) |
-			BIT(IEEE80211_STYPE_PROBE_REQ >> 4),
-	},
 	[NL80211_IFTYPE_STATION] = {
 		.tx = BIT(IEEE80211_STYPE_AUTH >> 4),
 		.rx = BIT(IEEE80211_STYPE_AUTH >> 4),
@@ -1671,7 +1593,7 @@ iwl_op_mode_fmac_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 		return NULL;
 
 	if (WARN_ON(ARRAY_SIZE(fmac->queue_sta_map) <
-	    cfg->base_params->num_of_queues))
+	    trans->trans_cfg->base_params->num_of_queues))
 		return NULL;
 
 	wiphy = wiphy_new(cfg_ops,
@@ -1725,7 +1647,7 @@ iwl_op_mode_fmac_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	op_mode->ops = &iwl_fmac_ops;
 
 	trans->rx_mpdu_cmd_hdr_size =
-		(trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560) ?
+		(trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) ?
 		sizeof(struct iwl_rx_mpdu_desc) :
 		IWL_RX_DESC_SIZE_V1;
 
@@ -1759,15 +1681,14 @@ iwl_op_mode_fmac_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	}
 
 	/* the hardware splits the A-MSDU */
-	if (fmac->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560) {
+	if (fmac->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
 		trans_cfg.rx_buf_size = IWL_AMSDU_2K;
-	} else if (fmac->cfg->mq_rx_supported) {
+	else if (fmac->trans->trans_cfg->mq_rx_supported)
 		trans_cfg.rx_buf_size = IWL_AMSDU_4K;
-	}
 
 	trans->wide_cmd_header = true;
 	trans_cfg.bc_table_dword =
-		fmac->trans->cfg->device_family < IWL_DEVICE_FAMILY_22560;
+		fmac->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210;
 
 	trans_cfg.command_groups = iwl_fmac_groups;
 	trans_cfg.command_groups_size = ARRAY_SIZE(iwl_fmac_groups);
@@ -1812,7 +1733,7 @@ iwl_op_mode_fmac_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	}
 
 	IWL_INFO(fmac, "Detected %s, REV=0x%X\n",
-		 fmac->cfg->name, fmac->trans->hw_rev);
+		 fmac->trans->name, fmac->trans->hw_rev);
 
 	if (iwlwifi_mod_params.nvm_file)
 		fmac->nvm_file_name = iwlwifi_mod_params.nvm_file;
@@ -1964,7 +1885,10 @@ static void iwl_fmac_rx_notification(struct iwl_fmac *fmac,
 				     struct iwl_rx_packet *pkt)
 {
 	int i, notif_triggered;
+	union iwl_dbg_tlv_tp_data tp_data = { .fw_pkt = pkt };
 
+	iwl_dbg_tlv_time_point(&fmac->fwrt,
+			       IWL_FW_INI_TIME_POINT_FW_RSP_OR_NOTIF, &tp_data);
 	iwl_fmac_rx_check_trigger(fmac, pkt);
 
 	/*
@@ -2240,7 +2164,6 @@ static void iwl_op_mode_fmac_stop(struct iwl_op_mode *op_mode)
 
 	cancel_work_sync(&fmac->async_handlers_wk);
 	iwl_fmac_async_handlers_purge(fmac);
-	iwl_fw_cancel_dumps(&fmac->fwrt);
 	cancel_work_sync(&fmac->restart_wk);
 	kfree(fmac->error_recovery_buf);
 	flush_work(&fmac->add_stream_wk);

@@ -97,6 +97,7 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(u32, XVT_DEFAULT_DBGM_PRPH_MASK)
 	IWL_MOD_PARAM(bool, xvt_default_mode)
 #endif
+	IWL_DBG_CFG_NODEF(bool, disable_wrt_dump)
 	IWL_DBG_CFG_NODEF(bool, disable_52GHz)
 	IWL_DBG_CFG_NODEF(bool, disable_24GHz)
 #if IS_ENABLED(CPTCFG_IWLMVM) || IS_ENABLED(CPTCFG_IWLFMAC)
@@ -211,6 +212,7 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(bool, MVM_FTM_INITIATOR_FAST_ALGO_DISABLE)
 	IWL_DBG_CFG(bool, MVM_D3_DEBUG)
 	IWL_DBG_CFG(bool, MVM_USE_TWT)
+	IWL_DBG_CFG(u32, MVM_AMPDU_CONSEC_DROPS_DELBA)
 	IWL_MVM_MOD_PARAM(int, power_scheme)
 	IWL_MVM_MOD_PARAM(bool, init_dbg)
 	IWL_MVM_MOD_PARAM(bool, tfd_q_hang_detect)
@@ -292,12 +294,14 @@ struct iwl_dbg_cfg {
 	IWL_MOD_PARAM(int, amsdu_size)
 	IWL_MOD_PARAM(int, swcrypto)
 	IWL_MOD_PARAM(uint, disable_11n)
+	IWL_MOD_PARAM(bool, enable_ini)
 	IWL_DBG_CFG_BIN(he_ppe_thres)
 	IWL_DBG_CFG_NODEF(u8, he_chan_width_dis)
 	IWL_DBG_CFG_NODEF(u32, vht_cap_flip)
 	IWL_DBG_CFG_NODEF(u32, mu_edca)
 	IWL_DBG_CFG_BIN(he_mac_cap)
 	IWL_DBG_CFG_BIN(he_phy_cap)
+	IWL_DBG_CFG(u32, FW_DBG_DOMAIN)
 #ifdef CPTCFG_IWLWIFI_DEBUG
 	IWL_MOD_PARAM(u32, debug_level)
 #endif /* CPTCFG_IWLWIFI_DEBUG */

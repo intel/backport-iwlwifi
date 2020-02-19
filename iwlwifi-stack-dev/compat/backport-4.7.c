@@ -120,8 +120,7 @@ EXPORT_SYMBOL_GPL(nla_put_64bit);
  * Below 3.18 or if the kernel has devcoredump disabled, we copied the
  * entire devcoredump, so no need to define these functions.
  */
-#if (LINUX_VERSION_IS_GEQ(3,18,0) ||			\
-     RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,6)) &&	\
+#if LINUX_VERSION_IS_GEQ(3,18,0) && \
 	!defined(CPTCFG_BPAUTO_BUILD_WANT_DEV_COREDUMP)
 #include <linux/devcoredump.h>
 #include <linux/scatterlist.h>

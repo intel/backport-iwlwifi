@@ -1,7 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016 Qualcomm Atheros, Inc
- *
- * GPL v2
  *
  * Based on net/sched/sch_fq_codel.c
  */
@@ -107,21 +106,31 @@ begin:
 	return skb;
 }
 
+static u32 fq_flow_idx(struct fq *fq, struct sk_buff *skb)
+{
+#if LINUX_VERSION_IS_GEQ(5,3,10) || \
+    LINUX_VERSION_IN_RANGE(4,19,83, 4,20,0) || \
+    LINUX_VERSION_IN_RANGE(4,14,153, 4,15,0) || \
+    LINUX_VERSION_IN_RANGE(4,9,200, 4,10,0) || \
+    LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0)
+	u32 hash = skb_get_hash_perturb(skb, &fq->perturbation);
+#else
+	u32 hash = skb_get_hash_perturb(skb, fq->perturbation);
+#endif
+
+	return reciprocal_scale(hash, fq->flows_cnt);
+}
+
 static struct fq_flow *fq_flow_classify(struct fq *fq,
-					struct fq_tin *tin,
+					struct fq_tin *tin, u32 idx,
 					struct sk_buff *skb,
 					fq_flow_get_default_t get_default_func)
 {
 	struct fq_flow *flow;
-	u32 hash;
-	u32 idx;
 
 	lockdep_assert_held(&fq->lock);
 
-	hash = skb_get_hash_perturb(skb, fq->perturbation);
-	idx = reciprocal_scale(hash, fq->flows_cnt);
 	flow = &fq->flows[idx];
-
 	if (flow->tin && flow->tin != tin) {
 		flow = get_default_func(fq, tin, idx, skb);
 		tin->collisions++;
@@ -153,7 +162,7 @@ static void fq_recalc_backlog(struct fq *fq,
 }
 
 static void fq_tin_enqueue(struct fq *fq,
-			   struct fq_tin *tin,
+			   struct fq_tin *tin, u32 idx,
 			   struct sk_buff *skb,
 			   fq_skb_free_t free_func,
 			   fq_flow_get_default_t get_default_func)
@@ -163,7 +172,7 @@ static void fq_tin_enqueue(struct fq *fq,
 
 	lockdep_assert_held(&fq->lock);
 
-	flow = fq_flow_classify(fq, tin, skb, get_default_func);
+	flow = fq_flow_classify(fq, tin, idx, skb, get_default_func);
 
 	flow->tin = tin;
 	flow->backlog += skb->len;
@@ -307,7 +316,7 @@ static int fq_init(struct fq *fq, int flows_cnt)
 	INIT_LIST_HEAD(&fq->backlogs);
 	spin_lock_init(&fq->lock);
 	fq->flows_cnt = max_t(u32, flows_cnt, 1);
-	fq->perturbation = prandom_u32();
+	get_random_bytes(&fq->perturbation, sizeof(fq->perturbation));
 	fq->quantum = 300;
 	fq->limit = 8192;
 	fq->memory_limit = 16 << 20; /* 16 MBytes */

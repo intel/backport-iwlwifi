@@ -5,7 +5,7 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2018         Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -25,7 +25,7 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2018 Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -191,7 +191,7 @@ bool iwl_xvt_reorder(struct iwl_xvt *xvt, struct iwl_rx_packet *pkt)
 	if (baid >= IWL_MAX_BAID)
 		return false;
 
-	if (xvt->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560)
+	if (xvt->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
 		hdr = (void *)(pkt->data + sizeof(struct iwl_rx_mpdu_desc));
 	else
 		hdr = (void *)(pkt->data + IWL_RX_DESC_SIZE_V1);

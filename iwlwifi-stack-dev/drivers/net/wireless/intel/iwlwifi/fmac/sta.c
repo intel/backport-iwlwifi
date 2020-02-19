@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 Intel Corporation
+ * Copyright (C) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 Intel Corporation
+ * Copyright (C) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -194,7 +194,6 @@ static void iwl_fmac_remove_sta(struct iwl_fmac *fmac, struct iwl_fmac_sta *sta)
 	/* sanity check that it was removed elsewhere */
 	switch (sta->vif->wdev.iftype) {
 	case NL80211_IFTYPE_STATION:
-	case NL80211_IFTYPE_P2P_CLIENT:
 		WARN_ON(rcu_access_pointer(sta->vif->u.mgd.ap_sta) == sta);
 		break;
 	default:
@@ -306,30 +305,17 @@ static void iwl_fmac_destroy_sta(struct iwl_fmac *fmac,
 	iwl_fmac_dbgfs_del_sta(fmac, sta);
 
 	if (likely(!hw_error)) {
-		if (sta->vif->wdev.iftype != NL80211_IFTYPE_AP) {
-			struct iwl_fmac_sta_removed cmd = {
-				.vif_id = sta->vif->id,
-				.sta_id = sta->sta_id,
-			};
+		struct iwl_fmac_sta_removed cmd = {
+			.vif_id = sta->vif->id,
+			.sta_id = sta->sta_id,
+		};
 
-			/* acknowledge the removal to the firmware */
-			WARN(iwl_fmac_send_cmd_pdu(fmac,
-					iwl_cmd_id(FMAC_ACK_STA_REMOVED,
-						   FMAC_GROUP, 0), 0,
-						   sizeof(cmd), &cmd),
-			     "Failed to acknowledge station removal\n");
-		} else {
-			struct iwl_fmac_host_ap_sta_cmd cmd = {
-				.action = IWL_FMAC_REM_HOST_BASED_STA,
-				.sta_id = sta->sta_id,
-				.vif_id = sta->vif->id,
-			};
-			WARN(iwl_fmac_send_cmd_pdu(fmac,
-					iwl_cmd_id(FMAC_HOST_BASED_AP_STA,
-						   FMAC_GROUP, 0), 0,
-						   sizeof(cmd), &cmd),
-			     "Failed to remove the station\n");
-		}
+		/* acknowledge the removal to the firmware */
+		WARN(iwl_fmac_send_cmd_pdu(fmac,
+					   iwl_cmd_id(FMAC_ACK_STA_REMOVED,
+						      FMAC_GROUP, 0), 0,
+					   sizeof(cmd), &cmd),
+		     "Failed to acknowledge station removal\n");
 	}
 
 	kfree(sta->dup_data);
@@ -351,31 +337,6 @@ void iwl_fmac_free_sta(struct iwl_fmac *fmac, u8 sta_id, bool hw_error)
 	synchronize_net();
 
 	iwl_fmac_destroy_sta(fmac, sta, hw_error);
-}
-
-void iwl_fmac_free_stas(struct iwl_fmac *fmac,
-			struct iwl_fmac_vif *vif,
-			bool hw_error)
-{
-	struct iwl_fmac_sta *stas[ARRAY_SIZE(fmac->stas)] = {};
-	struct iwl_fmac_sta *sta;
-	int tmp, idx = 0;
-
-	for_each_valid_sta(fmac, sta, tmp) {
-		if (sta->vif != vif)
-			continue;
-		stas[idx] = sta;
-		idx++;
-		iwl_fmac_remove_sta(fmac, sta);
-	}
-
-	synchronize_net();
-
-	for (idx = 0; idx < ARRAY_SIZE(fmac->stas); idx++) {
-		if (!stas[idx])
-			break;
-		iwl_fmac_destroy_sta(fmac, stas[idx], hw_error);
-	}
 }
 
 static void iwl_fmac_tx_deferred_stream(struct iwl_fmac *fmac,
@@ -536,7 +497,7 @@ void iwl_fmac_sta_add_key(struct iwl_fmac *fmac, struct iwl_fmac_sta *sta,
 	case IWL_FMAC_CIPHER_TKIP:
 		new_key->iv_len = IEEE80211_TKIP_IV_LEN;
 
-		if (!fmac->trans->cfg->gen2 && !pairwise)
+		if (!fmac->trans->trans_cfg->gen2 && !pairwise)
 			memcpy(new_key->tkip_mcast_rx_mic_key,
 			       fw_key->tkip_mcast_rx_mic_key,
 			       IWL_TKIP_MCAST_RX_MIC_KEY);
@@ -587,189 +548,4 @@ void iwl_fmac_sta_add_key(struct iwl_fmac *fmac, struct iwl_fmac_sta *sta,
 		if (key_tmp)
 			kfree_rcu(key_tmp, rcu_head);
 	}
-}
-
-static void
-iwl_fmac_host_ap_sta_params(struct wiphy *wiphy, struct iwl_fmac_vif *vif,
-			    const struct station_parameters *params,
-			    const u8 *mac,
-			    struct iwl_fmac_host_ap_sta_cmd *cmd)
-{
-	BUILD_BUG_ON(sizeof(cmd->ht_cap) != sizeof(*params->ht_capa));
-	BUILD_BUG_ON(sizeof(cmd->vht_cap) != sizeof(*params->vht_capa));
-
-	memcpy(cmd->addr, mac, sizeof(cmd->addr));
-
-	if (params->ht_capa) {
-		cmd->flags |= IWL_FMAC_STA_HT_CAPABLE;
-		memcpy(cmd->ht_cap, params->ht_capa, sizeof(cmd->ht_cap));
-		cmd->changed |= cpu_to_le16(IWL_FMAC_STA_HT_CAP_CHANGED);
-	}
-
-	if (params->vht_capa) {
-		cmd->flags |= IWL_FMAC_STA_VHT_CAPABLE;
-		memcpy(cmd->vht_cap, params->vht_capa, sizeof(cmd->vht_cap));
-		cmd->changed |= cpu_to_le16(IWL_FMAC_STA_VHT_CAP_CHANGED);
-	}
-
-	if (params->sta_modify_mask & STATION_PARAM_APPLY_UAPSD) {
-		if (params->uapsd_queues & IEEE80211_WMM_IE_STA_QOSINFO_AC_BK)
-			cmd->uapsd_ac |= BIT(AC_BK);
-		if (params->uapsd_queues & IEEE80211_WMM_IE_STA_QOSINFO_AC_BE)
-			cmd->uapsd_ac |= BIT(AC_BE);
-		if (params->uapsd_queues & IEEE80211_WMM_IE_STA_QOSINFO_AC_VI)
-			cmd->uapsd_ac |= BIT(AC_VI);
-		if (params->uapsd_queues & IEEE80211_WMM_IE_STA_QOSINFO_AC_VO)
-			cmd->uapsd_ac |= BIT(AC_VO);
-		if (params->uapsd_queues)
-			cmd->sp_length =
-				params->max_sp ? params->max_sp * 2 : 128;
-		cmd->changed |= cpu_to_le16(IWL_FMAC_STA_UAPSD_PARAMS_CHANGED);
-	}
-
-	if (params->aid &&
-	    params->sta_flags_mask & BIT(NL80211_STA_FLAG_ASSOCIATED) &&
-	    params->sta_flags_set & BIT(NL80211_STA_FLAG_ASSOCIATED)) {
-		cmd->aid = cpu_to_le16(params->aid);
-		cmd->changed |= cpu_to_le16(IWL_FMAC_STA_AID_CHANGED);
-	}
-
-	if (params->supported_rates && params->supported_rates_len) {
-		u16 supp_rates_bm =
-			iwl_fmac_parse_rates(wiphy, vif,
-					     params->supported_rates,
-					     params->supported_rates_len);
-		cmd->supp_rates_bitmap = cpu_to_le16(supp_rates_bm);
-		cmd->changed |= cpu_to_le16(IWL_FMAC_STA_SUPP_RATE_CHANGED);
-	}
-}
-
-static void
-iwl_fmac_host_ap_check_sta_flags(struct iwl_fmac_sta *sta,
-				 const struct station_parameters *params)
-{
-	u32 mask = params->sta_flags_mask;
-	u32 set = params->sta_flags_set;
-
-	if (mask & BIT(NL80211_STA_FLAG_WME))
-		sta->qos = set & BIT(NL80211_STA_FLAG_WME);
-
-	if (mask & BIT(NL80211_STA_FLAG_AUTHORIZED))
-		sta->authorized = set & BIT(NL80211_STA_FLAG_AUTHORIZED);
-
-	if (mask & BIT(NL80211_STA_FLAG_ASSOCIATED))
-		sta->associated = set & BIT(NL80211_STA_FLAG_ASSOCIATED);
-}
-
-int iwl_fmac_host_ap_add_sta(struct wiphy *wiphy, struct net_device *dev,
-			     const u8 *mac,
-			     const struct station_parameters *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	struct iwl_fmac_host_ap_sta_cmd cmd = {
-		.action = IWL_FMAC_ADD_HOST_BASED_STA,
-		.vif_id = vif->id,
-	};
-	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_HOST_BASED_AP_STA, FMAC_GROUP, 0),
-		.data = { &cmd, },
-		.len = { sizeof(cmd) },
-	};
-	struct iwl_fmac_sta *sta;
-	u32 sta_id;
-	int ret;
-
-	lockdep_assert_held(&fmac->mutex);
-
-	iwl_fmac_host_ap_sta_params(wiphy, vif, params, mac, &cmd);
-
-	/* TODO: will be covered later */
-	if (WARN_ON((params->sta_flags_mask & BIT(NL80211_STA_FLAG_MFP)) &&
-		    (params->sta_flags_set  & BIT(NL80211_STA_FLAG_MFP))))
-		return -EINVAL;
-
-	ret = iwl_fmac_send_cmd_status(fmac, &hcmd, &sta_id);
-	if (ret)
-		return ret;
-
-	if (sta_id == IWL_FMAC_HOST_AP_INVALID_STA)
-		return -ENOSPC;
-
-	ret = iwl_fmac_alloc_sta(fmac, vif, sta_id, mac);
-	/*
-	 * This will leave the firmware in an inconsistent state, but
-	 * there isn't much we can do here.
-	 */
-	if (ret)
-		return ret;
-
-	sta = rcu_dereference_protected(fmac->stas[sta_id],
-					lockdep_is_held(&fmac->mutex));
-
-	if (WARN_ON(IS_ERR_OR_NULL(sta)))
-		return -EINVAL;
-
-	iwl_fmac_host_ap_check_sta_flags(sta, params);
-
-	return 0;
-}
-
-int iwl_fmac_host_ap_mod_sta(struct wiphy *wiphy, struct net_device *dev,
-			     const u8 *mac,
-			     const struct station_parameters *params)
-{
-	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
-	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	struct iwl_fmac_host_ap_sta_cmd cmd = {
-		.action = IWL_FMAC_MOD_HOST_BASED_STA,
-		.vif_id = vif->id,
-	};
-	struct iwl_fmac_sta *sta;
-	int ret;
-
-	lockdep_assert_held(&fmac->mutex);
-
-	sta = iwl_get_sta(fmac, mac);
-	if (!sta) {
-		IWL_ERR(fmac, "Couldn't find station %pM\n", mac);
-		return -ENOENT;
-	}
-	cmd.sta_id = sta->sta_id;
-
-	/* TODO: will be covered later */
-	if (WARN_ON((params->sta_flags_mask & BIT(NL80211_STA_FLAG_MFP)) &&
-		    (params->sta_flags_set  & BIT(NL80211_STA_FLAG_MFP))))
-		return -EINVAL;
-
-	iwl_fmac_host_ap_sta_params(wiphy, vif, params, mac, &cmd);
-
-	ret = iwl_fmac_send_cmd_pdu(fmac, iwl_cmd_id(FMAC_HOST_BASED_AP_STA,
-						     FMAC_GROUP, 0), 0,
-				    sizeof(cmd), &cmd);
-	if (ret)
-		return ret;
-
-	iwl_fmac_host_ap_check_sta_flags(sta, params);
-
-	return 0;
-}
-
-void iwl_fmac_host_ap_del_sta(struct iwl_fmac *fmac, struct iwl_fmac_vif *vif,
-			      struct iwl_fmac_sta *sta)
-{
-	lockdep_assert_held(&fmac->mutex);
-
-
-	/*
-	 * Even if we couldn't remove the station from the firwmare, we should
-	 * still clean up our own memory. We set fmac->stas[] to NULL so that
-	 * we won't pass any further frame for that station to the netstack.
-	 */
-
-	RCU_INIT_POINTER(fmac->stas[sta->sta_id], NULL);
-
-	synchronize_net();
-
-	iwl_fmac_destroy_sta(fmac, sta, false);
 }

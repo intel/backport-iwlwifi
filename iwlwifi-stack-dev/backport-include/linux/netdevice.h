@@ -259,8 +259,7 @@ static inline struct sk_buff *napi_alloc_skb(struct napi_struct *napi,
 #define IFF_TX_SKB_SHARING 0
 #endif
 
-#if LINUX_VERSION_IS_LESS(4,1,0) && \
-	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
+#if LINUX_VERSION_IS_LESS(4,1,0)
 netdev_features_t passthru_features_check(struct sk_buff *skb,
 					  struct net_device *dev,
 					  netdev_features_t features);
@@ -292,13 +291,21 @@ static inline void u64_stats_init(struct u64_stats_sync *syncp)
 })
 #endif /* netdev_alloc_pcpu_stats */
 
-#if LINUX_VERSION_IS_LESS(3,19,0)
-#define napi_complete_done LINUX_BACKPORT(napi_complete_done)
-static inline void napi_complete_done(struct napi_struct *n, int work_done)
+#if LINUX_VERSION_IS_LESS(4,10,0)
+static inline bool backport_napi_complete_done(struct napi_struct *n, int work_done)
 {
+	if (unlikely(test_bit(NAPI_STATE_NPSVC, &n->state)))
+		return false;
+
+#if LINUX_VERSION_IS_LESS(3,19,0)
 	napi_complete(n);
-}
+#else
+	napi_complete_done(n, work_done);
 #endif /* < 3.19 */
+	return true;
+}
+#define napi_complete_done LINUX_BACKPORT(napi_complete_done)
+#endif /* < 4.10 */
 
 #if LINUX_VERSION_IS_LESS(4,5,0)
 #define netif_tx_napi_add LINUX_BACKPORT(netif_tx_napi_add)

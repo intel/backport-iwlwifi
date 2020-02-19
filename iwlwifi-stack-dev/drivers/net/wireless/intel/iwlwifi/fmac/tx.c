@@ -176,19 +176,6 @@ static struct sk_buff *iwl_fmac_build_80211_hdr(struct sk_buff *skb,
 			ether_addr_copy(hdr.addr3, skb->data);
 		hdrlen = 24;
 		break;
-	case NL80211_IFTYPE_AP:
-	case NL80211_IFTYPE_P2P_GO:
-		fc |= cpu_to_le16(IEEE80211_FCTL_FROMDS);
-
-		/* DA BSSID SA */
-		ether_addr_copy(hdr.addr1, skb->data);
-		ether_addr_copy(hdr.addr2, dev->dev_addr);
-		if (info->amsdu)
-			ether_addr_copy(hdr.addr3, dev->dev_addr);
-		else
-			ether_addr_copy(hdr.addr3, skb->data + ETH_ALEN);
-		hdrlen = 24;
-		break;
 	default:
 		IWL_WARN(vif->fmac, "Invalid iftype\n");
 		ret = -EINVAL;
@@ -240,7 +227,7 @@ static struct sk_buff *iwl_fmac_build_80211_hdr(struct sk_buff *skb,
 			skb_push(skb, tx->key->iv_len);
 			break;
 		case IWL_FMAC_CIPHER_TKIP:
-			if (fmac->trans->cfg->gen2) {
+			if (fmac->trans->trans_cfg->gen2) {
 				ret = skb_linearize(skb);
 				if (ret)
 					goto free;
@@ -289,7 +276,6 @@ static void iwl_fmac_tx_set_sta(struct sk_buff *skb,
 				struct iwl_fmac_tx_data *tx)
 {
 	struct iwl_fmac_vif *vif = tx->vif;
-	const u8 *addr = skb->data;
 
 	switch (vif->wdev.iftype) {
 	case NL80211_IFTYPE_STATION:
@@ -297,16 +283,6 @@ static void iwl_fmac_tx_set_sta(struct sk_buff *skb,
 		tx->sta = rcu_dereference(vif->u.mgd.ap_sta);
 		if (!tx->sta)
 			IWL_ERR(vif->fmac, "AP station not initialized\n");
-		break;
-	case NL80211_IFTYPE_AP:
-	case NL80211_IFTYPE_P2P_GO:
-		if (is_multicast_ether_addr(addr))
-			addr = MCAST_STA_ADDR;
-
-		tx->sta = iwl_get_sta(vif->fmac, addr);
-		if (!tx->sta)
-			IWL_ERR(vif->fmac, "no destination STA for %pM\n",
-				addr);
 		break;
 	default:
 		WARN_ON_ONCE(1);
@@ -362,20 +338,6 @@ void iwl_fmac_tx_set_key(struct sk_buff *skb, struct iwl_fmac_tx_data *tx)
 	case NL80211_IFTYPE_STATION:
 		if (sta->encryption)
 			tx->key = rcu_dereference(sta->ptk[sta->ptk_idx]);
-		break;
-	case NL80211_IFTYPE_AP:
-	case NL80211_IFTYPE_P2P_GO:
-		if (sta->encryption) {
-			if (is_multicast_ether_addr(sta->addr)) {
-				tx->key =
-					rcu_dereference(sta->gtk[sta->gtk_idx]);
-				WARN_ON_ONCE(!tx->key);
-			} else {
-				tx->key =
-					rcu_dereference(sta->ptk[sta->ptk_idx]);
-				WARN_ON_ONCE(!tx->key);
-			}
-		}
 		break;
 	default:
 		WARN_ON_ONCE(1);
@@ -1268,13 +1230,13 @@ static void iwl_fmac_set_crypto(struct sk_buff *skb,
 /*
  * Allocates and sets the Tx cmd the driver data pointers in the skb
  */
-static struct iwl_device_cmd *
+static struct iwl_device_tx_cmd *
 iwl_fmac_set_tx_params(struct iwl_fmac *fmac, struct sk_buff *skb,
 		       struct iwl_fmac_skb_info *info, int hdrlen
 ,		       struct iwl_fmac_tx_data *tx)
 {
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 
 	if (info->dev_cmd)
 		return info->dev_cmd;
@@ -1284,7 +1246,6 @@ iwl_fmac_set_tx_params(struct iwl_fmac *fmac, struct sk_buff *skb,
 	if (unlikely(!dev_cmd))
 		return NULL;
 
-	memset(dev_cmd, 0, sizeof(*dev_cmd));
 	dev_cmd->hdr.cmd = TX_CMD;
 
 	if (iwl_fmac_has_new_tx_api(fmac)) {
@@ -1306,8 +1267,8 @@ iwl_fmac_set_tx_params(struct iwl_fmac *fmac, struct sk_buff *skb,
 		offload_assist = iwl_fmac_tx_csum(fmac, skb, hdr, tx,
 						  offload_assist);
 
-		if (fmac->trans->cfg->device_family >=
-		    IWL_DEVICE_FAMILY_22560) {
+		if (fmac->trans->trans_cfg->device_family >=
+		    IWL_DEVICE_FAMILY_AX210) {
 			struct iwl_tx_cmd_gen3 *tx_cmd =
 				(void *)dev_cmd->payload;
 
@@ -1347,7 +1308,7 @@ static int iwl_fmac_tx_mpdu(struct iwl_fmac *fmac, struct sk_buff *skb,
 {
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
 	struct iwl_fmac_sta *sta = tx->sta;
-	struct iwl_device_cmd *dev_cmd;
+	struct iwl_device_tx_cmd *dev_cmd;
 	__le16 fc;
 	u16 seq_number = 0;
 	u8 tid = 0; /* If no TID is given - use TID 0 */
@@ -1410,8 +1371,8 @@ static int iwl_fmac_tx_mpdu(struct iwl_fmac *fmac, struct sk_buff *skb,
 	 */
 
 	/* Copy MAC header from skb into command buffer */
-	if (fmac->trans->cfg->device_family >=
-	    IWL_DEVICE_FAMILY_22560) {
+	if (fmac->trans->trans_cfg->device_family >=
+	    IWL_DEVICE_FAMILY_AX210) {
 		struct iwl_tx_cmd_gen3 *tx_cmd = (void *)dev_cmd->payload;
 
 		memcpy(tx_cmd->hdr, hdr, hdrlen);

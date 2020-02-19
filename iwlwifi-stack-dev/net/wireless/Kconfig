@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 config CFG80211
 	tristate "cfg80211 - wireless configuration API"
 	depends on m
@@ -197,6 +198,7 @@ config LIB80211
 config LIB80211_CRYPT_WEP
 	tristate
 	depends on m
+	select BPAUTO_CRYPTO_LIB_ARC4
 
 config LIB80211_CRYPT_CCMP
 	tristate
@@ -205,6 +207,7 @@ config LIB80211_CRYPT_CCMP
 config LIB80211_CRYPT_TKIP
 	tristate
 	depends on m
+	select BPAUTO_CRYPTO_LIB_ARC4
 
 config LIB80211_DEBUG
 	bool "lib80211 debugging messages"

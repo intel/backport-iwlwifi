@@ -33,7 +33,7 @@ extern void backport_dependency_symbol(void);
 		backport_dependency_symbol();				\
 		return initfn();					\
 	}								\
-	int init_module(void) __attribute__((alias("__init_backport")));\
+	int init_module(void) __attribute__((cold,alias("__init_backport")));\
 	BACKPORT_MOD_VERSIONS
 
 /*
@@ -58,7 +58,7 @@ extern void backport_dependency_symbol(void);
 		exitfn();						\
 		rcu_barrier();						\
 	}								\
-	void cleanup_module(void) __attribute__((alias("__exit_compat")));
+	void cleanup_module(void) __attribute__((cold,alias("__exit_compat")));
 #endif
 
 #if LINUX_VERSION_IS_LESS(3,3,0)

@@ -288,6 +288,9 @@ FMAC_DEBUGFS_WRITE_FILE_OPS(scan_type, 4);
 static ssize_t iwl_dbgfs_fw_dbg_collect_write(struct iwl_fmac *fmac,
 					      char *buf, size_t count)
 {
+	iwl_dbg_tlv_time_point(&fmac->fwrt, IWL_FW_INI_TIME_POINT_USER_TRIGGER,
+			       NULL);
+
 	iwl_fw_dbg_collect(&fmac->fwrt, FW_DBG_TRIGGER_USER, buf,
 			   (count - 1), NULL);
 

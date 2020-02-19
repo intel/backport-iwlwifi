@@ -175,10 +175,10 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  
  	hw->wiphy->features |= NL80211_FEATURE_P2P_GO_CTWIN |
  			       NL80211_FEATURE_LOW_PRIORITY_SCAN |
-@@ -754,7 +790,11 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
- 		mvm->wowlan.pattern_min_len = IWL_WOWLAN_MIN_PATTERN_LEN;
+@@ -754,7 +791,11 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
  		mvm->wowlan.pattern_max_len = IWL_WOWLAN_MAX_PATTERN_LEN;
- 		mvm->wowlan.max_nd_match_sets = IWL_SCAN_MAX_PROFILES;
+ 		mvm->wowlan.max_nd_match_sets =
+ 			iwl_umac_scan_get_max_profiles(mvm->fw);
 +#if CFG80211_VERSION >= KERNEL_VERSION(3,11,0)
  		hw->wiphy->wowlan = &mvm->wowlan;
 +#else
@@ -265,6 +265,22 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  	/*
  	 * No need to update right away, we'll get BSS_CHANGED_QOS
  	 * The exception is P2P_DEVICE interface which needs immediate update.
+@@ -4989,6 +4989,7 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
+ 		if (rate_n_flags & RATE_MCS_SGI_MSK)
+ 			rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
+ 	} else if (rate_n_flags & RATE_MCS_HE_MSK) {
++#if CFG80211_VERSION >= KERNEL_VERSION(4,19,0)
+ 		u32 gi_ltf = u32_get_bits(rate_n_flags,
+ 					  RATE_MCS_HE_GI_LTF_MSK);
+ 
+@@ -5033,6 +5034,7 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
+ 
+ 		if (rate_n_flags & RATE_HE_DUAL_CARRIER_MODE)
+ 			rinfo->he_dcm = 1;
++#endif
+ 	} else {
+ 		switch (u32_get_bits(rate_n_flags, RATE_LEGACY_RATE_MSK)) {
+ 		case IWL_RATE_1M_PLCP:
 diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/scan.c b/drivers/net/wireless/intel/iwlwifi/mvm/scan.c
 index 4acee82e230d..98f4161725e5 100644
 --- a/drivers/net/wireless/intel/iwlwifi/mvm/scan.c

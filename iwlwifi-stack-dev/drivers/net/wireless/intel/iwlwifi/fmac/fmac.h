@@ -360,8 +360,6 @@ struct iwl_fmac {
 	/* regulatory */
 	enum iwl_fmac_mcc_source mcc_src;
 
-	/* host based ap */
-	struct iwl_fmac_vif __rcu *host_based_ap_vif;
 	/* CT-kill */
 	struct delayed_work ct_kill_exit;
 #ifdef CONFIG_THERMAL
@@ -380,8 +378,6 @@ struct iwl_fmac {
 #endif
 
 	u64 msrment_cookie_counter;
-
-	struct iwl_fmac_vif __rcu *monitor_vif;
 
 	struct iwl_fmac_connect_params connect_params;
 };
@@ -417,22 +413,7 @@ struct iwl_fmac_vif_mgd {
 	enum iwl_fmac_connect_state connect_state;
 };
 
-enum iwl_fmac_ap_state {
-	IWL_FMAC_AP_STOPPED,
-	IWL_FMAC_AP_STARTED,
-};
-
 #define MCAST_STA_ADDR (const u8 *)"\x03\x00\x00\x00\x00\x00"
-
-struct iwl_fmac_vif_ap {
-	struct iwl_fmac_sta mcast_sta;
-	struct iwl_fmac_sta bcast_sta;
-	enum iwl_fmac_ap_state state;
-	bool isolate;
-	u8 *beacon;
-	int head_len, tail_len;
-	u8 *head, *tail;
-};
 
 struct iwl_fmac_vif {
 	u8 addr[ETH_ALEN];
@@ -447,14 +428,11 @@ struct iwl_fmac_vif {
 
 	union {
 		struct iwl_fmac_vif_mgd mgd;
-		struct iwl_fmac_vif_ap ap;
 	} u;
 
 	int user_power_level; /* in dBm */
 	__be16 control_port_ethertype;
 
-	struct iwl_fmac_chandef chandef;
-	/* used only for host based AP (for now) */
 	struct ieee80211_channel *chan;
 };
 
@@ -513,10 +491,6 @@ struct iwl_fmac_mod_params {
 	 *	an ASSERT in INIT image
 	 */
 	bool init_dbg;
-	/**
-	 * @host_based_ap: true if the AP mode should be host_based
-	 */
-	bool host_based_ap;
 	/**
 	 * @amsdu_delay: Force A-MSDU building by delaying packets by this many
 	 *	milliseconds. Defaults to 0 to not introduce latency at all.
@@ -578,7 +552,7 @@ struct iwl_fmac_tx_data {
  */
 struct iwl_fmac_skb_info {
 	struct {
-		struct iwl_device_cmd *dev_cmd;
+		struct iwl_device_tx_cmd *dev_cmd;
 		u64 cookie;
 		void *trans[2];
 	};
@@ -595,10 +569,6 @@ struct net_device *iwl_fmac_create_netdev(struct iwl_fmac *fmac,
 					  unsigned char name_assign_type,
 					  enum nl80211_iftype iftype,
 					  struct vif_params *params);
-struct wireless_dev *
-iwl_fmac_create_non_netdev_iface(struct iwl_fmac *fmac,
-				 struct vif_params *params,
-				 enum nl80211_iftype iftype);
 void iwl_fmac_destroy_vif(struct iwl_fmac_vif *vif);
 void iwl_fmac_nic_restart(struct iwl_fmac *fmac, bool recover);
 
@@ -636,12 +606,12 @@ iwl_fmac_send_config_u32(struct iwl_fmac *fmac,
 static inline bool iwl_fmac_has_new_tx_api(struct iwl_fmac *fmac)
 {
 	/* TODO - replace with TLV once defined */
-	return fmac->trans->cfg->use_tfh;
+	return fmac->trans->trans_cfg->use_tfh;
 }
 
 static inline bool iwl_fmac_has_unified_ucode(struct iwl_fmac *fmac)
 {
-	return fmac->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22000;
+	return fmac->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000;
 }
 
 /* vendor cmd */
@@ -660,9 +630,6 @@ int iwl_fmac_send_nvm_cmd(struct iwl_fmac *fmac);
 int iwl_fmac_alloc_sta(struct iwl_fmac *fmac, struct iwl_fmac_vif *vif,
 		       u8 sta_id, const u8 *addr);
 void iwl_fmac_free_sta(struct iwl_fmac *fmac, u8 sta_id, bool hw_error);
-void iwl_fmac_free_stas(struct iwl_fmac *fmac,
-			struct iwl_fmac_vif *vif,
-			bool hw_error);
 void iwl_fmac_destroy_sta_tids(struct iwl_fmac *fmac, struct iwl_fmac_sta *sta,
 			       bool hw_error);
 void iwl_fmac_flush_sta_queues(struct iwl_fmac *fmac, struct iwl_fmac_sta *sta);
@@ -680,17 +647,6 @@ int iwl_fmac_add_mcast_sta(struct iwl_fmac *fmac,
 			   u8 mq_id, bool bcast);
 void iwl_fmac_remove_mcast_sta(struct iwl_fmac *fmac,
 			       struct iwl_fmac_sta *mc_sta);
-int iwl_fmac_host_ap_add_sta(struct wiphy *wiphy, struct net_device *dev,
-			     const u8 *mac,
-			     const struct station_parameters *params);
-int iwl_fmac_host_ap_mod_sta(struct wiphy *wiphy, struct net_device *dev,
-			     const u8 *mac,
-			     const struct station_parameters *params);
-void iwl_fmac_host_ap_del_sta(struct iwl_fmac *fmac, struct iwl_fmac_vif *vif,
-			      struct iwl_fmac_sta *sta);
-
-/* AP */
-void iwl_fmac_clear_ap_state(struct iwl_fmac *fmac, struct iwl_fmac_vif *vif);
 
 /* TXQ */
 struct iwl_fmac_txq_scd_cfg {

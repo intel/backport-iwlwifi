@@ -1371,3 +1371,133 @@ cfg80211_rx_assoc_resp(dev, bss, mgmt, len, uapsd_queues, ies, ies_len);
 +#else
 +cfg80211_rx_assoc_resp(dev, bss, mgmt, len, uapsd_queues);
 +#endif
+
+@probe_mesh_link@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,2,0)
+	.probe_mesh_link = fn,
++#endif
+...
+};
+
+@@
+identifier probe_mesh_link.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,2,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(5,4,0)
+case NL80211_BAND_6GHZ:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression band;
+@@
+-band == NL80211_BAND_6GHZ
++nl80211_is_6ghz(band)
+
+@@
+expression band;
+@@
+-band != NL80211_BAND_6GHZ
++ !nl80211_is_6ghz(band)
+
+@@
+struct cfg80211_pmsr_request_peer *peer;
+@@
+-peer->ftm.trigger_based
++ftm_trigger_based(peer)
+@@
+struct cfg80211_pmsr_request_peer *peer;
+@@
+-peer->ftm.non_trigger_based
++ftm_non_trigger_based(peer)
+
+@@
+identifier capa;
+expression e, f;
+@@
+struct cfg80211_pmsr_capabilities capa = {
+...,
+.ftm = {
++#if CFG80211_VERSION >= KERNEL_VERSION(9,9,9)
+.trigger_based = e,
+.non_trigger_based = f,
++#endif
+},
+...,
+};
+
+@@
+@@
+-BIT(NL80211_PREAMBLE_HE)
++ieee80211_preamble_he()
+
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(9,9,9)
+local->hw_scan_req->req.scan_6ghz_params = E;
++#endif
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(9,9,9)
+local->hw_scan_req->req.scan_6ghz = E;
++#endif
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(9,9,9)
+local->hw_scan_req->req.n_6ghz_params = E;
++#endif
+
+@@
+identifier vendor;
+expression e;
+@@
+struct wiphy_vendor_command vendor[] = {
+...,
+	{
+		...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,3,0)
+		.policy = e,
++#endif
+	},
+...
+};
+
+@@
+identifier vendor;
+expression e;
+@@
+struct wiphy_vendor_command vendor[] = {
+...,
+	{
+		...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,3,0)
+		.maxattr = e,
++#endif
+	},
+...
+};

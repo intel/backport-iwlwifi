@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -128,11 +128,6 @@ static bool iwl_fmac_accept_frame(struct iwl_fmac *fmac,
 		if (!ieee80211_has_fromds(fc))
 			return false;
 		return mcast || ether_addr_equal(rx->vif->addr, hdr->addr1);
-	case NL80211_IFTYPE_AP:
-	case NL80211_IFTYPE_P2P_GO:
-		if (!ieee80211_has_tods(fc))
-			return false;
-		return mcast || ether_addr_equal(rx->vif->addr, hdr->addr1);
 	default:
 		WARN(1, "iftype not supported %d\n",
 		     rx->vif->wdev.iftype);
@@ -143,7 +138,8 @@ static bool iwl_fmac_accept_frame(struct iwl_fmac *fmac,
 static int iwl_fmac_get_signal_mbm(struct iwl_fmac *fmac,
 				   struct iwl_rx_mpdu_desc *desc)
 {
-	bool v3 = fmac->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560;
+	bool v3 = fmac->trans->trans_cfg->device_family >=
+		IWL_DEVICE_FAMILY_AX210;
 	int energy_a = (v3) ? desc->v3.energy_a : desc->v1.energy_a;
 	int energy_b = (v3) ? desc->v3.energy_b : desc->v1.energy_b;
 
@@ -592,7 +588,7 @@ static bool iwl_fmac_accept_rx_crypto(struct iwl_fmac *fmac,
 		preskb->crypt_len = IEEE80211_CCMP_HDR_LEN;
 		return true;
 	case IWL_RX_MPDU_STATUS_SEC_TKIP:
-		if (fmac->trans->cfg->gen2)
+		if (fmac->trans->trans_cfg->gen2)
 			preskb->mmic_failure =
 				!(status & RX_MPDU_RES_STATUS_MIC_OK);
 		else
@@ -804,7 +800,7 @@ static bool iwl_fmac_accept_tkip_tsc(struct iwl_fmac *fmac,
 	     iv16 <= key->q[rx->queue].tsc[tid].iv16))
 		return false;
 
-	if (!fmac->trans->cfg->gen2) {
+	if (!fmac->trans->trans_cfg->gen2) {
 #ifdef CPTCFG_IWLFMAC_9000_SUPPORT
 		u8 mic[MICHAEL_MIC_LEN];
 		unsigned int hdrlen;
@@ -848,13 +844,11 @@ static bool iwl_fmac_accept_tkip_tsc(struct iwl_fmac *fmac,
 			*((__le16 *)(cmd.rsc + sizeof(iv32))) =
 				cpu_to_le16(iv16);
 
-			mutex_lock(&fmac->mutex);
 			iwl_fmac_send_cmd_pdu(fmac,
 					      iwl_cmd_id(FMAC_TKIP_SET_MCAST_RSC,
 							 FMAC_GROUP,
 							 0),
 					      CMD_ASYNC, sizeof(cmd), &cmd);
-			mutex_unlock(&fmac->mutex);
 		}
 #else
 		WARN(1, "TKIP MIC supported only with 9000 devices");
@@ -868,12 +862,10 @@ static bool iwl_fmac_accept_tkip_tsc(struct iwl_fmac *fmac,
 			.pairwise = !is_multicast_ether_addr(hdr->addr1)
 		};
 
-		mutex_lock(&fmac->mutex);
 		iwl_fmac_send_cmd_pdu(fmac,
 				      iwl_cmd_id(FMAC_MIC_FAILURE, FMAC_GROUP,
 						 0),
 				      CMD_ASYNC, sizeof(cmd), &cmd);
-		mutex_unlock(&fmac->mutex);
 
 		return false;
 	}
@@ -936,43 +928,6 @@ static bool iwl_fmac_rx_crypto_skb(struct iwl_fmac *fmac, struct rx_data *rx,
 	}
 }
 
-/* returns true if frame should be passed to upper stack */
-static bool iwl_fmac_forward_frames(struct iwl_fmac *fmac, struct rx_data *rx,
-				    struct sk_buff *skb)
-{
-	struct sk_buff *out_skb = NULL;
-
-	if ((rx->vif->wdev.iftype != NL80211_IFTYPE_AP &&
-	     rx->vif->wdev.iftype != NL80211_IFTYPE_P2P_GO) ||
-	    rx->vif->u.ap.isolate)
-		return true;
-
-	if (is_multicast_ether_addr(skb->data)) {
-		/* multicast to both */
-		out_skb = skb_copy(skb, GFP_ATOMIC);
-	} else {
-		struct iwl_fmac_sta *dest;
-
-		/* redirect unicast if we know the station */
-		dest = iwl_get_sta(fmac, skb->data);
-		if (dest) {
-			out_skb = skb;
-			skb = NULL;
-		}
-	}
-
-	if (out_skb) {
-		out_skb->priority += 256;
-		out_skb->protocol = htons(ETH_P_802_3);
-		skb_reset_network_header(out_skb);
-		skb_reset_mac_header(out_skb);
-		out_skb->dev = rx->vif->wdev.netdev;
-		dev_queue_xmit(out_skb);
-	}
-
-	return !!skb;
-}
-
 static bool iwl_fmac_rx_control_port_check(struct rx_data *rx,
 					   struct sk_buff *skb)
 {
@@ -1003,10 +958,6 @@ static void iwl_fmac_prepare_and_deliver_skb(struct iwl_fmac *fmac,
 	if (!iwl_fmac_rx_control_port_check(rx, skb))
 		return;
 
-	/* forward to internal stations if needed */
-	if (!iwl_fmac_forward_frames(fmac, rx, skb))
-		return;
-
 	skb->protocol = eth_type_trans(skb, rx->vif->wdev.netdev);
 	if (rx->napi)
 		napi_gro_receive(rx->napi, skb);
@@ -1022,8 +973,6 @@ static bool iwl_fmac_accept_eth_frame(struct iwl_fmac *fmac,
 
 	switch (rx->vif->wdev.iftype) {
 	case NL80211_IFTYPE_STATION:
-	case NL80211_IFTYPE_AP:
-	case NL80211_IFTYPE_P2P_GO:
 		return mcast || ether_addr_equal(rx->vif->addr, hdr->h_dest);
 	default:
 		WARN(1, "iftype not supported %d\n", rx->vif->wdev.iftype);
@@ -1084,10 +1033,6 @@ static void iwl_fmac_rx_frame_eth(struct iwl_fmac *fmac, void *payload,
 	iwl_fmac_create_eth_skb(fmac, preskb, skb, hdr);
 
 	if (!iwl_fmac_rx_control_port_check(rx, skb))
-		return;
-
-	/* forward to internal stations if needed */
-	if (!iwl_fmac_forward_frames(fmac, rx, skb))
 		return;
 
 	skb->protocol = eth_type_trans(skb, rx->vif->wdev.netdev);
@@ -1173,8 +1118,8 @@ static void iwl_fmac_update_sta_rx_stats(struct iwl_fmac *fmac,
 					 struct rx_preskb_data *preskb)
 {
 	struct iwl_fmac_rx_stats *stats = this_cpu_ptr(sta->info.pcpu_rx_stats);
-	__le32 rate_n_flags = (fmac->trans->cfg->device_family >=
-			       IWL_DEVICE_FAMILY_22560) ?
+	__le32 rate_n_flags = (fmac->trans->trans_cfg->device_family >=
+			       IWL_DEVICE_FAMILY_AX210) ?
 		preskb->desc->v3.rate_n_flags : preskb->desc->v1.rate_n_flags;
 
 	stats->last_rx = jiffies;
@@ -1199,385 +1144,13 @@ enum {
 	IWL_RATE_11M_IEEE = 22,
 };
 
-static int iwl_fmac_fw_legacy_rate_to_ieee_rate(int rate)
-{
-	switch (rate) {
-	/* OFDM */
-	case 0xD:
-		return IWL_RATE_6M_IEEE;
-	case 0xF:
-		return IWL_RATE_9M_IEEE;
-	case 0x5:
-		return IWL_RATE_12M_IEEE;
-	case 0x7:
-		return IWL_RATE_18M_IEEE;
-	case 0x9:
-		return IWL_RATE_24M_IEEE;
-	case 0xB:
-		return IWL_RATE_36M_IEEE;
-	case 0x1:
-		return IWL_RATE_48M_IEEE;
-	case 0x3:
-		return IWL_RATE_54M_IEEE;
-	/* CCK */
-	case 10:
-		return IWL_RATE_1M_IEEE;
-	case 20:
-		return IWL_RATE_2M_IEEE;
-	case 55:
-		return IWL_RATE_5M_IEEE;
-	case 110:
-		return IWL_RATE_11M_IEEE;
-	default:
-		return -EINVAL;
-	}
-}
-
-/* Caution: rt_hdr buffer is NOT set to zero (all bytes need to be assigned) */
-static int iwl_fmac_rx_fill_radiotap(struct iwl_fmac *fmac,
-				     struct ieee80211_radiotap_header *rt_hdr,
-				     struct rx_preskb_data *preskb)
-{
-	__le32 *it_present = &rt_hdr->it_present;
-	u32 it_present_val, rate_n_flags, gp2_on_air_rise;
-	u8 channel, band, *pos;
-	u16 phy_info, rx_status, freq, channel_flags;
-	u64 tsf_on_air_rise;
-	s8 signal[2]; /* antenna A and B */
-	bool legacy;
-	int chain, rt_len, legacy_rate;
-	unsigned long chains;
-	bool rx_ext =
-		fmac->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560;
-
-	rt_hdr->it_version = 0;
-	rt_hdr->it_pad = 0;
-
-	phy_info = le16_to_cpu(preskb->desc->phy_info);
-	rx_status = le16_to_cpu(preskb->desc->status);
-	if (!rx_ext) {
-		rate_n_flags = le32_to_cpu(preskb->desc->v1.rate_n_flags);
-		tsf_on_air_rise = le64_to_cpu(preskb->desc->v1.tsf_on_air_rise);
-		channel = preskb->desc->v1.channel;
-		signal[0] = preskb->desc->v1.energy_a
-				? -preskb->desc->v1.energy_a : S8_MIN;
-		signal[1] = preskb->desc->v1.energy_b
-				? -preskb->desc->v1.energy_b : S8_MIN;
-		gp2_on_air_rise = le32_to_cpu(preskb->desc->v1.gp2_on_air_rise);
-	} else {
-		rate_n_flags = le32_to_cpu(preskb->desc->v3.rate_n_flags);
-		tsf_on_air_rise = le64_to_cpu(preskb->desc->v3.tsf_on_air_rise);
-		channel = preskb->desc->v3.channel;
-		signal[0] = preskb->desc->v3.energy_a
-				? -preskb->desc->v3.energy_a : S8_MIN;
-		signal[1] = preskb->desc->v3.energy_b
-				? -preskb->desc->v3.energy_b : S8_MIN;
-		gp2_on_air_rise = le32_to_cpu(preskb->desc->v3.gp2_on_air_rise);
-	}
-
-	chains = (rate_n_flags & RATE_MCS_ANT_AB_MSK) >> RATE_MCS_ANT_POS;
-	legacy = !(rate_n_flags & (RATE_MCS_HT_MSK |
-				   RATE_MCS_VHT_MSK |
-				   RATE_MCS_HE_MSK));
-	band = channel > 14 ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ;
-	freq = ieee80211_channel_to_frequency(channel, band);
-
-	it_present_val = BIT(IEEE80211_RADIOTAP_FLAGS) |
-			 BIT(IEEE80211_RADIOTAP_CHANNEL) |
-			 BIT(IEEE80211_RADIOTAP_RX_FLAGS) |
-			 BIT(IEEE80211_RADIOTAP_DBM_ANTSIGNAL) |
-			 BIT(IEEE80211_RADIOTAP_TIMESTAMP);
-
-	for_each_set_bit(chain, &chains, 2) {
-		it_present_val |=
-			BIT(IEEE80211_RADIOTAP_EXT) |
-			BIT(IEEE80211_RADIOTAP_RADIOTAP_NAMESPACE);
-		put_unaligned_le32(it_present_val, it_present);
-		it_present++;
-		it_present_val = BIT(IEEE80211_RADIOTAP_ANTENNA) |
-				 BIT(IEEE80211_RADIOTAP_DBM_ANTSIGNAL);
-	}
-	put_unaligned_le32(it_present_val, it_present);
-	pos = (u8 *)(it_present + 1);
-
-	/* MAC timestamp */
-	if (!(phy_info & IWL_RX_MPDU_PHY_TSF_OVERLOAD)) {
-		/* 2 byte alignment */
-		while ((pos - (u8 *)rt_hdr) & 7)
-			*pos++ = 0;
-		/*
-		 * TODO: calculate real timestamp based also on mpdu length
-		 * and rate
-		 */
-		put_unaligned_le64(tsf_on_air_rise, pos);
-		rt_hdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_TSFT);
-		pos += 8;
-	}
-
-	/* Flags */
-	*pos = IEEE80211_RADIOTAP_F_FCS;
-	if (!(rx_status & IWL_RX_MPDU_STATUS_CRC_OK) ||
-	    !(rx_status & IWL_RX_MPDU_STATUS_OVERRUN_OK))
-		*pos |= IEEE80211_RADIOTAP_F_BADFCS;
-	if (rate_n_flags & RATE_MCS_CCK_MSK &&
-	    phy_info & IWL_RX_MPDU_PHY_SHORT_PREAMBLE)
-		*pos |= IEEE80211_RADIOTAP_F_SHORTPRE;
-	pos++;
-
-	/* Data Rate */
-	*pos = 0;
-	if (legacy) {
-		rt_hdr->it_present |=
-				cpu_to_le32(1 << IEEE80211_RADIOTAP_RATE);
-		legacy_rate =
-			iwl_fmac_fw_legacy_rate_to_ieee_rate(
-					rate_n_flags & RATE_LEGACY_RATE_MSK);
-		if (!WARN_ON_ONCE(legacy_rate < 0))
-			*pos = legacy_rate;
-	}
-	pos++;
-
-	/* Channel frequency */
-	put_unaligned_le16(freq, pos);
-	pos += 2;
-
-	/* Channel flags */
-	if (band == NL80211_BAND_5GHZ) {
-		channel_flags = IEEE80211_CHAN_OFDM | IEEE80211_CHAN_5GHZ;
-	} else if (!legacy) {
-		channel_flags = IEEE80211_CHAN_DYN | IEEE80211_CHAN_2GHZ;
-	} else if (legacy_rate != IWL_RATE_1M_IEEE &&
-		   legacy_rate != IWL_RATE_2M_IEEE &&
-		   legacy_rate != IWL_RATE_5M_IEEE &&
-		   legacy_rate != IWL_RATE_11M_IEEE) {
-		/* note: 'legacy' is true => legacy_rate was set before */
-		channel_flags = IEEE80211_CHAN_OFDM | IEEE80211_CHAN_2GHZ;
-	} else {
-		channel_flags = IEEE80211_CHAN_CCK | IEEE80211_CHAN_2GHZ;
-	}
-	put_unaligned_le16(channel_flags, pos);
-	pos += 2;
-
-	/* SSI Signal */
-	*pos++ = max(signal[0], signal[1]);
-
-	/* 2 byte alignment */
-	if ((pos - (u8 *)rt_hdr) & 1)
-		*pos++ = 0;
-
-	/* RX flags */
-	put_unaligned_le16(0, pos);
-	pos += 2;
-
-	/* HT information */
-	if (rate_n_flags & RATE_MCS_HT_MSK) {
-		u8 stbc =
-			(rate_n_flags & RATE_MCS_STBC_MSK) >> RATE_MCS_STBC_POS;
-
-		rt_hdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_MCS);
-
-		*pos++ = 0x3f; /* all bits from ieee80211_radiotap_mcs_have */
-
-		*pos = stbc << IEEE80211_RADIOTAP_MCS_STBC_SHIFT;
-		if (!(rate_n_flags & RATE_MCS_CCK_MSK) &&
-		    (rate_n_flags & RATE_MCS_SGI_MSK))
-			*pos |= IEEE80211_RADIOTAP_MCS_SGI;
-		if ((rate_n_flags & RATE_MCS_CHAN_WIDTH_MSK) ==
-			RATE_MCS_CHAN_WIDTH_40)
-			*pos |= IEEE80211_RADIOTAP_MCS_BW_40;
-		if (rate_n_flags & RATE_HT_MCS_GF_MSK)
-			*pos |= IEEE80211_RADIOTAP_MCS_FMT_GF;
-		if (rate_n_flags & RATE_MCS_LDPC_MSK)
-			*pos |= IEEE80211_RADIOTAP_MCS_FEC_LDPC;
-		pos++;
-
-		*pos++ = rate_n_flags & RATE_HT_MCS_INDEX_MSK;
-	}
-
-	/* A-MPDU status */
-	if (phy_info & IWL_RX_MPDU_PHY_AMPDU) {
-		bool toggle_bit = phy_info & IWL_RX_MPDU_PHY_AMPDU_TOGGLE;
-		u16 flags = 0;
-		static u32 ampdu_ref;
-		static bool ampdu_toggle;
-
-		/* 4 byte alignment */
-		while ((pos - (u8 *)rt_hdr) & 3)
-			*pos++ = 0;
-
-		rt_hdr->it_present |=
-			cpu_to_le32(1 << IEEE80211_RADIOTAP_AMPDU_STATUS);
-
-		put_unaligned_le32(ampdu_ref, pos);
-		pos += 4;
-
-		if (toggle_bit != ampdu_toggle) {
-			ampdu_toggle = toggle_bit;
-			ampdu_ref++;
-		}
-
-		/* TODO: HE EOF flags */
-		put_unaligned_le16(flags, pos);
-		pos += 2;
-
-		put_unaligned_le16(0, pos);
-		pos += 2;
-	}
-
-	/* VHT information */
-	if (rate_n_flags & RATE_MCS_VHT_MSK) {
-		u32 mcs = (rate_n_flags & RATE_HT_MCS_INDEX_MSK);
-		u32 nss = ((rate_n_flags & RATE_VHT_MCS_NSS_MSK) >>
-						RATE_VHT_MCS_NSS_POS) + 1;
-		u16 known = IEEE80211_RADIOTAP_VHT_KNOWN_GI |
-			    IEEE80211_RADIOTAP_VHT_KNOWN_BANDWIDTH |
-			    IEEE80211_RADIOTAP_VHT_KNOWN_STBC |
-			    IEEE80211_RADIOTAP_VHT_KNOWN_BEAMFORMED;
-
-		rt_hdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_VHT);
-		put_unaligned_le16(known, pos);
-		pos += 2;
-
-		*pos = 0;
-		if (!(rate_n_flags & RATE_MCS_CCK_MSK) &&
-		    (rate_n_flags & RATE_MCS_SGI_MSK))
-			*pos |= IEEE80211_RADIOTAP_MCS_SGI;
-		if (rate_n_flags & RATE_MCS_STBC_MSK)
-			*pos |= IEEE80211_RADIOTAP_VHT_FLAG_STBC;
-		if (rate_n_flags & RATE_MCS_BF_MSK)
-			*pos |= IEEE80211_RADIOTAP_VHT_FLAG_BEAMFORMED;
-		pos++;
-
-		switch (rate_n_flags & RATE_MCS_CHAN_WIDTH_MSK) {
-		case RATE_MCS_CHAN_WIDTH_40:
-			*pos++ = 1;
-			break;
-		case RATE_MCS_CHAN_WIDTH_80:
-			*pos++ = 4;
-			break;
-		case RATE_MCS_CHAN_WIDTH_160:
-			*pos++ = 11;
-			break;
-		default:
-			*pos++ = 0;
-		}
-
-		/* MCS index and NSS */
-		put_unaligned_le32((mcs << 4) | nss, pos);
-		pos += 4;
-
-		*pos = 0;
-		if (rate_n_flags & RATE_MCS_LDPC_MSK)
-			*pos |= IEEE80211_RADIOTAP_CODING_LDPC_USER0;
-		pos++;
-
-		/* group ID */
-		*pos++ = 0;
-
-		/* partial aid */
-		put_unaligned_le16(0, pos);
-		pos += 2;
-	}
-
-	/* 8 byte alignment */
-	while ((pos - (u8 *)rt_hdr) & 7)
-		*pos++ = 0;
-
-	/* timestamp information */
-	put_unaligned_le64(gp2_on_air_rise, pos);
-	pos += 8;
-
-	put_unaligned_le16(22, pos); /* accuracy */
-	pos += 2;
-
-	*pos++ = IEEE80211_RADIOTAP_TIMESTAMP_UNIT_US |
-		 IEEE80211_RADIOTAP_TIMESTAMP_SPOS_PLCP_SIG_ACQ;
-
-	*pos++ = IEEE80211_RADIOTAP_TIMESTAMP_FLAG_32BIT |
-		 IEEE80211_RADIOTAP_TIMESTAMP_FLAG_ACCURACY;
-
-	/* TODO: HE */
-	/* TODO: HE MU */
-
-	/* SSI Signal per chain */
-	for_each_set_bit(chain, &chains, 2) {
-		*pos++ = signal[chain];
-		*pos++ = chain;
-	}
-
-	rt_len = pos - (u8 *)rt_hdr;
-	rt_hdr->it_len = cpu_to_le16(rt_len);
-
-	return rt_len;
-}
-
-static void iwl_fmac_rx_monitor(struct iwl_fmac *fmac,
-				struct rx_preskb_data *preskb,
-				struct ieee80211_hdr *hdr)
-{
-#define MAX_RADIOTAP_LEN 128
-	u32 rt_len;
-	u8 mac_flags2 = preskb->desc->mac_flags2;
-	u32 mpdu_len = preskb->len;
-	u32 hdr_len = ieee80211_hdrlen(hdr->frame_control);
-	u32 pad_len = 0;
-	struct sk_buff *skb;
-
-	if (mac_flags2 & IWL_RX_MPDU_MFLG2_PAD)
-		pad_len = 2;
-	mpdu_len -= pad_len;
-
-	skb = alloc_skb(MAX_RADIOTAP_LEN + mpdu_len, GFP_ATOMIC);
-	if (!skb) {
-		IWL_ERR(fmac, "alloc_skb failed\n");
-		return;
-	}
-	memset(skb->cb, 0, sizeof(skb->cb));
-
-	rt_len = iwl_fmac_rx_fill_radiotap(fmac, (void *)skb->data, preskb);
-
-	if (WARN_ON(rt_len > MAX_RADIOTAP_LEN)) {
-		kfree_skb(skb);
-		return;
-	}
-
-	skb_put(skb, rt_len);
-	skb_put_data(skb, hdr, hdr_len);
-	skb_put_data(skb, (u8 *)hdr + hdr_len + pad_len, mpdu_len - hdr_len);
-
-	skb_reset_mac_header(skb);
-	skb->ip_summed = CHECKSUM_UNNECESSARY;
-	skb->pkt_type = PACKET_OTHERHOST;
-
-	skb->dev = rcu_dereference(fmac->monitor_vif)->wdev.netdev;
-	netif_receive_skb(skb);
-}
-
-static void iwl_fmac_rx_send_userspace(struct iwl_fmac *fmac,
-				       struct iwl_fmac_vif *vif,
-				       struct ieee80211_hdr *hdr,
-				       struct iwl_rx_mpdu_desc *desc)
-{
-	bool rx_ext =
-		fmac->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560;
-	int len = le16_to_cpu(desc->mpdu_len);
-	u8 channel = (rx_ext) ? desc->v3.channel : desc->v1.channel;
-	enum nl80211_band band = channel > 14 ? NL80211_BAND_5GHZ :
-						NL80211_BAND_2GHZ;
-	int freq = ieee80211_channel_to_frequency(channel, band);
-	int sig = iwl_fmac_get_signal_mbm(fmac, desc);
-
-	/* TODO: check if we need to return the action frame */
-	cfg80211_rx_mgmt(&vif->wdev, freq, sig, (void *)hdr, len, 0);
-}
-
 static bool iwl_fmac_rx_netdev_frame(struct iwl_fmac *fmac,
 				     struct iwl_rx_cmd_buffer *rxb)
 {
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
 	struct ieee80211_hdr *hdr;
-	bool rx_ext =
-		fmac->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560;
+	bool rx_ext = fmac->trans->trans_cfg->device_family >=
+		IWL_DEVICE_FAMILY_AX210;
 	struct iwl_rx_mpdu_desc *desc = (void *)pkt->data;
 
 	if (rx_ext)
@@ -1628,24 +1201,13 @@ static bool iwl_fmac_rx_netdev_frame(struct iwl_fmac *fmac,
 	}
 
 	if (ieee80211_is_mgmt(hdr->frame_control)) {
-		struct iwl_fmac_vif *host_based_ap_vif;
-
-		rcu_read_lock();
-		host_based_ap_vif = rcu_dereference(fmac->host_based_ap_vif);
-
-		if (host_based_ap_vif) {
-			iwl_fmac_rx_send_userspace(fmac, host_based_ap_vif,
-						   hdr, desc);
-		} else {
-			/*
-			 * We don't expect any mgmt frame besides the ones
-			 * we accecpted above
-			 */
-			IWL_ERR(fmac,
-				"Got a mgmt packet... FC: 0x%x - Bug in firmware\n",
-				le16_to_cpu(hdr->frame_control));
-		}
-		rcu_read_unlock();
+		/*
+		 * We don't expect any mgmt frame besides the ones
+		 * we accecpted above
+		 */
+		IWL_ERR(fmac,
+			"Got a mgmt packet... FC: 0x%x - Bug in firmware\n",
+			le16_to_cpu(hdr->frame_control));
 
 		return false;
 	}
@@ -1679,24 +1241,14 @@ void iwl_fmac_rx_mpdu(struct iwl_fmac *fmac, struct napi_struct *napi,
 	 */
 	if (eth)
 		hdr = (void *)(pkt->data + sizeof(*preskb.desc) + 2);
-	else if (fmac->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560)
+	else if (fmac->trans->trans_cfg->device_family >=
+		 IWL_DEVICE_FAMILY_AX210)
 		hdr = (void *)(pkt->data + sizeof(*preskb.desc));
 	else
 		hdr = (void *)(pkt->data + IWL_RX_DESC_SIZE_V1);
 
 	if (WARN_ON(preskb.len < 2))
 		return;
-
-	rcu_read_lock();
-	if (rcu_access_pointer(fmac->monitor_vif)) {
-		iwl_fmac_rx_monitor(fmac, &preskb, hdr);
-		/* are there other vif's to handle? */
-		if (atomic_read(&fmac->open_count) <= 1) {
-			rcu_read_unlock();
-			return;
-		}
-	}
-	rcu_read_unlock();
 
 	/* the firmware shouldn't be passing any control frame */
 	if (ieee80211_is_ctl(hdr->frame_control)) {

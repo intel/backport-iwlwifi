@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /******************************************************************************
  *
  * This file is provided under a dual BSD/GPLv2 license.  When using or
@@ -5,8 +6,7 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2013 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2014 Intel Mobile Communications GmbH
+ * Copyright(c) 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -26,8 +26,7 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2014 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2014 - 2014 Intel Mobile Communications GmbH
+ * Copyright(c) 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,20 +54,47 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
  *****************************************************************************/
-#ifndef __IWL_CONSTANTS_H
-#define __IWL_CONSTANTS_H
 
-enum {
-	IWL_D0I3_DBG_KEEP_BUS		= BIT(0),
-	IWL_D0I3_DBG_KEEP_WAKE_LOCK	= BIT(1),
-};
+#include "img.h"
 
-#ifndef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
-#define IWL_D0I3_DEBUG			0
-#else /* CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES */
-#define IWL_D0I3_DEBUG			(trans->dbg_cfg.d0i3_debug)
-#endif /* CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES */
+u8 iwl_fw_lookup_cmd_ver(const struct iwl_fw *fw, u8 grp, u8 cmd)
+{
+	const struct iwl_fw_cmd_version *entry;
+	unsigned int i;
 
-#endif /* __IWL_CONSTANTS_H */
+	if (!fw->ucode_capa.cmd_versions ||
+	    !fw->ucode_capa.n_cmd_versions)
+		return IWL_FW_CMD_VER_UNKNOWN;
+
+	entry = fw->ucode_capa.cmd_versions;
+	for (i = 0; i < fw->ucode_capa.n_cmd_versions; i++, entry++) {
+		if (entry->group == grp && entry->cmd == cmd)
+			return entry->cmd_ver;
+	}
+
+	return IWL_FW_CMD_VER_UNKNOWN;
+}
+EXPORT_SYMBOL_GPL(iwl_fw_lookup_cmd_ver);
+
+u8 iwl_fw_lookup_notif_ver(const struct iwl_fw *fw, u8 grp, u8 cmd, u8 def)
+{
+	const struct iwl_fw_cmd_version *entry;
+	unsigned int i;
+
+	if (!fw->ucode_capa.cmd_versions ||
+	    !fw->ucode_capa.n_cmd_versions)
+		return def;
+
+	entry = fw->ucode_capa.cmd_versions;
+	for (i = 0; i < fw->ucode_capa.n_cmd_versions; i++, entry++) {
+		if (entry->group == grp && entry->cmd == cmd) {
+			if (entry->notif_ver == IWL_FW_CMD_VER_UNKNOWN)
+				return def;
+			return entry->notif_ver;
+		}
+	}
+
+	return def;
+}
+EXPORT_SYMBOL_GPL(iwl_fw_lookup_notif_ver);

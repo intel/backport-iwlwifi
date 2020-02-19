@@ -209,7 +209,7 @@ static int iwl_load_fw_wait_alive(struct iwl_fmac *fmac,
 			iwl_fw_dbg_error_collect(&fmac->fwrt,
 						 FW_DBG_TRIGGER_ALIVE_TIMEOUT);
 
-		if (trans->cfg->gen2)
+		if (trans->trans_cfg->gen2)
 			IWL_ERR(fmac,
 				"SecBoot CPU1 Status: 0x%x, CPU2 Status: 0x%x\n",
 				iwl_read_umac_prph(trans, UMAG_SB_CPU_1_STATUS),
@@ -271,7 +271,8 @@ static int iwl_fmac_send_phy_cfg_cmd(struct iwl_fmac *fmac)
 	phy_cfg_cmd.phy_cfg = cpu_to_le32(iwl_fmac_get_phy_config(fmac));
 
 	/* set flags extra PHY configuration flags from the device's cfg */
-	phy_cfg_cmd.phy_cfg |= cpu_to_le32(fmac->cfg->extra_phy_cfg_flags);
+	phy_cfg_cmd.phy_cfg |=
+		cpu_to_le32(fmac->trans->trans_cfg->extra_phy_cfg_flags);
 
 	phy_cfg_cmd.calib_control.event_trigger =
 		fmac->fw->default_calib[ucode_type].event_trigger;
@@ -390,7 +391,7 @@ iwl_fmac_set_regdom(struct iwl_fmac *fmac, const char *mcc,
 	regd = iwl_parse_nvm_mcc_info(fmac->dev, fmac->cfg,
 				      __le32_to_cpu(rsp->n_channels),
 				      rsp->channels,
-				      __le16_to_cpu(rsp->mcc), 0);
+				      __le16_to_cpu(rsp->mcc), 0, 0);
 	if (IS_ERR_OR_NULL(regd)) {
 		IWL_ERR(fmac, "Could not parse update from FW %d\n",
 			PTR_ERR_OR_ZERO(regd));
@@ -590,7 +591,7 @@ static int iwl_send_rss_cfg_cmd(struct iwl_fmac *fmac)
 	};
 
 	/* TODO - remove 22000 disablement when we have RXQ config API */
-	if (fmac->cfg->device_family >= IWL_DEVICE_FAMILY_22000)
+	if (fmac->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000)
 		return 0;
 
 	if (fmac->trans->num_rx_queues == 1)
@@ -667,7 +668,7 @@ static int iwl_fmac_run_unified_ucode(struct iwl_fmac *fmac, bool read_nvm)
 				   init_complete, ARRAY_SIZE(init_complete),
 				   iwl_wait_init_complete, NULL);
 
-	iwl_fw_dbg_apply_point(&fmac->fwrt, IWL_FW_INI_APPLY_EARLY);
+	iwl_dbg_tlv_time_point(&fmac->fwrt, IWL_FW_INI_TIME_POINT_EARLY, NULL);
 
 	/* Will also start the device */
 	ret = iwl_load_fw_wait_alive(fmac, IWL_UCODE_REGULAR);
@@ -675,7 +676,8 @@ static int iwl_fmac_run_unified_ucode(struct iwl_fmac *fmac, bool read_nvm)
 		IWL_ERR(fmac, "Failed to start RT ucode: %d\n", ret);
 		goto error;
 	}
-	iwl_fw_dbg_apply_point(&fmac->fwrt, IWL_FW_INI_APPLY_AFTER_ALIVE);
+	iwl_dbg_tlv_time_point(&fmac->fwrt, IWL_FW_INI_TIME_POINT_AFTER_ALIVE,
+			       NULL);
 
 	/*
 	 * Send init config command to mark that we are sending NVM access
@@ -773,15 +775,6 @@ static int iwl_fmac_init_triggers(struct iwl_fmac *fmac)
 		case IWL_FW_DBG_CONF_VIF_STATION:
 			cmd_vif_type = IWL_FMAC_IFTYPE_MGD;
 			break;
-		case IWL_FW_DBG_CONF_VIF_P2P_CLIENT:
-			cmd_vif_type = IWL_FMAC_IFTYPE_P2P_CLIENT;
-			break;
-		case IWL_FW_DBG_CONF_VIF_P2P_GO:
-			cmd_vif_type = IWL_FMAC_IFTYPE_P2P_GO;
-			break;
-		case IWL_FW_DBG_CONF_VIF_P2P_DEVICE:
-			cmd_vif_type = IWL_FMAC_IFTYPE_P2P_DEVICE;
-			break;
 		default:
 			IWL_ERR(fmac, "Invalid vif type %d\n", trig_vif_type);
 			kfree(cmd);
@@ -826,15 +819,16 @@ int iwl_fmac_run_rt_fw(struct iwl_fmac *fmac)
 		if (ret)
 			goto error;
 
-		iwl_fw_dbg_apply_point(&fmac->fwrt, IWL_FW_INI_APPLY_EARLY);
+		iwl_dbg_tlv_time_point(&fmac->fwrt,
+				       IWL_FW_INI_TIME_POINT_EARLY, NULL);
 
 		ret = iwl_load_fw_wait_alive(fmac, IWL_UCODE_REGULAR);
 		if (ret) {
 			IWL_ERR(fmac, "Failed to start RT firmware: %d\n", ret);
 			goto error;
 		}
-		iwl_fw_dbg_apply_point(&fmac->fwrt,
-				       IWL_FW_INI_APPLY_AFTER_ALIVE);
+		iwl_dbg_tlv_time_point(&fmac->fwrt,
+				       IWL_FW_INI_TIME_POINT_AFTER_ALIVE, NULL);
 
 		ret = iwl_send_phy_db_data(fmac->phy_db);
 		if (ret)
@@ -868,16 +862,17 @@ int iwl_fmac_run_rt_fw(struct iwl_fmac *fmac)
 	if (ret)
 		goto error;
 
-	ret = iwl_fmac_send_config_u32(fmac, IWL_FMAC_VIF_ID_GLOBAL,
-				       IWL_FMAC_STATIC_CONFIG_LTR_MODE,
-				       fmac->trans->ltr_enabled);
-	if (ret)
-		goto error;
+	if (!fw_has_capa(&fmac->fw->ucode_capa,
+			 IWL_UCODE_TLV_CAPA_SET_LTR_GEN2)) {
+		ret = iwl_fmac_send_config_u32(fmac, IWL_FMAC_VIF_ID_GLOBAL,
+					       IWL_FMAC_STATIC_CONFIG_LTR_MODE,
+					       fmac->trans->ltr_enabled);
+		if (ret)
+			goto error;
+	}
 
 	if (!(iwlwifi_mod_params.uapsd_disable  & IWL_DISABLE_UAPSD_BSS))
 		uapsd_enabled |= FMAC_UAPSD_ENABLE_BSS;
-	if (!(iwlwifi_mod_params.uapsd_disable  & IWL_DISABLE_UAPSD_P2P_CLIENT))
-		uapsd_enabled |= FMAC_UAPSD_ENABLE_P2P_CLIENT;
 
 	ret = iwl_fmac_send_config_u32(fmac, IWL_FMAC_VIF_ID_GLOBAL,
 				       IWL_FMAC_STATIC_CONFIG_UAPSD_ENABLED,

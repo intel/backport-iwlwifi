@@ -33,8 +33,7 @@ ssize_t strscpy(char *dest, const char *src, size_t count);
 char *strreplace(char *s, char old, char new);
 #endif
 
-#if LINUX_VERSION_IS_LESS(4,6,0) && \
-	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
+#if LINUX_VERSION_IS_LESS(4,6,0)
 int match_string(const char * const *array, size_t n, const char *string);
 #endif /* LINUX_VERSION_IS_LESS(4,5,0) */
 

@@ -210,29 +210,10 @@ enum iwl_fmac_cmds {
 	 */
 	FMAC_MIC_FAILURE = 0x1f,
 
-	/**
-	 * @FMAC_SET_MONITOR_CHAN:
-	 * Set channel of monitor interface.
-	 * &struct iwl_fmac_set_monitor_chan_cmd as the command struct.
-	 */
-	FMAC_SET_MONITOR_CHAN = 0x20,
-
+	/* 0x20 is reserved */
 	/* 0x21 is reserved */
-
-	/**
-	 * @FMAC_HOST_BASED_AP:
-	 * Manage (start / modify / stop) a host based AP.
-	 * &struct iwl_fmac_host_ap_cmd as the command struct or
-	 * &struct iwl_fmac_host_ap_resp for the response
-	 */
-	FMAC_HOST_BASED_AP = 0x22,
-
-	/**
-	 * @FMAC_HOST_BASED_AP_STA:
-	 * Add / modify / remove stations for the host based AP.
-	 * &struct iwl_fmac_host_ap_sta_cmd as the command struct.
-	 */
-	FMAC_HOST_BASED_AP_STA = 0x23,
+	/* 0x22 is reserved */
+	/* 0x23 is reserved */
 
 	/**
 	 * @FMAC_TEMPORAL_KEY:
@@ -297,14 +278,7 @@ enum iwl_fmac_cmds {
 	 */
 	FMAC_RECOVERY_COMPLETE = 0xe8,
 
-	/**
-	 * @FMAC_INACTIVE_STATION:
-	 * Notifies about a station that we haven't heard from and that
-	 * does't reply to our probe (Null Data Packet). This station
-	 * should be disconnected.
-	 * &struct iwl_fmac_inactive_sta is the notification struct.
-	 */
-	FMAC_INACTIVE_STATION = 0xe9,
+	/* 0xe9 is reserved */
 
 	/**
 	 * @FMAC_ROAM_IS_NEEDED:
@@ -438,7 +412,8 @@ enum iwl_fmac_cmds {
  *	scanned.
  * @bssid: BSSID to scan for (most commonly, the wildcard BSSID).
  * @ie_len: length of IEs in octets.
- * @ie: optional IEs added to probe request.
+ * @ie: optional vendor specific IEs added to probe request. Must be padded so
+ *	that the command has a multiple of 4 bytes.
  *
  * Request a scan operation on &freqs, probing for the networks
  * specified by &ssids. The scan execution is done in an asynchronous manner,
@@ -479,25 +454,17 @@ struct iwl_fmac_scan_abort_cmd {
 /**
  * enum iwl_fmac_vif_type - Interface types supported by fmac
  * @IWL_FMAC_IFTYPE_MGD: Managed interface.
- * @IWL_FMAC_IFTYPE_P2P_CLIENT: P2P Client interface. Not supported yet.
- * @IWL_FMAC_IFTYPE_P2P_GO: P2P Group Owner interface. Not supported yet.
- * @IWL_FMAC_IFTYPE_P2P_DEVICE: P2P Device interface. Not supported yet.
- * @IWL_FMAC_IFTYPE_MONITOR: Sniffer Device interface.
- * @IWL_FMAC_IFTYPE_HOST_BASED_AP: Access Point interface, but handled by the
- *      host. All management frames will be forwarded to the host. There can be
- *      at most one such vif in the system.
  * @IWL_FMAC_IFTYPE_ANY: catch-all interface type for config command.
  */
 enum iwl_fmac_vif_type {
 	IWL_FMAC_IFTYPE_MGD = 1,
 	/* 2 is reserved */
-	IWL_FMAC_IFTYPE_P2P_CLIENT = 3,
-	IWL_FMAC_IFTYPE_P2P_GO,
-	IWL_FMAC_IFTYPE_P2P_DEVICE,
+	/* 3 is reserved */
+	/* 4 is reserved */
+	/* 5 is reserved */
 	/* 6 is reserved */
-	IWL_FMAC_IFTYPE_MONITOR = 7,
-	IWL_FMAC_IFTYPE_HOST_BASED_AP,
 	/* 7 is reserved */
+	/* 8 is reserved */
 	IWL_FMAC_IFTYPE_ANY = 0xff,
 };
 
@@ -1534,6 +1501,9 @@ enum fmac_uapsd_enable_mode {
  * @IWL_SCAN_TYPE_FRAGMENTED: fragmented scan types where small blocks
  *	of scan are performed separately in order to prevent latency
  *	and throughput disruptions.
+ * @IWL_SCAN_TYPE_FAST_BALANCE: Fast balance scan is similar to SCAN_TYPE_MILD,
+ *     but this scan is fragmented and has shorter out of
+ *     operating channel time.
  * @IWL_SCAN_TYPE_MAX: highest index of scan.
  */
 enum umac_scan_type {
@@ -1542,6 +1512,7 @@ enum umac_scan_type {
 	IWL_SCAN_TYPE_WILD,
 	IWL_SCAN_TYPE_MILD,
 	IWL_SCAN_TYPE_FRAGMENTED,
+	IWL_SCAN_TYPE_FAST_BALANCE,
 	IWL_SCAN_TYPE_MAX,
 };
 
@@ -1575,11 +1546,12 @@ enum fmac_sad_mode {
  * @IWL_FMAC_STATIC_CONFIG_DEPRECATED_2: Not in use
  * @IWL_FMAC_STATIC_CONFIG_UAPSD_ENABLED: bitmap for U-APSD enablement. Check
  *	&enum fmac_uapsd_enable_mode. Default is 0.
- * @IWL_FMAC_STATIC_CONFIG_LTR_MODE: PCIe link training mode
+ * @IWL_FMAC_STATIC_CONFIG_LTR_MODE: PCIe link training mode. Deprecated if
+ *	IWL_UCODE_TLV_CAPA_SET_LTR_GEN2 is set.
  * @IWL_FMAC_STATIC_CONFIG_SINGLE_ANT_DIVERSITY_CONF: see &enum fmac_sad_mode.
  * @IWL_FMAC_STATIC_CONFIG_EXTERNAL_WPA: Configure to work in external WPA mode
  *	(Security upload mode) for all future added interfaces.
-  * @IWL_FMAC_STATIC_CONFIG_BGSCAN_BLOCKING_STATE: bgscan blocking state
+ * @IWL_FMAC_STATIC_CONFIG_BGSCAN_BLOCKING_STATE: bgscan blocking state
  *	configuration
  * @IWL_FMAC_STATIC_CONFIG_U32_MAX: highest index of static global
  *	configuration.
@@ -1744,298 +1716,6 @@ enum iwl_fmac_hidden_ssid {
 	IWL_FMAC_HIDDEN_SSID_NONE = 0,
 	IWL_FMAC_HIDDEN_SSID_ZERO_LEN = 1,
 	IWL_FMAC_HIDDEN_SSID_ZERO_BYTES = 2,
-};
-
-/**
- * struct iwl_fmac_chandef - channel definition.
- * @control_freq: control frequency.
- * @reserved: for alignment.
- * @center_freq1: center frequency for the channel.
- * @bandwidth: see &iwl_fmac_chan_width.
- * @reserved2: for alignment.
- */
-struct iwl_fmac_chandef {
-	__le16 control_freq;
-	__le16 center_freq1;
-	__le16 reserved;
-	u8 bandwidth;
-	u8 reserved2;
-} __packed;
-
-/**
- * enum iwl_fmac_start_ap_resp_status - Status in &struct iwl_fmac_host_ap_resp
- * @IWL_FMAC_START_AP_SUCCESS: Success to start AP.
- * @IWL_FMAC_START_AP_FAILURE: Fail to start AP.
- */
-enum iwl_fmac_start_ap_resp_status {
-	IWL_FMAC_START_AP_SUCCESS = 0,
-	IWL_FMAC_START_AP_FAILURE,
-};
-
-/**
- * enum iwl_fmac_action_host_based_ap - for struct iwl_fmac_host_ap_cmd's action
- * @IWL_FMAC_START_HOST_BASED_AP: to start the host based AP
- * @IWL_FMAC_STOP_HOST_BASED_AP: to stop the host based AP
- * @IWL_FMAC_MODIFY_HOST_BASED_AP: modify the host based AP
- */
-enum iwl_fmac_action_host_based_ap {
-	IWL_FMAC_START_HOST_BASED_AP	= 0,
-	IWL_FMAC_STOP_HOST_BASED_AP	= 1,
-	IWL_FMAC_MODIFY_HOST_BASED_AP	= 2,
-};
-
-/**
- * enum iwl_fmac_host_ap_changed - describe what field is valid
- * @IWL_FMAC_CTS_PROT_CHANGED: use_cts_prot is valid
- * @IWL_FMAC_SHORT_PREAMBLE_CHANGED: use_short_preamble is valid
- * @IWL_FMAC_SHORT_SLOT_CHANGED: use_short_slot is valid
- * @IWL_FMAC_BASIC_RATES_CHANGED: basic_rates_bitmap is valid
- * @IWL_FMAC_HT_OPMODE_CHANGED: ht_opmode is valid
- * @IWL_FMAC_AC_PARAMS_CHANGED_BK: ac_params for BK is valid
- * @IWL_FMAC_AC_PARAMS_CHANGED_BE: ac_params for BE is valid
- * @IWL_FMAC_AC_PARAMS_CHANGED_VI: ac_params for VI is valid
- * @IWL_FMAC_AC_PARAMS_CHANGED_VO: ac_params for VO is valid
- * @IWL_FMAC_BEACON_CHANGED: beacon frame has been updated
- */
-enum iwl_fmac_host_ap_changed {
-	IWL_FMAC_CTS_PROT_CHANGED	= BIT(0),
-	IWL_FMAC_SHORT_PREAMBLE_CHANGED	= BIT(1),
-	IWL_FMAC_SHORT_SLOT_CHANGED	= BIT(2),
-	IWL_FMAC_BASIC_RATES_CHANGED	= BIT(3),
-	IWL_FMAC_HT_OPMODE_CHANGED	= BIT(4),
-	IWL_FMAC_AC_PARAMS_CHANGED_BK	= BIT(5),
-	IWL_FMAC_AC_PARAMS_CHANGED_BE	= BIT(6),
-	IWL_FMAC_AC_PARAMS_CHANGED_VI	= BIT(7),
-	IWL_FMAC_AC_PARAMS_CHANGED_VO	= BIT(8),
-	IWL_FMAC_BEACON_CHANGED		= BIT(9),
-};
-
-/**
- * struct iwl_fmac_ac_params - describes the AC params
- * @txop: maximum burst time
- * @cw_min: minimum contention window
- * @cw_max: maximum contention window
- * @aifs: Arbitration interframe space
- * @reserved: for alignment
- */
-struct iwl_fmac_ac_params {
-	__le16 txop;
-	__le16 cw_min;
-	__le16 cw_max;
-	u8 aifs;
-	u8 reserved;
-} __packed;
-
-/**
- * struct iwl_fmac_host_ap_cmd - manage a host based AP vif
- * @vif_id: the interface identifier returned in &iwl_fmac_add_vif_resp.
- *	The vif's type must be %@IWL_FMAC_IFTYPE_HOST_BASED_AP.
- * @action: see &enum iwl_fmac_action_host_based_ap. Note: not all fields are
- *	relevant for all the actions.
- * @dtim_period: the DTIM beacon in units of &beacon_int. Ignored in any action
- *	that is not %IWL_FMAC_START_HOST_BASED_AP.
- * @use_cts_prot: Whether to use CTS protection
- * @use_short_preamble: Whether the use of short preambles is allowed
- * @use_short_slot: Whether the use of short slot time is allowed
- * @basic_rates_bitmap: bitmap of basic rates:
- *	bit  0:  1Mbps bit  1: 2Mbps  bit 2:  5Mbps bit 3: 11Mbps bit 4:  6Mbps
- *	bit  5:  9Mbps bit  6: 12Mbps bit 7: 18Mbps bit 8: 24Mbps bit 9: 36Mbps
- *	bit 10: 48Mbps bit 11: 54Mbps
- * @ht_opmode: HT Operation mode
- * @beacon_int: the beacon interval in TU. Ignored in any &action that is not
- *	%IWL_FMAC_START_HOST_BASED_AP.
- * @inactivity_timeout: the max inactivity for clients, before they are removed
- *	from the BSS (given in seconds). Ignored in any &action that is not
- *	%IWL_FMAC_START_HOST_BASED_AP.
- * @chandef: see &iwl_fmac_chandef. Ignored in any &action that is not
- *	%IWL_FMAC_START_HOST_BASED_AP.
- * @changed: indicates what field changed. See &enum iwl_fmac_host_ap_changed.
- * @ac_params: the AC parameters. The order of the AC in the array is:
- *	0: BK, 1: BE, 2: VI, 3: VO
- * @byte_cnt: length of the beacon frame. Ignored if %IWL_FMAC_BEACON_CHANGED
- *	is not set in &changed.
- * @tim_idx: The index in bytes to where the TIM IE should be inserted. Ignored
- *	if %IWL_FMAC_BEACON_CHANGED is not set in &changed.
- * @frame: the template of the beacon frame. Ignored if
- *	%IWL_FMAC_BEACON_CHANGED is not set in &changed.
- *
- * The command is used to manage (start / modify / stop) host based AP
- * functionality.
- * The flow to manage the host based AP is a synchronous flow as opposed to
- * the regular AP mode. The response of this command is &struct
- * iwl_fmac_host_ap_resp. All the management and EAPOL frames will be handled
- * in the host.
- */
-struct iwl_fmac_host_ap_cmd {
-	u8 vif_id;
-	u8 action;
-	u8 dtim_period;
-	u8 use_cts_prot;
-	u8 use_short_preamble;
-	u8 use_short_slot;
-	__le16 basic_rates_bitmap;
-	__le16 ht_opmode;
-	__le16 beacon_int;
-	__le32 inactivity_timeout;
-	struct iwl_fmac_chandef chandef;
-	struct iwl_fmac_ac_params ac_params[4];
-	__le16 byte_cnt;
-	__le16 tim_idx;
-	__le32 changed;
-#ifndef _MSC_VER
-	u8 frame[0];
-#endif
-} __packed;
-
-/**
- * struct iwl_fmac_host_ap_resp - Response of the %FMAC_HOST_BASED_AP
- */
-struct iwl_fmac_host_ap_resp {
-	/**
-	 * @vif_id:
-	 * the interface identifier returned in &iwl_fmac_add_vif_resp.
-	 */
-	u8 vif_id;
-
-	/**
-	 * @mcast_sta_id:
-	 * the identifier allocation for the used for broadcast and  multicast
-	 * transmissions. Relevant only if the %action was
-	 * %IWL_FMAC_START_HOST_BASED_AP.
-	 */
-	u8 mcast_sta_id;
-
-	/**
-	 * @bcast_sta_id:
-	 * the identifier allocation for the used for broadcast management
-	 * frames. Relevant only if the %action was
-	 * %IWL_FMAC_START_HOST_BASED_AP.
-	 */
-	u8 bcast_sta_id;
-
-#ifdef CPTCFG_IWLFMAC_9000_SUPPORT
-	/**
-	 * @mcast_queue:
-	 * queue allocation for broadcast and multicast transmissions.
-	 * Only valid for 9000-series devices, otherwise reserved.
-	 * Relevant only if the %action was
-	 * %IWL_FMAC_START_HOST_BASED_AP.
-	 */
-	u8 mcast_queue;
-
-	/**
-	 * @bcast_queue:
-	 * queue allocation for broadcast management frames.
-	 * Only valid for 9000-series devices, otherwise reserved.
-	 * Relevant only if the %action was
-	 * %IWL_FMAC_START_HOST_BASED_AP.
-	 */
-	u8 bcast_queue;
-
-	/**
-	 * @reserved:
-	 * for alignment.
-	 */
-	u8 reserved[3];
-#else
-	/**
-	 * @reserved: reserved
-	 */
-	u8 reserved[5];
-#endif
-
-	/**
-	 * @status:
-	 * status defined in &enum iwl_fmac_start_ap_resp_status.
-	 */
-	__le32 status;
-} __packed;
-
-/**
- * enum iwl_fmac_action_host_based_ap_sta - for %FMAC_HOST_BASED_AP_STA command
- * @IWL_FMAC_ADD_HOST_BASED_STA: to add a station to the host based AP
- * @IWL_FMAC_REM_HOST_BASED_STA: to remove a station from the host based AP
- * @IWL_FMAC_MOD_HOST_BASED_STA: to modify a station of the host based AP
- */
-enum iwl_fmac_action_host_based_ap_sta {
-	IWL_FMAC_ADD_HOST_BASED_STA	= 0,
-	IWL_FMAC_REM_HOST_BASED_STA	= 1,
-	IWL_FMAC_MOD_HOST_BASED_STA	= 2,
-};
-
-/**
- * enum iwl_fmac_host_ap_sta_changed - describes what field is valid
- * @IWL_FMAC_STA_AID_CHANGED: aid was updated
- * @IWL_FMAC_STA_SUPP_RATE_CHANGED: supported_rates_bitmap was updated
- * @IWL_FMAC_STA_HT_CAP_CHANGED: ht_cap was updated
- * @IWL_FMAC_STA_VHT_CAP_CHANGED: vht_cap was updated
- * @IWL_FMAC_STA_UAPSD_PARAMS_CHANGED: uapsd_ac/sp_length was updated
- */
-enum iwl_fmac_host_ap_sta_changed {
-	IWL_FMAC_STA_AID_CHANGED		= BIT(0),
-	IWL_FMAC_STA_SUPP_RATE_CHANGED		= BIT(1),
-	IWL_FMAC_STA_HT_CAP_CHANGED		= BIT(2),
-	IWL_FMAC_STA_VHT_CAP_CHANGED		= BIT(3),
-	IWL_FMAC_STA_UAPSD_PARAMS_CHANGED	= BIT(4),
-};
-
-/**
- * enum iwl_fmac_host_ap_sta_flags - flags for the host based AP's station
- * @IWL_FMAC_STA_HT_CAPABLE: the station is HT capable
- * @IWL_FMAC_STA_VHT_CAPABLE: the station is VHT capable
- */
-enum iwl_fmac_host_ap_sta_flags {
-	IWL_FMAC_STA_HT_CAPABLE		= BIT(0),
-	IWL_FMAC_STA_VHT_CAPABLE	= BIT(1),
-};
-
-/**
- * struct iwl_fmac_host_ap_sta_cmd - add a station to a host based AP
- * @action: see &enum iwl_fmac_action_host_based_ap_sta Note: not all fields are
- *	relevant for all the actions.
- * @sta_id: valid only if the action isn't %IWL_FMAC_ADD.
- * @vif_id: the id of the host based AP
- * @flags: See &enum iwl_fmac_host_ap_sta_flags
- * @addr: the MAC address of the station
- * @aid: the association ID given to the station
- * @changed: indicates what field changed. Note that this field must be set
- *	even if action is %IWL_FMAC_ADD.
- *	See &enum iwl_fmac_host_ap_sta_changed.
- * @supp_rates_bitmap: the bitmap describing the supported non-HT rates.
- *	bit  0:  1Mbps bit  1: 2Mbps  bit 2:  5Mbps bit 3: 11Mbps bit 4:  6Mbps
- *	bit  5:  9Mbps bit  6: 12Mbps bit 7: 18Mbps bit 8: 24Mbps bit 9: 36Mbps
- *	bit 10: 48Mbps bit 11: 54Mbps
- * @ht_cap: the HT capability Information Element
- * @uapsd_ac: ACs that are trigger-delivery enabled. The order of the bits is:
- *	0: BK, 1: BE, 2: VI, 3: VO
- * @sp_length: the actual number of frames to be sent in a Service Period
- * @vht_cap: the VHT capability Information Element
- */
-struct iwl_fmac_host_ap_sta_cmd {
-	u8 action;
-	u8 sta_id;
-	u8 vif_id;
-	u8 flags;
-	u8 addr[ETH_ALEN];
-	__le16 aid;
-	__le16 changed;
-	__le16 supp_rates_bitmap;
-	u8 ht_cap[26];
-	u8 uapsd_ac;
-	u8 sp_length;
-	u8 vht_cap[12];
-} __packed;
-
-#define IWL_FMAC_HOST_AP_INVALID_STA	0xffffffff
-
-/**
- * struct iwl_fmac_host_ap_sta_resp - response of %FMAC_HOST_BASED_AP_STA
- * @sta_id: the station id. If there is no room in the station table,
- *	%IWL_FMAC_HOST_AP_INVALID_STA will be returned.
- *	For any action other than %IWL_FMAC_ADD, the value will be 0.
- */
-struct iwl_fmac_host_ap_sta_resp {
-	__le32 sta_id;
 };
 
 /**
@@ -2429,18 +2109,6 @@ struct iwl_fmac_test_fips_resp {
 	u8 len;
 	__le16 reserved;
 	u8 buf[FIPS_MAX_RES_LEN];
-} __packed;
-
-/**
- * struct iwl_fmac_set_monitor_chan_cmd - Set the monifor channel
- * @vif_id: id of monitor vif to set
- * @reserved: reserved for dword alignment
- * @chandef: channel to set
- */
-struct iwl_fmac_set_monitor_chan_cmd {
-	u8 vif_id;
-	u8 reserved[3];
-	struct iwl_fmac_chandef chandef;
 } __packed;
 
 /**

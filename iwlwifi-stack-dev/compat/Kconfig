@@ -62,6 +62,11 @@ config BP_MODULES
 	This symbol is necessary for the newer kconf tool, it looks
 	for the "option modules" to control the 'm' state.
 
+config BPAUTO_BUILD_NLATTR
+	def_bool y
+	depends on KERNEL_5_2
+	#c-file lib/nlattr.c
+
 config BPAUTO_BUILD_CORDIC
 	depends on n
 	tristate
@@ -71,7 +76,7 @@ config BPAUTO_BUILD_CORDIC
 	default m if BPAUTO_CORDIC
 	default m if BPAUTO_USERSEL_BUILD_ALL
 	#module-name cordic
-	#c-file lib/cordic.c
+	#c-file lib/math/cordic.c
 
 config BPAUTO_CORDIC
 	bool
@@ -165,3 +170,13 @@ config BPAUTO_ASN1_DECODER
 config BPAUTO_PKCS7
 	bool
 	#h-file crypto/pkcs7.h
+
+config BPAUTO_CRYPTO_LIB_ARC4
+	bool
+
+config BPAUTO_BUILD_CRYPTO_LIB_ARC4
+	bool
+	default y if BPAUTO_CRYPTO_LIB_ARC4
+	depends on !(CRYPTO_LIB_ARC4=y || CRYPTO_LIB_ARC4=m)
+	#h-file crypto/arc4.h
+	#c-file lib/crypto/arc4.c

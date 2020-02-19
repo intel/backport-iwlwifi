@@ -118,13 +118,6 @@ static int __iwl_fmac_dev_stop(struct net_device *dev)
 
 	vif->id = FMAC_VIF_ID_INVALID;
 
-	if (vif->wdev.iftype == NL80211_IFTYPE_MONITOR)
-		RCU_INIT_POINTER(fmac->monitor_vif, NULL);
-
-	if (vif == rcu_dereference_protected(fmac->host_based_ap_vif,
-					     lockdep_is_held(&fmac->mutex)))
-		RCU_INIT_POINTER(fmac->host_based_ap_vif, NULL);
-
 	if (!atomic_read(&fmac->open_count))
 		iwl_fmac_stop_device(fmac);
 
@@ -136,14 +129,6 @@ int iwl_fmac_nl_to_fmac_type(enum nl80211_iftype iftype)
 	switch (iftype) {
 	case NL80211_IFTYPE_STATION:
 		return IWL_FMAC_IFTYPE_MGD;
-	case NL80211_IFTYPE_AP:
-		return IWL_FMAC_IFTYPE_HOST_BASED_AP;
-	case NL80211_IFTYPE_P2P_CLIENT:
-		return IWL_FMAC_IFTYPE_P2P_CLIENT;
-	case NL80211_IFTYPE_P2P_GO:
-		return IWL_FMAC_IFTYPE_P2P_GO;
-	case NL80211_IFTYPE_MONITOR:
-		return IWL_FMAC_IFTYPE_MONITOR;
 	default:
 		WARN(1, "Unsupported iftype %d\n", iftype);
 		return -EINVAL;
@@ -199,24 +184,10 @@ static int iwl_fmac_dev_open(struct net_device *dev)
 	atomic_inc(&fmac->open_count);
 	vif->id = resp->id;
 
-	if (vif->wdev.iftype == NL80211_IFTYPE_MONITOR) {
-		/* only one monitor interface is supported */
-		WARN_ON(fmac->monitor_vif);
-		rcu_assign_pointer(fmac->monitor_vif, vif);
-	}
-
-	/* Those configurations are not supported for HOST_BASED_AP */
-	if (cmd.type != IWL_FMAC_IFTYPE_HOST_BASED_AP) {
-		/* set user tx power */
-		iwl_fmac_send_config_u32(fmac, vif->id,
-					 IWL_FMAC_CONFIG_VIF_TXPOWER_USER,
-					 vif->user_power_level);
-
-	} else {
-		/* only one host_based_ap interface is supported */
-		WARN_ON(rcu_access_pointer(fmac->host_based_ap_vif));
-		rcu_assign_pointer(fmac->host_based_ap_vif, vif);
-	}
+	/* set user tx power */
+	iwl_fmac_send_config_u32(fmac, vif->id,
+				 IWL_FMAC_CONFIG_VIF_TXPOWER_USER,
+				 vif->user_power_level);
 
 #ifdef CONFIG_THERMAL
 	/* TODO: read the budget from BIOS / Platform NVM */
@@ -231,7 +202,10 @@ static int iwl_fmac_dev_open(struct net_device *dev)
 		goto out_free_resp;
 #endif
 
-	iwl_fw_dbg_apply_point(&fmac->fwrt, IWL_FW_INI_APPLY_POST_INIT);
+	iwl_dbg_tlv_time_point(&fmac->fwrt, IWL_FW_INI_TIME_POINT_POST_INIT,
+			       NULL);
+	iwl_dbg_tlv_time_point(&fmac->fwrt, IWL_FW_INI_TIME_POINT_PERIODIC,
+			       NULL);
 	ret = 0;
 
 out_free_resp:
@@ -323,13 +297,12 @@ static u16 iwl_fmac_select_queue(struct net_device *dev,
 				 struct sk_buff *skb)
 {
 	struct iwl_fmac_vif *vif = vif_from_netdev(dev);
-	const struct iwl_cfg *cfg = vif->fmac->cfg;
+	const struct iwl_trans *trans = vif->fmac->trans;
 	struct iwl_fmac_qos_map *qos_map;
 	struct iwl_fmac_sta *sta = NULL;
-	const u8 *addr = skb->data;
 	bool qos = false;
 
-	if (cfg->base_params->num_of_queues < AC_NUM ||
+	if (trans->trans_cfg->base_params->num_of_queues < AC_NUM ||
 	    skb->len < 6) {
 		skb->priority = 0;
 		return 0;
@@ -339,23 +312,10 @@ static u16 iwl_fmac_select_queue(struct net_device *dev,
 
 	switch (vif->wdev.iftype) {
 	case NL80211_IFTYPE_STATION:
-	case NL80211_IFTYPE_P2P_CLIENT:
 		sta = rcu_dereference(vif->u.mgd.ap_sta);
 		if (!sta)
 			IWL_DEBUG_TX(vif->fmac,
 				     "AP station not initialized\n");
-		break;
-	case NL80211_IFTYPE_AP:
-	case IWL_FMAC_IFTYPE_P2P_GO:
-		if (is_multicast_ether_addr(addr)) {
-			qos = false;
-		} else {
-			sta = iwl_get_sta(vif->fmac, addr);
-			if (!sta)
-				IWL_ERR(vif->fmac,
-					"Station for addr %pM not found\n",
-					addr);
-		}
 		break;
 	default:
 		break;
@@ -370,8 +330,7 @@ static u16 iwl_fmac_select_queue(struct net_device *dev,
 						       &qos_map->qos_map :
 						       NULL);
 
-		if (vif->wdev.iftype == NL80211_IFTYPE_STATION ||
-		    vif->wdev.iftype == NL80211_IFTYPE_P2P_CLIENT) {
+		if (vif->wdev.iftype == NL80211_IFTYPE_STATION) {
 			while (BIT(skb->priority) & vif->u.mgd.wmm_acm) {
 				skb->priority =
 					iwl_fmac_downgrade[skb->priority];
@@ -502,13 +461,13 @@ struct net_device *iwl_fmac_create_netdev(struct iwl_fmac *fmac,
 					  struct vif_params *params)
 {
 	struct net_device *dev;
-	const struct iwl_cfg *cfg = fmac->cfg;
+	const struct iwl_trans *trans = fmac->trans;
 	struct iwl_fmac_vif *vif;
 	int ret, addr_idx;
 	int txqs = 1;
 	int i;
 
-	if (cfg->base_params->num_of_queues >= AC_NUM)
+	if (trans->trans_cfg->base_params->num_of_queues >= AC_NUM)
 		txqs = AC_NUM;
 
 	dev = alloc_netdev_mqs(sizeof(struct iwl_fmac_vif),
@@ -584,39 +543,6 @@ struct net_device *iwl_fmac_create_netdev(struct iwl_fmac *fmac,
 	}
 
 	return dev;
-}
-
-struct wireless_dev *
-iwl_fmac_create_non_netdev_iface(struct iwl_fmac *fmac,
-				 struct vif_params *params,
-				 enum nl80211_iftype iftype)
-{
-	struct iwl_fmac_vif *vif = kzalloc(sizeof(*vif), GFP_KERNEL);
-	const u8 *addr;
-
-	if (!vif)
-		return ERR_PTR(-ENOMEM);
-
-	if (is_valid_ether_addr(params->macaddr)) {
-		addr = params->macaddr;
-	} else {
-		int addr_idx = iwl_find_unused_mac_address(fmac);
-
-		if (addr_idx < 0) {
-			kfree(vif);
-			return ERR_PTR(addr_idx);
-		}
-
-		addr = fmac->addresses[addr_idx].addr;
-	}
-
-	vif->wdev.wiphy = wiphy_from_fmac(fmac);
-	ether_addr_copy(vif->wdev.address, addr);
-	ether_addr_copy(vif->addr, addr);
-	vif->wdev.iftype = iftype;
-	vif->id = FMAC_VIF_ID_INVALID;
-
-	return &vif->wdev;
 }
 
 void iwl_fmac_destroy_vif(struct iwl_fmac_vif *vif)

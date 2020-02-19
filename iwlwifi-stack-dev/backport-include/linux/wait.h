@@ -24,8 +24,7 @@ backport_wait_on_bit_io(void *word, int bit, unsigned mode)
 
 #endif
 
-#if LINUX_VERSION_IS_LESS(3,18,12) && \
-	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
+#if LINUX_VERSION_IS_LESS(3,18,12)
 #define WQ_FLAG_WOKEN		0x02
 
 #define wait_woken LINUX_BACKPORT(wait_woken)

@@ -8,7 +8,7 @@
  * Copyright(c) 2010 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2010 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018        Intel Corporation
+ * Copyright(c) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -141,6 +141,8 @@ enum {
 	IWL_TM_USER_CMD_NOTIF_LOC_RANGE,
 	IWL_TM_USER_CMD_NOTIF_IQ_CALIB,
 	IWL_TM_USER_CMD_NOTIF_CT_KILL,
+	IWL_TM_USER_CMD_NOTIF_CCA_EVENT,
+	IWL_TM_USER_CMD_NOTIF_RUN_TIME_CALIB_DONE,
 };
 
 /*

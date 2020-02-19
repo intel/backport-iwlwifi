@@ -23,7 +23,7 @@
  * in the file called COPYING.
  *
  * Contact Information:
- *  Intel Linux Wireless <ilw@linux.intel.com>
+ *  Intel Linux Wireless <linuxwifi@intel.com>
  * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
  *
  * BSD LICENSE
@@ -348,7 +348,7 @@ static int iwl_mvm_rx_crypto(struct iwl_mvm *mvm, struct ieee80211_hdr *hdr,
 		    !(status & IWL_RX_MPDU_RES_STATUS_TTAK_OK))
 			return 0;
 
-		if (mvm->trans->cfg->gen2 &&
+		if (mvm->trans->trans_cfg->gen2 &&
 		    !(status & RX_MPDU_RES_STATUS_MIC_OK))
 			stats->flag |= RX_FLAG_MMIC_ERROR;
 
@@ -365,7 +365,7 @@ static int iwl_mvm_rx_crypto(struct iwl_mvm *mvm, struct ieee80211_hdr *hdr,
 
 		if (pkt_flags & FH_RSCSR_RADA_EN) {
 			stats->flag |= RX_FLAG_ICV_STRIPPED;
-			if (mvm->trans->cfg->gen2)
+			if (mvm->trans->trans_cfg->gen2)
 				stats->flag |= RX_FLAG_MMIC_STRIPPED;
 		}
 
@@ -376,8 +376,16 @@ static int iwl_mvm_rx_crypto(struct iwl_mvm *mvm, struct ieee80211_hdr *hdr,
 		stats->flag |= RX_FLAG_DECRYPTED;
 		return 0;
 	default:
-		/* Expected in monitor (not having the keys) */
-		if (!mvm->monitor_on)
+		/*
+		 * Sometimes we can get frames that were not decrypted
+		 * because the firmware didn't have the keys yet. This can
+		 * happen after connection where we can get multicast frames
+		 * before the GTK is installed.
+		 * Silently drop those frames.
+		 * Also drop un-decrypted frames in monitor mode.
+		 */
+		if (!is_multicast_ether_addr(hdr->addr1) &&
+		    !mvm->monitor_on && net_ratelimit())
 			IWL_ERR(mvm, "Unhandled alg: 0x%x\n", status);
 	}
 
@@ -780,6 +788,55 @@ void iwl_mvm_rx_queue_notif(struct iwl_mvm *mvm, struct napi_struct *napi,
 		wake_up(&mvm->rx_sync_waitq);
 }
 
+static void iwl_mvm_oldsn_workaround(struct iwl_mvm *mvm,
+				     struct ieee80211_sta *sta, int tid,
+				     struct iwl_mvm_reorder_buffer *buffer,
+				     u32 reorder, u32 gp2, int queue)
+{
+	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
+
+	if (gp2 != buffer->consec_oldsn_ampdu_gp2) {
+		/* we have a new (A-)MPDU ... */
+
+		/*
+		 * reset counter to 0 if we didn't have any oldsn in
+		 * the last A-MPDU (as detected by GP2 being identical)
+		 */
+		if (!buffer->consec_oldsn_prev_drop)
+			buffer->consec_oldsn_drops = 0;
+
+		/* either way, update our tracking state */
+		buffer->consec_oldsn_ampdu_gp2 = gp2;
+	} else if (buffer->consec_oldsn_prev_drop) {
+		/*
+		 * tracking state didn't change, and we had an old SN
+		 * indication before - do nothing in this case, we
+		 * already noted this one down and are waiting for the
+		 * next A-MPDU (by GP2)
+		 */
+		return;
+	}
+
+	/* return unless this MPDU has old SN */
+	if (!(reorder & IWL_RX_MPDU_REORDER_BA_OLD_SN))
+		return;
+
+	/* update state */
+	buffer->consec_oldsn_prev_drop = 1;
+	buffer->consec_oldsn_drops++;
+
+	/* if limit is reached, send del BA and reset state */
+	if (buffer->consec_oldsn_drops == IWL_MVM_AMPDU_CONSEC_DROPS_DELBA) {
+		IWL_WARN(mvm,
+			 "reached %d old SN frames from %pM on queue %d, stopping BA session on TID %d\n",
+			 IWL_MVM_AMPDU_CONSEC_DROPS_DELBA,
+			 sta->addr, queue, tid);
+		ieee80211_stop_rx_ba_session(mvmsta->vif, BIT(tid), sta->addr);
+		buffer->consec_oldsn_prev_drop = 0;
+		buffer->consec_oldsn_drops = 0;
+	}
+}
+
 /*
  * Returns true if the MPDU was buffered\dropped, false if it should be passed
  * to upper layer.
@@ -791,6 +848,7 @@ static bool iwl_mvm_reorder(struct iwl_mvm *mvm,
 			    struct sk_buff *skb,
 			    struct iwl_rx_mpdu_desc *desc)
 {
+	struct ieee80211_rx_status *rx_status = IEEE80211_SKB_RXCB(skb);
 	struct ieee80211_hdr *hdr = iwl_mvm_skb_get_hdr(skb);
 	struct iwl_mvm_sta *mvm_sta;
 	struct iwl_mvm_baid_data *baid_data;
@@ -892,6 +950,9 @@ static bool iwl_mvm_reorder(struct iwl_mvm *mvm,
 		iwl_mvm_release_frames(mvm, sta, napi, baid_data, buffer,
 				       min_sn, IWL_MVM_RELEASE_SEND_RSS_SYNC);
 	}
+
+	iwl_mvm_oldsn_workaround(mvm, sta, tid, buffer, reorder,
+				 rx_status->device_timestamp, queue);
 
 	/* drop any oudated packets */
 	if (ieee80211_sn_less(sn, buffer->head_sn))
@@ -1480,6 +1541,23 @@ static void iwl_mvm_decode_lsig(struct sk_buff *skb,
 	}
 }
 
+static inline u8 iwl_mvm_nl80211_band_from_rx_msdu(u8 phy_band)
+{
+	switch (phy_band) {
+	case PHY_BAND_24:
+		return NL80211_BAND_2GHZ;
+	case PHY_BAND_5:
+		return NL80211_BAND_5GHZ;
+#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
+	case PHY_BAND_6:
+		return NL80211_BAND_6GHZ;
+#endif
+	default:
+		WARN_ONCE(1, "Unsupported phy band (%u)\n", phy_band);
+		return NL80211_BAND_5GHZ;
+	}
+}
+
 void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 			struct iwl_rx_cmd_buffer *rxb, int queue)
 {
@@ -1502,7 +1580,7 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 	if (unlikely(test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status)))
 		return;
 
-	if (mvm->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560) {
+	if (mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) {
 		rate_n_flags = le32_to_cpu(desc->v3.rate_n_flags);
 		channel = desc->v3.channel;
 		gp2_on_air_rise = le32_to_cpu(desc->v3.gp2_on_air_rise);
@@ -1601,7 +1679,8 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 	if (likely(!(phy_info & IWL_RX_MPDU_PHY_TSF_OVERLOAD))) {
 		u64 tsf_on_air_rise;
 
-		if (mvm->trans->cfg->device_family >= IWL_DEVICE_FAMILY_22560)
+		if (mvm->trans->trans_cfg->device_family >=
+		    IWL_DEVICE_FAMILY_AX210)
 			tsf_on_air_rise = le64_to_cpu(desc->v3.tsf_on_air_rise);
 		else
 			tsf_on_air_rise = le64_to_cpu(desc->v1.tsf_on_air_rise);
@@ -1612,8 +1691,14 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 	}
 
 	rx_status->device_timestamp = gp2_on_air_rise;
-	rx_status->band = channel > 14 ? NL80211_BAND_5GHZ :
-		NL80211_BAND_2GHZ;
+	if (iwl_mvm_is_band_in_rx_supported(mvm)) {
+		u8 band = BAND_IN_RX_STATUS(desc->mac_phy_idx);
+
+		rx_status->band = iwl_mvm_nl80211_band_from_rx_msdu(band);
+	} else {
+		rx_status->band = channel > 14 ? NL80211_BAND_5GHZ :
+			NL80211_BAND_2GHZ;
+	}
 	rx_status->freq = ieee80211_channel_to_frequency(channel,
 							 rx_status->band);
 	iwl_mvm_get_signal_strength(mvm, rx_status, rate_n_flags, energy_a,
@@ -1735,7 +1820,7 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 
 			*qc &= ~IEEE80211_QOS_CTL_A_MSDU_PRESENT;
 
-			if (mvm->trans->cfg->device_family ==
+			if (mvm->trans->trans_cfg->device_family ==
 			    IWL_DEVICE_FAMILY_9000) {
 				iwl_mvm_flip_address(hdr->addr3);
 
@@ -1797,12 +1882,7 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 
 		if (unlikely(ieee80211_is_beacon(hdr->frame_control) ||
 			     ieee80211_is_probe_resp(hdr->frame_control)))
-#if LINUX_VERSION_IS_GEQ(5,3,0)
-
-			rx_status->boottime_ns = ktime_get_boottime_ns();
-#else
 			rx_status->boottime_ns = ktime_get_boot_ns();
-#endif
 	}
 
 	if (iwl_mvm_create_skb(mvm, skb, hdr, len, crypt_len, rxb)) {

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 #
 # API to the perCI run:
 # - working directory is the iwlwifi-stack-dev root
@@ -163,7 +163,7 @@ def check_internal_names():
 		 'sdp', 'wilkins', 'wkp', 'stone', 'stp', 'lighthouse', 'lhp', 'oak', 'okp', r'(\b|_)sup(\b|_)',
                  'sunny', 'solar', 'typhoon',
 		 'cherrytrail', 'cht', 'broxton', 'bxt', 'sofia', 'brtns', 'brighton', 'btns', 'phoenix', 'gsd',
-		 'goldsand', 'google', 'fiber', 'asus', 'rockchip', 'quasar', 'qsr', 'icp', 'qnj', 'hrp']
+		 'goldsand', 'google', 'fiber', 'asus', 'rockchip', 'quasar', 'qsr', 'icp', 'hrp', 'gfp', 'garfield']
     p = subprocess.Popen(["git", "format-patch", "--stdout", "HEAD~1.."],
                          stdout=subprocess.PIPE)
     msg_and_diff = p.communicate()[0]

@@ -62,8 +62,8 @@
  *
  *****************************************************************************/
 #include <linux/etherdevice.h>
-#include <net/mac80211.h>
 #include <net/netlink.h>
+#include <net/mac80211.h>
 #include "fmac.h"
 #include "iwl-vendor-cmd.h"
 
@@ -481,6 +481,8 @@ static const struct wiphy_vendor_command iwl_fmac_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_fmac_set_country,
+		.policy = iwl_fmac_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -490,6 +492,8 @@ static const struct wiphy_vendor_command iwl_fmac_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_fmac_test_fips,
+		.policy = iwl_fmac_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -499,6 +503,8 @@ static const struct wiphy_vendor_command iwl_fmac_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_fmac_connect_params,
+		.policy = iwl_fmac_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 	{
 		.info = {
@@ -508,6 +514,8 @@ static const struct wiphy_vendor_command iwl_fmac_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_fmac_config,
+		.policy = iwl_fmac_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
 
 

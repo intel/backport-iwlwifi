@@ -92,6 +92,19 @@ config IWLMVM_VENDOR_CMDS
 	  This option mostly exists for non-upstream tagging, so best
 	  leave it set to Y.
 
+config IWLMVM_VENDOR_TCM_EVENTS
+	bool "enable TCM vendor events"
+	depends on IWLMVM_VENDOR_CMDS
+	default y
+	help
+	  This option enables vendor TCM events to userspace that can
+	  be used to adjust certain parameters depending on the
+	  traffic conditions.  These events can become rather noisy
+	  with standard wpa_supplicant, since it prints out 3 debug
+	  messages every time the event is received (as an unknown
+	  event).  When used with standard wpa_supplicant, it is
+	  recommended to disable this option.
+
 config IWLMVM_TDLS_PEER_CACHE
 	bool "enable TDLS peer caching and traffic monitoring"
 	depends on IWLMVM_VENDOR_CMDS
@@ -142,3 +155,15 @@ config IWLWIFI_ATLAS_PLATFORM_WORKAROUND
 	help
 	  Say Y here to enable Atlas platform detection at runtime,
 	  to enable a specific workaround if detected.
+
+config IWLWIFI_WIFI_6_SUPPORT
+	bool "enable WiFi 6 code"
+	help
+	  The code that related to Wifi 6 is not intended to go upstream yet,
+	  still can enable it by this option
+
+config IWLWIFI_VIRTIO
+	def_bool y
+	depends on VIRTIO
+	# this means kernel is > 4.17, i.e. no 4.17 backports required
+	depends on !KERNEL_4_17

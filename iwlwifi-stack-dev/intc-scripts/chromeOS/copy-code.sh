@@ -50,8 +50,8 @@ cp -ar "$driver_path/drivers/net/wireless/intel/iwlwifi/" "$kernel_path/drivers/
 rm -f "$kernel_path"/drivers/net/wireless$WIFIVERSION/iwl7000/*/Kconfig*
 
 # and patch the sources
-patch -p2 --reject-file=/dev/stdout -d "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/" < "$source_path/mac80211.patch"
-patch -p5 --reject-file=/dev/stdout -d "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/" < "$source_path/iwlwifi.patch"
+patch --posix -p2 --reject-file=/dev/stdout -d "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/" < "$source_path/mac80211.patch"
+patch --posix -p5 --reject-file=/dev/stdout -d "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/" < "$source_path/iwlwifi.patch"
 
 # apply the adjustments.spatch
 # it has some special handling, first we grep out the CFG80211_TESTMODE_CMD
@@ -92,7 +92,7 @@ rm -f "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/cfg.c_DIFF
 # remove wext includes
 find $kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/ -name '*.[ch]' |xargs sed -i 's/wext-compat\.h//;T;d'
 
-mkdir -p "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/hdrs/"{net,linux}
+mkdir -p "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/hdrs/"{net,linux,crypto}
 
 # copy these after spatch - otherwise it may modify it!
 cp -ar "$source_path/hdrs/" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/"
@@ -119,6 +119,17 @@ sed -i 's/^mac80211-.*pm.o/\0\nmac80211-y += rhashtable.o/' "$kernel_path/driver
 # handle bucket_locks - add our version thereof
 cp "$driver_path/compat/lib-bucket_locks.c" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/bucket_locks.c"
 sed -i 's/^mac80211-.*pm.o/\0\nmac80211-y += bucket_locks.o/' "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/Makefile"
+
+# handle arc4 - add our version thereof
+cp "$driver_path/compat/lib-crypto-arc4.c" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/arc4.c"
+cp "$driver_path/include/crypto/backport-arc4.h" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/hdrs/crypto/arc4.h"
+sed -i 's/^mac80211-.*pm.o/\0\nmac80211-y += arc4.o/' "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/Makefile"
+
+for fn in $(find $kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/ -name 'Makefile*') ; do
+	sed -i 's|\$(src)|\$(srctree)/\$(src)|' $fn
+	# remove implicit fallthrough warnings due to issues with clang
+	sed -i '/-Wimplicit-fallthrough/d' $fn
+done
 
 # Add the header file required to rename all the symbols - this
 # makes our driver compatible with installing and loading other
