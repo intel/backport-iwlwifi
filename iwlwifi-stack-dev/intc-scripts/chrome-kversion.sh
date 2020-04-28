@@ -3,7 +3,7 @@
 set -e
 
 # start with the kernel Google are planning to use next
-START='4.20'
+START='5.4'
 KGIT='https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable.git'
 
 if ! test -d linux ; then

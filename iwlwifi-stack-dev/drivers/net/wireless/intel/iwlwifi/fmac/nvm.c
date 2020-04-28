@@ -256,7 +256,6 @@ iwl_parse_nvm_sections(struct iwl_fmac *fmac)
 	struct iwl_nvm_section *sections = fmac->nvm_sections;
 	const __be16 *hw;
 	const __le16 *sw, *calib, *regulatory, *mac_override, *phy_sku;
-	bool lar_enabled;
 
 	/* SW and REGULATORY sections are mandatory */
 	if (!fmac->nvm_sections[NVM_SECTION_TYPE_SW].data ||
@@ -289,14 +288,10 @@ iwl_parse_nvm_sections(struct iwl_fmac *fmac)
 		(const __le16 *)sections[NVM_SECTION_TYPE_MAC_OVERRIDE].data;
 	phy_sku = (const __le16 *)sections[NVM_SECTION_TYPE_PHY_SKU].data;
 
-	lar_enabled = !iwlwifi_mod_params.lar_disable &&
-		      fw_has_capa(&fmac->fw->ucode_capa,
-				  IWL_UCODE_TLV_CAPA_LAR_SUPPORT);
-
-	return iwl_parse_nvm_data(fmac->trans, fmac->cfg, hw, sw, calib,
-				  regulatory, mac_override, phy_sku,
+	return iwl_parse_nvm_data(fmac->trans, fmac->cfg, fmac->fw, hw, sw,
+				  calib, regulatory, mac_override, phy_sku,
 				  fmac->fw->valid_tx_ant,
-				  fmac->fw->valid_rx_ant, lar_enabled);
+				  fmac->fw->valid_rx_ant);
 }
 
 /* Loads the NVM data stored in fmac->nvm_sections into the NIC */

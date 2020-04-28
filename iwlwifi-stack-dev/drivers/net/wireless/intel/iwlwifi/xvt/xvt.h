@@ -191,13 +191,13 @@ struct tx_payload {
 /**
  * iwl_sw_stack_config - Holds active SW stack config as set from user space
  * @load_mask: Which FW are to be loaded during SW stack up
- * @iwl_phy_cfg_cmd: Which calibrations should be done
+ * @fw_calib_cmd_cfg: Which calibrations should be done
  */
 struct iwl_sw_stack_config {
 	u32 load_mask;
 	u32 calib_override_mask;
 	u32 fw_dbg_flags;
-	struct iwl_phy_cfg_cmd fw_calib_cmd_cfg[IWL_UCODE_TYPE_MAX];
+	struct iwl_phy_cfg_cmd_v3 fw_calib_cmd_cfg[IWL_UCODE_TYPE_MAX];
 };
 
 /* Note: This structure is read from the device with IO accesses,

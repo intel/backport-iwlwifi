@@ -25,19 +25,18 @@ class Version(object):
     """
     Version container object
     """
-    def __init__(self, kbranch, branches=['release/core[4-9]*'], wifiver=''):
+    def __init__(self, kbranch, branches=['release/core45', 'release/core4[7-9]*', 'release/core[5-9]*'], wifiver=''):
         self.kbranch = kbranch
         self.wifiversion = wifiver
         self.branches = branches[:]
 
 # list the relevant chromeos versions, with their WIFIVERSION
 VERSIONS = [
-    Version('chromeos-3.8',),
-    Version('chromeos-3.14', wifiver='-3.8'),
     Version('chromeos-3.18'),
     Version('chromeos-4.4'),
     Version('chromeos-4.14'),
     Version('chromeos-4.19'),
+    Version('chromeos-5.4', ['release/core49', 'release/core[5-9]*']),
 ]
 
 def _create_chrome_driver(config, version):

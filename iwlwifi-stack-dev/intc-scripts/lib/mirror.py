@@ -1,7 +1,7 @@
 #
 # INTEL CONFIDENTIAL
 #
-# Copyright (C) 2018 Intel Corporation
+# Copyright (C) 2018 - 2019 Intel Corporation
 #
 # This software and the related documents are Intel copyrighted materials, and
 # your use of them is governed by the express license under which they were
@@ -119,14 +119,51 @@ class GitMirror(object):
         return list(OrderedDict.fromkeys(globbed))
 
     def _check_new_branch(self, branch, input_work_dir, output_work_dir, output_reference):
-        # try to find merge-base in input tree,
-        # assumes master branch is always mirrored
-        #
-        # this handles the case of having created a new branch,
+        # This handles the case of having created a new branch,
         # and asking for that to be mirrored into the prune tree.
-        base_id = git.merge_base('origin/' + self.master, 'origin/' + branch, tree=input_work_dir)
+        #
+        # Try to find a starting point in the input tree. We assume
+        # this will basically always succeed, since the master branch
+        # is always mirrored, we _should_ find something (but can fail
+        # if somebody created a branch without a merge-base.)
+
+        # unfortunately we now need to do this first, to sort out which
+        # branches we already know in the output
         git.clone(output_reference, output_work_dir, options=['-q'])
-        git.set_origin_url(self._output_tree, output_work_dir)
+
+        self.debug("trying to find starting point for new branch %s" % branch)
+        candidate_branches = []
+        for other in self._branches:
+            if other == branch:
+                continue
+            out_branch = 'origin/' + self.output_branch_name(other)
+            try:
+                git.rev_parse(out_branch, tree=output_work_dir)
+            except:
+                self.debug("    branch %s doesn't exist in output %s (yet)" % (out_branch, output_work_dir))
+                continue
+            candidate_branches.append(other)
+
+        potential_merge_bases = []
+        for other in candidate_branches:
+            try:
+                base = git.merge_base('origin/' + other, 'origin/' + branch,
+                                      tree=input_work_dir)
+                potential_merge_bases.append(base)
+                self.debug("    base to %s is %s" % (other, base))
+            except git.GitError:
+                self.debug("    no base to %s" % (other, ))
+        bases = git.independent_commits(potential_merge_bases, tree=input_work_dir)
+        self.debug("found starting points %s" % (", ".join(bases)))
+        assert len(bases) == 1, "No single merge base found: %r" % bases
+        base_id = bases[0]
+
+        base_branch = None
+        for other in candidate_branches:
+            if git.merge_base('origin/' + other, base_id, tree=input_work_dir) == base_id:
+                base_branch = 'origin/' + self.output_branch_name(other)
+                break
+        assert base_branch, "This shouldn't happen, found no base branch?!"
 
         # try to find the merge-base or its parent/grandparent/... in the
         # output tree - since it should have been branched from the master
@@ -138,7 +175,7 @@ class GitMirror(object):
             self.debug('search for %s~%d=%s:' % (base_id, offset, search))
             grep = '%s: %s' % (self._commit_id_prefix, search)
             out_commits = git.log(options=['--grep', grep, '--format=format:%H',
-                                           'origin/' + self.output_branch_name(self.master)],
+                                           base_branch],
                                   tree=output_work_dir)
             out_commits = out_commits.split()
             if not out_commits or len(out_commits) > 1:
@@ -205,7 +242,6 @@ class GitMirror(object):
         try:
             git.clone(output_reference, output_work_dir,
                       options=['--branch', self.output_branch_name(branch), '-q'])
-            git.set_origin_url(self._output_tree, output_work_dir)
             try:
                 git.commit_env_vars(self.output_branch_name(branch), tree=output_work_dir)
             except git.GitError:
@@ -300,11 +336,12 @@ class GitMirror(object):
 
     def _checkout(self, commit, input_work_dir):
         git.reset(opts=['--hard', commit], tree=input_work_dir)
-        git.clean(opts=['-fdxq'], tree=input_work_dir)
+        git.clean(opts=['-ffdxq'], tree=input_work_dir)
+        git.submodule(['--quiet', 'init'], tree=input_work_dir)
         git.submodule(['--quiet', 'sync'], tree=input_work_dir)
         git.submodule(['--quiet', 'update'], tree=input_work_dir)
         git.submodule(['--quiet', 'foreach', 'git', 'reset', '-q', '--hard'], tree=input_work_dir)
-        git.submodule(['--quiet', 'foreach', 'git', 'clean', '-fdxq'], tree=input_work_dir)
+        git.submodule(['--quiet', 'foreach', 'git', 'clean', '-ffdxq'], tree=input_work_dir)
 
     def _submodule_status(self, input_work_dir):
         result = git.submodule_status(tree=input_work_dir)
@@ -399,7 +436,7 @@ class GitMirror(object):
                         continue
 
                     if last_failure:
-                        last_failure_shortlog = git.shortlog(last_failure, commit)
+                        last_failure_shortlog = git.shortlog(last_failure, commit.tree_id)
                     else:
                         last_failure_shortlog = None
 
@@ -436,6 +473,11 @@ class GitMirror(object):
             except Abort:
                 return False
             finally:
+                # if changed, push to the outref so we have it for the next branch,
+                # in case they're based on each other
+                if committed_anything or new_branch:
+                    git.push(opts=['-q', 'origin', 'HEAD:' + self.output_branch_name(branch)],
+                             tree=output_work_dir)
                 # if necessary, push to the server from the output_work_dir
                 git.set_origin_url(self._output_tree, gitdir=output_work_dir)
                 if committed_anything or new_branch:
@@ -467,9 +509,9 @@ class GitMirror(object):
                 output_reference = os.path.join(tmpdir, 'outref')
                 git.clone(self._output_tree, output_reference, options=['-q', '--mirror'])
 
-            _branches = self._glob_branches(input_work_dir)
+            self._branches = self._glob_branches(input_work_dir)
 
-            for branch in _branches:
+            for branch in self._branches:
                 try:
                     if not self._mirror_one(branch, input_work_dir, output_reference):
                         result = False

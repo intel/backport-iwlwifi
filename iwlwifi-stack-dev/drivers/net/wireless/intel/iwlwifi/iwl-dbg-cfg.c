@@ -90,6 +90,7 @@ struct iwl_dbg_cfg current_dbg_config = {
 #define IWL_MVM_MOD_PARAM(type, name) /* nothing, default empty */
 #define IWL_DBG_CFG_RANGE(type, name, min, max)	\
 	.name = IWL_ ## name,
+#define IWL_DBG_CFG_FN(name, fn) /* no default */
 #include "iwl-dbg-cfg.h"
 #undef IWL_DBG_CFG
 #undef IWL_DBG_CFG_STR
@@ -99,6 +100,7 @@ struct iwl_dbg_cfg current_dbg_config = {
 #undef IWL_DBG_CFG_RANGE
 #undef IWL_MOD_PARAM
 #undef IWL_MVM_MOD_PARAM
+#undef IWL_DBG_CFG_FN
 };
 
 static const char dbg_cfg_magic[] = "[IWL DEBUG CONFIG DATA]";
@@ -213,6 +215,7 @@ void iwl_dbg_cfg_free(struct iwl_dbg_cfg *dbgcfg)
 #define IWL_DBG_CFG_RANGE(t, n, min, max) /* nothing */
 #define IWL_MOD_PARAM(t, n) /* nothing */
 #define IWL_MVM_MOD_PARAM(t, n) /* nothing */
+#define IWL_DBG_CFG_FN(name, fn) /* nothing */
 #include "iwl-dbg-cfg.h"
 #undef IWL_DBG_CFG
 #undef IWL_DBG_CFG_STR
@@ -222,6 +225,7 @@ void iwl_dbg_cfg_free(struct iwl_dbg_cfg *dbgcfg)
 #undef IWL_DBG_CFG_RANGE
 #undef IWL_MOD_PARAM
 #undef IWL_MVM_MOD_PARAM
+#undef IWL_DBG_CFG_FN
 }
 
 struct iwl_dbg_cfg_loader {
@@ -258,6 +262,7 @@ static const struct iwl_dbg_cfg_loader iwl_dbg_cfg_loaders[] = {
 	},
 #define IWL_MOD_PARAM(t, n) /* no using this */
 #define IWL_MVM_MOD_PARAM(t, n) /* no using this */
+#define IWL_DBG_CFG_FN(name, fn) /* not using this */
 #include "iwl-dbg-cfg.h"
 #undef IWL_DBG_CFG
 #undef IWL_DBG_CFG_STR
@@ -267,7 +272,31 @@ static const struct iwl_dbg_cfg_loader iwl_dbg_cfg_loaders[] = {
 #undef IWL_DBG_CFG_RANGE
 #undef IWL_MOD_PARAM
 #undef IWL_MVM_MOD_PARAM
+#undef IWL_DBG_CFG_FN
 };
+
+static void iwl_dbg_cfg_parse_fw_dbg_preset(struct iwl_dbg_cfg *dbgcfg,
+					    const char *val)
+{
+	u8 preset;
+
+	if (kstrtou8(val, 0, &preset)) {
+		printk(KERN_INFO "iwlwifi debug config: Invalid data for FW_DBG_PRESET: %s\n",
+		       val);
+		return;
+	}
+
+	if (preset > 15) {
+		printk(KERN_INFO "iwlwifi debug config: Invalid value for FW_DBG_PRESET: %d\n",
+		       preset);
+		return;
+	}
+
+	dbgcfg->FW_DBG_DOMAIN &= 0xffff;
+	dbgcfg->FW_DBG_DOMAIN |= BIT(16 + preset);
+	printk(KERN_INFO "iwlwifi debug config: FW_DBG_PRESET=%d => FW_DBG_DOMAIN=0x%x\n",
+	       preset, dbgcfg->FW_DBG_DOMAIN);
+}
 
 void iwl_dbg_cfg_load_ini(struct device *dev, struct iwl_dbg_cfg *dbgcfg)
 {
@@ -383,6 +412,11 @@ void iwl_dbg_cfg_load_ini(struct device *dev, struct iwl_dbg_cfg *dbgcfg)
 			continue;					\
 		}							\
 	}
+#define IWL_DBG_CFG_FN(n, fn)					\
+		if (strncmp(#n "=", line, strlen(#n) + 1) == 0) {	\
+			fn(dbgcfg, line + strlen(#n) + 1);		\
+			continue;					\
+		}
 #include "iwl-dbg-cfg.h"
 #undef IWL_DBG_CFG
 #undef IWL_DBG_CFG_STR
@@ -392,6 +426,7 @@ void iwl_dbg_cfg_load_ini(struct device *dev, struct iwl_dbg_cfg *dbgcfg)
 #undef IWL_DBG_CFG_RANGE
 #undef IWL_MOD_PARAM
 #undef IWL_MVM_MOD_PARAM
+#undef IWL_DBG_CFG_FN
 		printk(KERN_INFO "iwlwifi debug config: failed to load line \"%s\"\n",
 		       line);
 	}

@@ -5,10 +5,9 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -28,10 +27,9 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -102,10 +100,6 @@
 #define IWL_SCAN_ADWELL_N_APS_GO_FRIENDLY 10
 /* adaptive dwell number of APs override for social channels */
 #define IWL_SCAN_ADWELL_N_APS_SOCIAL_CHS 2
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
-#define IWL_SCAN_6GHZ_NO_PSC(band, channel) ((band) == NL80211_BAND_6GHZ && \
-				(channel) % 16 != 1)
-#endif
 
 struct iwl_mvm_scan_timing_params {
 	u32 suspend_time;
@@ -1736,10 +1730,9 @@ iwl_mvm_umac_scan_fill_6g_chan_list(struct iwl_mvm_scan_params *params,
 
 	if (!params->n_6ghz_params) {
 		for (j = 0; j < params->n_ssids; j++) {
-			u32 short_ssid = crc32_be(~0, params->ssids[j].ssid,
-						  params->ssids[j].ssid_len);
-
-			cmd_short_ssid[idex_s++] = cpu_to_le32(short_ssid);
+			cmd_short_ssid[idex_s++] =
+				cpu_to_le32(~crc32_le(~0, params->ssids[j].ssid,
+						      params->ssids[j].ssid_len));
 			(*sssid_num)++;
 		}
 		return 0;
@@ -1784,88 +1777,8 @@ iwl_mvm_umac_scan_fill_6g_chan_list(struct iwl_mvm_scan_params *params,
 
 /*
  * TODO; after removing nopublic restriction, can merge the below
- *  function together with iwl_mvm_scan_umac_fill_ch_p_v4
- *  also when removing ver13 can remove iwl_mvm_umac_scan_cfg_channels_v4_6g
- *  and leave just with iwl_mvm_umac_scan_cfg_channels_v6_6(
+ *  function together with iwl_mvm_scan_umac_fill_ch_p_v6
  */
-static void
-iwl_mvm_umac_scan_cfg_channels_v4_6g(struct iwl_mvm_scan_params *params,
-				     u32 n_channels, __le32 *cmd_short_ssid,
-				     u8 *cmd_bssid, u8 sssid_num,
-				     u8 bssid_num,
-				     struct iwl_scan_channel_params_v4 *cp,
-				     enum nl80211_iftype vif_type)
-{
-	u8 *bitmap = cp->adwell_ch_override_bitmap;
-	size_t bitmap_n_entries = ARRAY_SIZE(cp->adwell_ch_override_bitmap);
-	struct iwl_scan_channel_cfg_umac *channel_cfg = cp->channel_config;
-	int i;
-	struct cfg80211_scan_6ghz_params *scan_6ghz_params =
-		params->scan_6ghz_params;
-
-	for (i = 0; i < params->n_channels; i++) {
-		struct iwl_scan_channel_cfg_umac *cfg =
-			&cp->channel_config[i];
-
-		u32 s_ssid_bitmap = 0, bssid_bitmap = 0, flags = 0;
-		u8 j, k, s_max = 0, b_max = 0;
-		bool found = false;
-
-		cfg->v1.channel_num = params->channels[i]->hw_value;
-		cfg->v2.band = 2;
-		cfg->v2.iter_count = 1;
-		cfg->v2.iter_interval = 0;
-		/* TODO: improve this logic */
-		for (j = 0; j < params->n_6ghz_params; j++) {
-			if (!(scan_6ghz_params[j].channel_idx == i))
-				continue;
-
-			found = false;
-
-			for (k = 0 ; k < sssid_num; k++)
-				if (le32_to_cpu(cmd_short_ssid[k]) ==
-				    scan_6ghz_params[j].short_ssid &&
-				    s_max <= 2) {
-					s_ssid_bitmap |= BIT(k);
-					s_max++;
-					found = true;
-					break;
-				}
-			if (!found) {
-				for (k = 0; k < bssid_num; k++)
-					if (!memcmp(&cmd_bssid[ETH_ALEN * k],
-						    scan_6ghz_params[j].bssid,
-						    ETH_ALEN) && b_max <= 9) {
-						bssid_bitmap |= BIT(k);
-						b_max++;
-						break;
-					}
-			}
-		}
-
-		flags = bssid_bitmap | (s_ssid_bitmap << 16);
-
-		/*
-		 * If there are more than 3 APs with short SSID and more than 9
-		 * additional APs with known BSSID, more efficient to apply one
-		 * passive scan.
-		 * If this is non PSC channel, but no short SSID or BSSID
-		 * information about this channel also apply passive scan
-		 */
-		if (params->n_6ghz_params > 11 ||
-		    (!flags &&
-		     IWL_SCAN_6GHZ_NO_PSC(params->channels[i]->band,
-					  params->channels[i]->hw_value)))
-			flags |= IWL_UHB_CHAN_CFG_FLAG_FORCE_PASSIVE;
-
-		channel_cfg[i].flags |= cpu_to_le32(flags);
-		iwl_mvm_scan_ch_add_n_aps_override(vif_type,
-						   cfg->v2.channel_num,
-						   cfg->v2.band, bitmap,
-							   bitmap_n_entries);
-	}
-}
-
 static void
 iwl_mvm_umac_scan_cfg_channels_v6_6g(struct iwl_mvm_scan_params *params,
 				     u32 n_channels, __le32 *cmd_short_ssid,
@@ -1885,7 +1798,7 @@ iwl_mvm_umac_scan_cfg_channels_v6_6g(struct iwl_mvm_scan_params *params,
 
 		u32 s_ssid_bitmap = 0, bssid_bitmap = 0, flags = 0;
 		u8 j, k, s_max = 0, b_max = 0;
-		bool found = false;
+		bool found = false, unsolicited_probe_on_chan = false;
 
 		cfg->v1.channel_num = params->channels[i]->hw_value;
 		cfg->v2.band = 2;
@@ -1897,9 +1810,12 @@ iwl_mvm_umac_scan_cfg_channels_v6_6g(struct iwl_mvm_scan_params *params,
 				continue;
 
 			found = false;
+			unsolicited_probe_on_chan |=
+				scan_6ghz_params[j].unsolicited_probe;
 
 			for (k = 0 ; k < sssid_num; k++)
-				if (le32_to_cpu(cmd_short_ssid[k]) ==
+				if (!scan_6ghz_params[j].unsolicited_probe &&
+				    le32_to_cpu(cmd_short_ssid[k]) ==
 				    scan_6ghz_params[j].short_ssid &&
 				    s_max <= 2) {
 					s_ssid_bitmap |= BIT(k);
@@ -1929,10 +1845,12 @@ iwl_mvm_umac_scan_cfg_channels_v6_6g(struct iwl_mvm_scan_params *params,
 	 * about this channel also apply passive scan
 	 */
 	if (params->n_6ghz_params > 11 ||
-	    (!flags &&
-	     IWL_SCAN_6GHZ_NO_PSC(params->channels[i]->band,
-				  params->channels[i]->hw_value)))
+	    (!flags && !cfg80211_is_psc(params->channels[i])))
 		flags |= IWL_UHB_CHAN_CFG_FLAG_FORCE_PASSIVE;
+
+	if (unsolicited_probe_on_chan)
+		flags |= IWL_UHB_CHAN_CFG_FLAG_UNSOLICITED_PROBE_RES;
+
 	channel_cfg[i].flags |= cpu_to_le32(flags);
 	}
 }
@@ -1996,6 +1914,12 @@ static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
 	if (type == IWL_MVM_SCAN_SCHED || type == IWL_MVM_SCAN_NETDETECT)
 		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_PREEMPTIVE;
 
+#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
+
+	if ((type == IWL_MVM_SCAN_SCHED || type == IWL_MVM_SCAN_NETDETECT) &&
+	    params->flags & NL80211_SCAN_FLAG_COLOCATED_6GHZ)
+		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_TRIGGER_UHB_SCAN;
+#endif
 	return flags;
 }
 
@@ -2300,73 +2224,6 @@ static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	return 0;
 }
 
-static int iwl_mvm_scan_umac_v13(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
-				 struct iwl_mvm_scan_params *params, int type,
-				 int uid)
-{
-	struct iwl_scan_req_umac_v13 *cmd = mvm->scan_cmd;
-	struct iwl_scan_req_params_v13 *scan_p = &cmd->scan_params;
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
-	struct iwl_scan_channel_params_v4 *cp = &scan_p->channel_params;
-	struct iwl_scan_probe_params_v4 *pb = &scan_p->probe_params;
-#endif
-	int ret;
-	u16 gen_flags;
-	u32 bitmap_ssid = 0;
-
-	mvm->scan_uid_status[uid] = type;
-
-	cmd->ooc_priority = cpu_to_le32(iwl_mvm_scan_umac_ooc_priority(params));
-	cmd->uid = cpu_to_le32(uid);
-
-	gen_flags = iwl_mvm_scan_umac_flags_v2(mvm, params, vif, type);
-	iwl_mvm_scan_umac_fill_general_p_v10(mvm, params, vif,
-					     &scan_p->general_params,
-					     gen_flags);
-
-	 ret = iwl_mvm_fill_scan_sched_params(params,
-					      scan_p->periodic_params.schedule,
-					      &scan_p->periodic_params.delay);
-	if (ret)
-		return ret;
-
-	iwl_mvm_scan_umac_fill_probe_p_v4(params, &scan_p->probe_params,
-					  &bitmap_ssid);
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
-	if (!params->scan_6ghz) {
-#endif
-	iwl_mvm_scan_umac_fill_ch_p_v4(mvm, params, vif,
-				       &scan_p->channel_params, bitmap_ssid);
-
-	return 0;
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
-	}
-	cp->flags = iwl_mvm_scan_umac_chan_flags_v2(mvm, params, vif);
-	cp->num_of_aps_override =
-		IWL_SCAN_ADWELL_N_APS_GO_FRIENDLY;
-
-	ret = iwl_mvm_umac_scan_fill_6g_chan_list(params, pb->short_ssid,
-						  pb->bssid_array[0],
-						  &pb->short_ssid_num,
-						  &pb->bssid_num);
-	if (ret)
-		return ret;
-
-	iwl_mvm_umac_scan_cfg_channels_v4_6g(params,
-					     params->n_channels,
-					     pb->short_ssid,
-					     pb->bssid_array[0],
-					     pb->short_ssid_num,
-					     pb->bssid_num, cp,
-					     vif->type);
-	cp->count = params->n_channels;
-	if (!params->n_ssids)
-		cp->flags |= IWL_SCAN_CHANNEL_FLAG_6G_PSC_NO_FILTER;
-
-	return 0;
-#endif
-}
-
 static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 				 struct iwl_mvm_scan_params *params, int type,
 				 int uid)
@@ -2427,7 +2284,8 @@ static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 					     pb->bssid_num, cp,
 					     vif->type);
 	cp->count = params->n_channels;
-	if (!params->n_ssids)
+	if (!params->n_ssids ||
+	    (params->n_ssids == 1 && !params->ssids[0].ssid_len))
 		cp->flags |= IWL_SCAN_CHANNEL_FLAG_6G_PSC_NO_FILTER;
 
 	return 0;
@@ -2550,7 +2408,6 @@ struct iwl_scan_umac_handler {
 static const struct iwl_scan_umac_handler iwl_scan_umac_handlers[] = {
 	/* set the newest version first to shorten the list traverse time */
 	IWL_SCAN_UMAC_HANDLER(14),
-	IWL_SCAN_UMAC_HANDLER(13),
 	IWL_SCAN_UMAC_HANDLER(12),
 };
 
@@ -2698,6 +2555,10 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 	};
 	struct iwl_mvm_scan_params params = {};
 	int ret;
+#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
+	int i, j;
+	bool non_psc_included = false;
+#endif
 
 	lockdep_assert_held(&mvm->mutex);
 
@@ -2714,8 +2575,10 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 	if (WARN_ON(!mvm->scan_cmd))
 		return -ENOMEM;
 
+#ifndef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	if (!iwl_mvm_scan_fits(mvm, req->n_ssids, ies, req->n_channels))
 		return -ENOBUFS;
+#endif
 
 	params.n_ssids = req->n_ssids;
 	params.flags = req->flags;
@@ -2755,8 +2618,47 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 
 	iwl_mvm_build_scan_probe(mvm, vif, ies, &params);
 
+#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
+	/* for 6 GHZ band only PSC channels need to be added */
+	for (i = 0; i < params.n_channels; i++) {
+		struct ieee80211_channel *channel = params.channels[i];
+
+		if (channel->band == NL80211_BAND_6GHZ &&
+		    !cfg80211_is_psc(channel)) {
+			non_psc_included = true;
+			break;
+		}
+	}
+
+	if (non_psc_included) {
+		params.channels = kmemdup(params.channels,
+					  sizeof(params.channels[0]) *
+					  params.n_channels,
+					  GFP_KERNEL);
+		if (!params.channels)
+			return -ENOMEM;
+
+		for (i = j = 0; i < params.n_channels; i++) {
+			if (params.channels[i]->band == NL80211_BAND_6GHZ &&
+			    !cfg80211_is_psc(params.channels[i]))
+				continue;
+			params.channels[j++] = params.channels[i];
+		}
+		params.n_channels = j;
+	}
+
+	if (non_psc_included &&
+	    !iwl_mvm_scan_fits(mvm, req->n_ssids, ies, params.n_channels)) {
+		kfree(params.channels);
+		return -ENOBUFS;
+	}
+#endif
 	ret = iwl_mvm_build_scan_cmd(mvm, vif, &hcmd, &params, type);
 
+#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
+	if (non_psc_included)
+		kfree(params.channels);
+#endif
 	if (ret)
 		return ret;
 
@@ -2914,7 +2816,6 @@ static int iwl_scan_req_umac_get_size(u8 scan_ver)
 {
 	switch (scan_ver) {
 		IWL_SCAN_REQ_UMAC_HANDLE_SIZE(14);
-		IWL_SCAN_REQ_UMAC_HANDLE_SIZE(13);
 		IWL_SCAN_REQ_UMAC_HANDLE_SIZE(12);
 	};
 

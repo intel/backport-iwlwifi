@@ -1,7 +1,7 @@
 #
 # INTEL CONFIDENTIAL
 #
-# Copyright (C) 2018 Intel Corporation
+# Copyright (C) 2018 - 2019 Intel Corporation
 #
 # This software and the related documents are Intel copyrighted materials, and
 # your use of them is governed by the express license under which they were
@@ -19,12 +19,12 @@ import time
 COPYRIGHT_CURRENT_OWNER = "Intel Corporation"
 
 class Copyright(object):
-    type = None
-    beginyear = None
-    endyear = None
-    owner = None
+    def __init__(self):
+        self.type = None
+        self.years = set()
+        self.owner = None
 
-def check_copyright(file_types):
+def check_copyright(file_types, missing_fn=None):
     err = 0
     curyear = time.gmtime().tm_year
 
@@ -33,7 +33,14 @@ def check_copyright(file_types):
     c = p.communicate()[0]
     p.wait()
 
-    copyright_re = re.compile(r'^(?P<type>[-+ ]).*Copyright[()Cc ]*((?P<beginyear>2[0-9]{3})\s*-\s*)?(?P<endyear>2[0-9]{3})\s*(?P<owner>.*)')
+    changetype = r'(?P<type>[-+ ])'
+    pfx = '.*'
+    copyright = r'Copyright[()Cc ]*'
+    year_or_range = r'((2[0-9]{3})\s*-\s*)?(2[0-9]{3})\s*,?\s*'
+    years = r'(?P<years>(' + year_or_range + ')+)'
+    owner = r'(?P<owner>.*?)'
+    reserved = r'(\. All rights reserved\.)?'
+    copyright_re = re.compile(r'^' + changetype + pfx + copyright + years + owner + reserved + '$')
 
     diffs = c.split('\n+++ ')
     for d in diffs:
@@ -63,10 +70,17 @@ def check_copyright(file_types):
                     continue
                 c = Copyright()
                 c.type = m.group('type')
-                endyear = m.group('endyear')
-                beginyear = m.group('beginyear') or endyear
-                c.beginyear = int(beginyear)
-                c.endyear = int(endyear)
+                years = m.group('years')
+                for g in years.split(','):
+                    g = g.strip()
+                    if not g:
+                        # nothing to do, found a trailing "," in the year list
+                        pass
+                    elif '-' in g:
+                        beginyear, endyear = [int(x.strip()) for x in g.split('-')]
+                        c.years |= set(range(beginyear, endyear + 1))
+                    else:
+                        c.years |= set([int(g)])
                 c.owner = m.group('owner')
                 copyrights.add(c)
             # preload what we want to reduce checks below
@@ -83,9 +97,9 @@ def check_copyright(file_types):
                     new_owners[c.owner] = set()
 
                 if c.type in ' +':
-                    new_owners[c.owner] |= set(range(c.beginyear, c.endyear + 1))
+                    new_owners[c.owner] |= c.years
                 if c.type in ' -':
-                    old_owners[c.owner] |= set(range(c.beginyear, c.endyear + 1))
+                    old_owners[c.owner] |= c.years
 
             for owner in new_owners:
                 if owner == COPYRIGHT_CURRENT_OWNER:
@@ -103,6 +117,8 @@ def check_copyright(file_types):
                     print('%s: please extend %s Copyright for %d%s' % (filename, COPYRIGHT_CURRENT_OWNER, curyear, section))
                 else:
                     print('%s: please add "Copyright (C) %d %s"%s' % (filename, curyear, COPYRIGHT_CURRENT_OWNER, section))
+                if missing_fn:
+                    missing_fn(filename)
 
     if err:
         print('see https://soco.intel.com/docs/DOC-1015054 for more information')

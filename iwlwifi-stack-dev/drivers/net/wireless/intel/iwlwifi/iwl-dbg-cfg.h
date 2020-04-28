@@ -7,7 +7,7 @@
  *
  * Copyright(c) 2013 - 2015 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -29,7 +29,7 @@
  *
  * Copyright(c) 2013 - 2015 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -89,6 +89,7 @@ struct iwl_dbg_cfg {
 #define IWL_MOD_PARAM(type, name)	/* do nothing */
 #define IWL_MVM_MOD_PARAM(type, name)	type mvm_##name; \
 					bool __mvm_mod_param_##name;
+#define IWL_DBG_CFG_FN(name, fn)	/* nothing */
 
 #endif /* DBG_CFG_REINCLUDE */
 #if IS_ENABLED(CPTCFG_IWLXVT)
@@ -157,6 +158,10 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_RANGE(u8, MVM_UAPSD_NOAGG_LIST_LEN,
 			  1, IWL_MVM_UAPSD_NOAGG_BSSIDS_NUM)
 	IWL_DBG_CFG(bool, MVM_NON_TRANSMITTING_AP)
+	IWL_DBG_CFG(u32, MVM_PHY_FILTER_CHAIN_A)
+	IWL_DBG_CFG(u32, MVM_PHY_FILTER_CHAIN_B)
+	IWL_DBG_CFG(u32, MVM_PHY_FILTER_CHAIN_C)
+	IWL_DBG_CFG(u32, MVM_PHY_FILTER_CHAIN_D)
 #ifdef CPTCFG_IWLMVM_ADVANCED_QUOTA_MGMT
 	IWL_DBG_CFG(bool, MVM_DYNQUOTA_DISABLED)
 	IWL_DBG_CFG_RANGE(u8, MVM_DYNQUOTA_MIN_PERCENT, 0, 100)
@@ -215,7 +220,13 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(u32, MVM_AMPDU_CONSEC_DROPS_DELBA)
 	IWL_MVM_MOD_PARAM(int, power_scheme)
 	IWL_MVM_MOD_PARAM(bool, init_dbg)
-	IWL_MVM_MOD_PARAM(bool, tfd_q_hang_detect)
+	IWL_DBG_CFG(bool, MVM_FTM_INITIATOR_ENABLE_SMOOTH)
+	IWL_DBG_CFG_RANGE(u8, MVM_FTM_INITIATOR_SMOOTH_ALPHA, 0, 100)
+	/* 667200 is 200m RTT */
+	IWL_DBG_CFG_RANGE(u32, MVM_FTM_INITIATOR_SMOOTH_UNDERSHOOT, 0, 667200)
+	IWL_DBG_CFG_RANGE(u32, MVM_FTM_INITIATOR_SMOOTH_OVERSHOOT, 0, 667200)
+	IWL_DBG_CFG(u32, MVM_FTM_INITIATOR_SMOOTH_AGE_SEC)
+	IWL_DBG_CFG(bool, MVM_DISABLE_AP_FILS)
 #endif /* CPTCFG_IWLMVM */
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
@@ -283,12 +294,9 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(u16, tx_mcs_160)
 	IWL_DBG_CFG_NODEF(u32, secure_boot_cfg)
 	IWL_MOD_PARAM(u32, uapsd_disable)
-	IWL_MOD_PARAM(bool, lar_disable)
-	IWL_MOD_PARAM(bool, fw_monitor)
 	IWL_MOD_PARAM(bool, fw_restart)
 	IWL_MOD_PARAM(bool, power_save)
 	IWL_MOD_PARAM(bool, bt_coex_active)
-	IWL_MOD_PARAM(int, antenna_coupling)
 	IWL_MOD_PARAM(int, power_level)
 	IWL_MOD_PARAM(int, led_mode)
 	IWL_MOD_PARAM(int, amsdu_size)
@@ -301,7 +309,8 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(u32, mu_edca)
 	IWL_DBG_CFG_BIN(he_mac_cap)
 	IWL_DBG_CFG_BIN(he_phy_cap)
-	IWL_DBG_CFG(u32, FW_DBG_DOMAIN)
+	IWL_DBG_CFG_NODEF(u32, FW_DBG_DOMAIN)
+	IWL_DBG_CFG_FN(FW_DBG_PRESET, iwl_dbg_cfg_parse_fw_dbg_preset)
 #ifdef CPTCFG_IWLWIFI_DEBUG
 	IWL_MOD_PARAM(u32, debug_level)
 #endif /* CPTCFG_IWLWIFI_DEBUG */
@@ -319,6 +328,7 @@ struct iwl_dbg_cfg {
 #undef IWL_DBG_CFG_RANGE
 #undef IWL_MOD_PARAM
 #undef IWL_MVM_MOD_PARAM
+#undef IWL_DBG_CFG_FN
 #ifndef DBG_CFG_REINCLUDE
 };
 

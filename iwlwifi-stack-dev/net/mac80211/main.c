@@ -5,7 +5,7 @@
  * Copyright 2006-2007	Jiri Benc <jbenc@suse.cz>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright (C) 2017     Intel Deutschland GmbH
- * Copyright (C) 2018 - 2019 Intel Corporation
+ * Copyright (C) 2018 - 2020 Intel Corporation
  */
 
 #include <net/mac80211.h>
@@ -894,7 +894,6 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 	enum nl80211_band band;
 	int channels, max_bitrates;
 	bool supp_ht, supp_vht, supp_he;
-	netdev_features_t feature_whitelist;
 	struct cfg80211_chan_def dflt_chandef = {};
 
 	if (ieee80211_hw_check(hw, QUEUE_CONTROL) &&
@@ -953,10 +952,7 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 	}
 
 	/* Only HW csum features are currently compatible with mac80211 */
-	feature_whitelist = NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
-			    NETIF_F_HW_CSUM | NETIF_F_SG | NETIF_F_HIGHDMA |
-			    NETIF_F_GSO_SOFTWARE | NETIF_F_RXCSUM;
-	if (WARN_ON(hw->netdev_features & ~feature_whitelist))
+	if (WARN_ON(hw->netdev_features & ~MAC80211_SUPPORTED_FEATURES))
 		return -EINVAL;
 
 	if (hw->max_report_rates == 0)
@@ -1020,10 +1016,6 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 		sband->ht_cap.cap |= WLAN_HT_CAP_SM_PS_DISABLED <<
 			             IEEE80211_HT_CAP_SM_PS_SHIFT;
 	}
-
-	/* TODO: Add support for NAN Data interfaces */
-	if (local->hw.wiphy->interface_modes & BIT(NL80211_IFTYPE_NAN_DATA))
-		return -EINVAL;
 
 	/* if low-level driver supports AP, we also support VLAN.
 	 * drivers advertising SW_CRYPTO_CONTROL should enable AP_VLAN
@@ -1221,10 +1213,7 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 	if (!local->hw.weight_multiplier)
 		local->hw.weight_multiplier = 1;
 
-	result = ieee80211_wep_init(local);
-	if (result < 0)
-		wiphy_debug(local->hw.wiphy, "Failed to initialize wep: %d\n",
-			    result);
+	ieee80211_wep_init(local);
 
 	local->hw.conf.flags = IEEE80211_CONF_IDLE;
 

@@ -8,7 +8,7 @@
  * Copyright(c) 2003 - 2015 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2003 - 2015 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -189,6 +189,8 @@ struct iwl_rx_completion_desc {
  * @rb_stts_dma: bus address of receive buffer status
  * @lock:
  * @queue: actual rx queue. Not used for multi-rx queue.
+ * @next_rb_is_fragment: indicates that the previous RB that we handled set
+ *	the fragmented flag, so the next one is still another fragment
  *
  * NOTE:  rx_free and rx_used are used as a FIFO for iwl_rx_mem_buffers
  */
@@ -214,7 +216,7 @@ struct iwl_rxq {
 	u32 queue_size;
 	struct list_head rx_free;
 	struct list_head rx_used;
-	bool need_update;
+	bool need_update, next_rb_is_fragment;
 	void *rb_stts;
 	dma_addr_t rb_stts_dma;
 	spinlock_t lock;
@@ -556,6 +558,7 @@ struct iwl_trans_pcie {
 	u32 scd_base_addr;
 	struct iwl_dma_ptr scd_bc_tbls;
 	struct iwl_dma_ptr kw;
+	struct dma_pool *bc_pool;
 
 	struct iwl_txq *txq_memory;
 	struct iwl_txq *txq[IWL_MAX_TVQM_QUEUES];
@@ -567,10 +570,8 @@ struct iwl_trans_pcie {
 	void __iomem *hw_base;
 
 	bool ucode_write_complete;
-	bool sx_complete;
 	wait_queue_head_t ucode_write_waitq;
 	wait_queue_head_t wait_command_queue;
-	wait_queue_head_t sx_waitq;
 
 	u8 page_offs, dev_cmd_offs;
 
@@ -717,7 +718,6 @@ int iwl_trans_pcie_tx(struct iwl_trans *trans, struct sk_buff *skb,
 		      struct iwl_device_tx_cmd *dev_cmd, int txq_id);
 void iwl_pcie_txq_check_wrptrs(struct iwl_trans *trans);
 int iwl_trans_pcie_send_hcmd(struct iwl_trans *trans, struct iwl_host_cmd *cmd);
-void iwl_pcie_cmdq_reclaim(struct iwl_trans *trans, int txq_id, int idx);
 void iwl_pcie_gen2_txq_inc_wr_ptr(struct iwl_trans *trans,
 				  struct iwl_txq *txq);
 void iwl_pcie_hcmd_complete(struct iwl_trans *trans,
@@ -790,22 +790,6 @@ static inline int iwl_pcie_get_num_sections(const struct fw_img *fw,
 	}
 
 	return i;
-}
-
-static inline int iwl_pcie_ctxt_info_alloc_dma(struct iwl_trans *trans,
-					       const struct fw_desc *sec,
-					       struct iwl_dram_data *dram)
-{
-	dram->block = dma_alloc_coherent(trans->dev, sec->len,
-					 &dram->physical,
-					 GFP_KERNEL);
-	if (!dram->block)
-		return -ENOMEM;
-
-	dram->size = sec->len;
-	memcpy(dram->block, sec->data, sec->len);
-
-	return 0;
 }
 
 static inline void iwl_pcie_ctxt_info_free_fw_img(struct iwl_trans *trans)
@@ -1148,6 +1132,4 @@ void _iwl_trans_pcie_gen2_stop_device(struct iwl_trans *trans);
 void iwl_pcie_gen2_txq_unmap(struct iwl_trans *trans, int txq_id);
 void iwl_pcie_gen2_tx_free(struct iwl_trans *trans);
 void iwl_pcie_gen2_tx_stop(struct iwl_trans *trans);
-void iwl_pcie_d3_complete_suspend(struct iwl_trans *trans,
-				  bool test, bool reset);
 #endif /* __iwl_trans_int_pcie_h__ */

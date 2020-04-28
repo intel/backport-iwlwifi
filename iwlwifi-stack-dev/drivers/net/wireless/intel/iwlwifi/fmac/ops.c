@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -956,28 +956,6 @@ void iwl_fmac_remove_mcast_sta(struct iwl_fmac *fmac,
 	mc_sta->encryption = false;
 }
 
-static void iwl_fmac_rx_trigger_notif(struct iwl_fmac *fmac,
-				      struct iwl_rx_cmd_buffer *rxb)
-{
-	struct iwl_rx_packet *pkt = rxb_addr(rxb);
-	struct iwl_fmac_trigger_notif *notif = (void *)&pkt->data;
-	enum iwl_fw_dbg_trigger trigger_id = le32_to_cpu(notif->id);
-	const char *str = notif->data;
-	struct iwl_fw_dbg_trigger_tlv *trigger;
-
-	if (trigger_id >= FW_DBG_TRIGGER_MAX ||
-	    !iwl_fw_dbg_trigger_enabled(fmac->fwrt.fw, trigger_id))
-		return;
-
-	trigger = _iwl_fw_dbg_get_trigger(fmac->fwrt.fw, trigger_id);
-
-	if (!iwl_fw_dbg_trigger_check_stop(&fmac->fwrt, NULL, trigger))
-		return;
-
-	iwl_fw_dbg_collect(&fmac->fwrt, le32_to_cpu(trigger->id), str,
-			   strlen(str), trigger);
-}
-
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 /* A stub notification handler to receive the profiling report.
  * The notification handler is empty because the report is processed by
@@ -1081,15 +1059,23 @@ void iwl_fmac_nic_restart(struct iwl_fmac *fmac, bool recover)
 	/* remove all stations, notify user space */
 	list_for_each_entry(wdev, &wiphy->wdev_list, list) {
 		struct iwl_fmac_vif *vif = vif_from_wdev(wdev);
-
-		recover_cmd->add_vif_bitmap |= BIT(vif->id);
-		recover_cmd->restore_vif_bitmap |= BIT(vif->id);
-		memcpy(&recover_cmd->vif_addrs[vif->id * ETH_ALEN],
-		       vif->addr, ETH_ALEN);
+		struct iwl_fmac_sta *sta;
 
 		switch (wdev->iftype) {
 		case NL80211_IFTYPE_STATION:
+			recover_cmd->add_vif_bitmap |= BIT(vif->id);
 			recover_cmd->vif_types[vif->id] = IWL_FMAC_IFTYPE_MGD;
+			sta = rcu_dereference_protected(vif->u.mgd.ap_sta,
+					  lockdep_is_held(&fmac->mutex));
+
+			/* The firmware can't restore secure connections */
+			if (sta->encryption)
+				break;
+
+			recover_cmd->restore_vif_bitmap |= BIT(vif->id);
+			memcpy(&recover_cmd->vif_addrs[vif->id * ETH_ALEN],
+			       vif->addr, ETH_ALEN);
+
 			break;
 		default:
 			WARN_ON(1);
@@ -1369,8 +1355,6 @@ static const struct iwl_rx_handlers iwl_fmac_rx_handlers[] = {
 		       iwl_fmac_rx_keys_update, RX_HANDLER_ASYNC_LOCKED),
 	RX_HANDLER_GRP(FMAC_GROUP, FMAC_REG_UPDATE,
 		       iwl_fmac_rx_reg_update, RX_HANDLER_ASYNC_LOCKED),
-	RX_HANDLER_GRP(FMAC_GROUP, FMAC_TRIGGER_NOTIF,
-		       iwl_fmac_rx_trigger_notif, RX_HANDLER_SYNC),
 	RX_HANDLER_GRP(FMAC_GROUP, FMAC_EAPOL, iwl_fmac_rx_eapol,
 		       RX_HANDLER_ASYNC_LOCKED),
 	RX_HANDLER_GRP(FMAC_GROUP, FMAC_SEND_FRAME, iwl_fmac_rx_send_frame,
@@ -1496,7 +1480,6 @@ static const struct iwl_hcmd_names iwl_fmac_mlme_names[] = {
 	HCMD_NAME(FMAC_SEND_FRAME),
 	HCMD_NAME(FMAC_EAPOL),
 	HCMD_NAME(FMAC_REG_UPDATE),
-	HCMD_NAME(FMAC_TRIGGER_NOTIF),
 	HCMD_NAME(FMAC_KEYS_UPDATE),
 	HCMD_NAME(FMAC_DISCONNECTED),
 	HCMD_NAME(FMAC_DEBUG),

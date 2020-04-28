@@ -5,10 +5,9 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2013 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2015        Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2013 - 2014, 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -28,10 +27,9 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2013 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2015        Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2013 - 2014, 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -166,6 +164,17 @@
 #define IWL_MVM_D3_DEBUG			false
 #define IWL_MVM_USE_TWT				true
 #define IWL_MVM_AMPDU_CONSEC_DROPS_DELBA	10
+#define IWL_MVM_FTM_INITIATOR_ENABLE_SMOOTH     false
+#define IWL_MVM_FTM_INITIATOR_SMOOTH_ALPHA      40
+/*  20016 pSec is 6 meter RTT, meaning 3 meter range */
+#define IWL_MVM_FTM_INITIATOR_SMOOTH_UNDERSHOOT 20016
+#define IWL_MVM_FTM_INITIATOR_SMOOTH_OVERSHOOT  20016
+#define IWL_MVM_FTM_INITIATOR_SMOOTH_AGE_SEC    2
+#define IWL_MVM_PHY_FILTER_CHAIN_A		0
+#define IWL_MVM_PHY_FILTER_CHAIN_B		0
+#define IWL_MVM_PHY_FILTER_CHAIN_C		0
+#define IWL_MVM_PHY_FILTER_CHAIN_D		0
+#define IWL_MVM_DISABLE_AP_FILS			false
 #else /* CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES */
 #define IWL_MVM_DEFAULT_PS_TX_DATA_TIMEOUT	(mvm->trans->dbg_cfg.MVM_DEFAULT_PS_TX_DATA_TIMEOUT)
 #define IWL_MVM_DEFAULT_PS_RX_DATA_TIMEOUT	(mvm->trans->dbg_cfg.MVM_DEFAULT_PS_RX_DATA_TIMEOUT)
@@ -266,6 +275,16 @@
 #define IWL_MVM_D3_DEBUG			(((struct iwl_mvm *)ctx)->trans->dbg_cfg.MVM_D3_DEBUG)
 #define IWL_MVM_USE_TWT				(mvm->trans->dbg_cfg.MVM_USE_TWT)
 #define IWL_MVM_AMPDU_CONSEC_DROPS_DELBA	(mvm->trans->dbg_cfg.MVM_AMPDU_CONSEC_DROPS_DELBA)
+#define IWL_MVM_FTM_INITIATOR_ENABLE_SMOOTH     (mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_ENABLE_SMOOTH)
+#define IWL_MVM_FTM_INITIATOR_SMOOTH_ALPHA      (mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_SMOOTH_ALPHA)
+#define IWL_MVM_FTM_INITIATOR_SMOOTH_UNDERSHOOT (mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_SMOOTH_UNDERSHOOT)
+#define IWL_MVM_FTM_INITIATOR_SMOOTH_OVERSHOOT  (mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_SMOOTH_OVERSHOOT)
+#define IWL_MVM_FTM_INITIATOR_SMOOTH_AGE_SEC    (mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_SMOOTH_AGE_SEC)
+#define IWL_MVM_PHY_FILTER_CHAIN_A		(mvm->trans->dbg_cfg.MVM_PHY_FILTER_CHAIN_A)
+#define IWL_MVM_PHY_FILTER_CHAIN_B		(mvm->trans->dbg_cfg.MVM_PHY_FILTER_CHAIN_B)
+#define IWL_MVM_PHY_FILTER_CHAIN_C		(mvm->trans->dbg_cfg.MVM_PHY_FILTER_CHAIN_C)
+#define IWL_MVM_PHY_FILTER_CHAIN_D		(mvm->trans->dbg_cfg.MVM_PHY_FILTER_CHAIN_D)
+#define IWL_MVM_DISABLE_AP_FILS			(mvm->trans->dbg_cfg.MVM_DISABLE_AP_FILS)
 
 #endif /* CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES */
 

@@ -2,7 +2,7 @@
 # INTEL CONFIDENTIAL
 #
 # Copyright (C) 2017 Intel Deutschland GmbH
-# Copyright (C) 2018 Intel Corporation
+# Copyright (C) 2018 - 2019 Intel Corporation
 #
 # This software and the related documents are Intel copyrighted materials, and
 # your use of them is governed by the express license under which they were
@@ -89,22 +89,6 @@ def get_commit_var(commit, var, tree=None):
     process.wait()
     _check(process)
     return stdout.split('\x00')[0]
-
-def commit_tree(parent, message, tree, cwd=None, env={}):
-    if parent is None:
-        parent = []
-    else:
-        parent = ['-p', parent]
-    process = subprocess.Popen(['git', 'commit-tree', '-F', '-', tree] + parent,
-                               stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT,
-                               universal_newlines=True,
-                               cwd=cwd, env=env)
-    stdout = process.communicate(message)[0]
-    process.wait()
-    _check(process)
-    return stdout.strip()
 
 def ls_tree(rev, files, tree=None):
     process = subprocess.Popen(['git', 'ls-tree', '-z', '-r', rev, '--', ] + list(files),
@@ -271,7 +255,7 @@ def checkout(commit, options=[], tree=None):
 
 def commit(msg, tree=None, env={}, opts=[]):
     stdin = tempfile.NamedTemporaryFile(mode='wr')
-    stdin.write(msg)
+    stdin.write(msg.encode('utf-8'))
     stdin.seek(0)
     process = subprocess.Popen(['git', 'commit', '--file=-'] + opts,
                                stdin=stdin.file, universal_newlines=True, env=env,
@@ -380,6 +364,20 @@ def merge_base(rev1, rev2, tree=None):
         raise SHAError()
     return sha
 
+def independent_commits(revs, tree=None):
+    process = subprocess.Popen(['git', 'merge-base', '--independent'] + revs,
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               universal_newlines=True, cwd=tree)
+    stdout = process.communicate()[0]
+    process.wait()
+    _check(process)
+
+    found = stdout.strip().split()
+    for sha in found:
+        if not _sha_re.match(sha):
+            raise SHAError()
+    return found
+
 def tag(name, commit='HEAD', tree=None):
     process = subprocess.Popen(['git', 'tag', name, commit],
                                close_fds=True, universal_newlines=True, cwd=tree)
@@ -461,3 +459,12 @@ def fetch(ref, repo='origin', tree=None):
     process = subprocess.Popen(['git', 'fetch', repo, ref], cwd=tree)
     process.wait()
     _check(process)
+
+def get_file(commit, file_name, tree=None):
+    perm, type, sha, file = ls_tree(commit, [file_name], tree)[0]
+
+    process = subprocess.Popen(['git', 'show', '--name-only', sha],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               universal_newlines=True, cwd=tree)
+    stdout = process.communicate()[0]
+    return stdout
