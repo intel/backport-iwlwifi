@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017        Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019        Intel Corporation
+ * Copyright(c) 2018 - 2020        Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017        Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019        Intel Corporation
+ * Copyright(c) 2018 - 2020        Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -352,50 +352,7 @@ static ssize_t iwl_dbgfs_debug_profile_write(struct iwl_fmac *fmac,
 }
 
 FMAC_DEBUGFS_WRITE_FILE_OPS(debug_profile, 64);
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
 
-/* configure low latency
- * the location is stations/<mac addr>, this is also the reason it
- * cannot use the standard macros for creating debugfs API
- */
-static ssize_t iwl_dbgfs_low_latency_write(struct file *file,
-					   const char __user *user_buf,
-					   size_t count, loff_t *ppos)
-{
-	struct iwl_fmac_sta *sta = file->private_data;
-	struct iwl_fmac_vif *vif = sta->vif;
-	struct iwl_fmac *fmac = vif->fmac;
-	bool low_latency;
-	int ret;
-
-	ret = kstrtobool_from_user(user_buf, count, &low_latency);
-	if (ret)
-		return ret;
-
-	mutex_lock(&fmac->mutex);
-
-	if (iwl_fmac_firmware_running(fmac))
-		ret = iwl_fmac_send_config_u32(fmac, vif->id,
-					       IWL_FMAC_CONFIG_VIF_LOW_LATENCY,
-					       low_latency);
-	else
-		ret = -EIO;
-
-	mutex_unlock(&fmac->mutex);
-
-	IWL_DEBUG_RATE(fmac, "set low latency to %d for vif id %d\n",
-		       low_latency, vif->id);
-
-	return ret ?: count;
-}
-
-static const struct file_operations iwl_dbgfs_low_latency_ops = {
-	.write = iwl_dbgfs_low_latency_write,
-	.open = simple_open,
-	.llseek = generic_file_llseek,
-};
-
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 /*
  * handle fixed rate table for TLC
  * the location is stations/<mac addr>, this is also the reason it
@@ -528,9 +485,6 @@ void iwl_fmac_dbgfs_add_sta(struct iwl_fmac *fmac, struct iwl_fmac_sta *sta)
 	sta->dbgfs_dir = debugfs_create_dir(mac, fmac->dbgfs_dir_stations);
 	if (!sta->dbgfs_dir)
 		return;
-
-	debugfs_create_file("low_latency", S_IWUSR, sta->dbgfs_dir,
-			    sta, &iwl_dbgfs_low_latency_ops);
 
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 	debugfs_create_file("rate_scale_table", S_IWUSR, sta->dbgfs_dir,

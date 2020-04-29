@@ -8,7 +8,7 @@
  * Copyright(c) 2003 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2003 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1427,7 +1427,8 @@ static void iwl_pcie_rx_handle_rb(struct iwl_trans *trans,
 }
 
 static struct iwl_rx_mem_buffer *iwl_pcie_get_rxb(struct iwl_trans *trans,
-						  struct iwl_rxq *rxq, int i)
+						  struct iwl_rxq *rxq, int i,
+						  bool *join)
 {
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	struct iwl_rx_mem_buffer *rxb;
@@ -1441,10 +1442,12 @@ static struct iwl_rx_mem_buffer *iwl_pcie_get_rxb(struct iwl_trans *trans,
 		return rxb;
 	}
 
-	if (trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
+	if (trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) {
 		vid = le16_to_cpu(rxq->cd[i].rbid);
-	else
+		*join = rxq->cd[i].flags & IWL_RX_CD_FLAGS_FRAGMENTED;
+	} else {
 		vid = le32_to_cpu(rxq->bd_32[i]) & 0x0FFF; /* 12-bit VID */
+	}
 
 	if (!vid || vid > RX_POOL_SIZE(trans_pcie->num_rx_bufs))
 		goto out_err;
@@ -1471,6 +1474,7 @@ out_err:
 static void iwl_pcie_rx_handle(struct iwl_trans *trans, int queue)
 {
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
+	struct napi_struct *napi;
 	struct iwl_rxq *rxq;
 	u32 r, i, count = 0;
 	bool emergency = false;
@@ -1501,6 +1505,7 @@ restart:
 		u32 rb_pending_alloc =
 			atomic_read(&trans_pcie->rba.req_pending) *
 			RX_CLAIM_REQ_ALLOC;
+		bool join = false;
 
 		if (unlikely(rb_pending_alloc >= rxq->queue_size / 2 &&
 			     !emergency)) {
@@ -1513,11 +1518,29 @@ restart:
 
 		IWL_DEBUG_RX(trans, "Q %d: HW = %d, SW = %d\n", rxq->id, r, i);
 
-		rxb = iwl_pcie_get_rxb(trans, rxq, i);
+		rxb = iwl_pcie_get_rxb(trans, rxq, i, &join);
 		if (!rxb)
 			goto out;
 
-		iwl_pcie_rx_handle_rb(trans, rxq, rxb, emergency, i);
+		if (unlikely(join || rxq->next_rb_is_fragment)) {
+			rxq->next_rb_is_fragment = join;
+			/*
+			 * We can only get a multi-RB in the following cases:
+			 *  - firmware issue, sending a too big notification
+			 *  - sniffer mode with a large A-MSDU
+			 *  - large MTU frames (>2k)
+			 * since the multi-RB functionality is limited to newer
+			 * hardware that cannot put multiple entries into a
+			 * single RB.
+			 *
+			 * Right now, the higher layers aren't set up to deal
+			 * with that, so discard all of these.
+			 */
+			list_add_tail(&rxb->list, &rxq->rx_free);
+			rxq->free_count++;
+		} else {
+			iwl_pcie_rx_handle_rb(trans, rxq, rxb, emergency, i);
+		}
 
 		i = (i + 1) & (rxq->queue_size - 1);
 
@@ -1576,8 +1599,18 @@ out:
 	if (unlikely(emergency && count))
 		iwl_pcie_rxq_alloc_rbs(trans, GFP_ATOMIC, rxq);
 
-	if (rxq->napi.poll)
-		napi_gro_flush(&rxq->napi, false);
+	napi = &rxq->napi;
+	if (napi->poll) {
+		napi_gro_flush(napi, false);
+
+#if LINUX_VERSION_IS_GEQ(5,4,0)
+		if (napi->rx_count) {
+			netif_receive_skb_list(&napi->rx_list);
+			INIT_LIST_HEAD(&napi->rx_list);
+			napi->rx_count = 0;
+		}
+#endif
+	}
 
 	iwl_pcie_rxq_restock(trans, rxq);
 }
@@ -2227,23 +2260,12 @@ irqreturn_t iwl_pcie_irq_msix_handler(int irq, void *dev_id)
 	}
 
 	if (inta_hw & MSIX_HW_INT_CAUSES_REG_WAKEUP) {
-		u32 sleep_notif =
-			le32_to_cpu(trans_pcie->prph_info->sleep_notif);
-		if (sleep_notif == IWL_D3_SLEEP_STATUS_SUSPEND ||
-		    sleep_notif == IWL_D3_SLEEP_STATUS_RESUME) {
-			IWL_DEBUG_ISR(trans,
-				      "Sx interrupt: sleep notification = 0x%x\n",
-				      sleep_notif);
-			trans_pcie->sx_complete = true;
-			wake_up(&trans_pcie->sx_waitq);
-		} else {
-			/* uCode wakes up after power-down sleep */
-			IWL_DEBUG_ISR(trans, "Wakeup interrupt\n");
-			iwl_pcie_rxq_check_wrptr(trans);
-			iwl_pcie_txq_check_wrptrs(trans);
+		/* uCode wakes up after power-down sleep */
+		IWL_DEBUG_ISR(trans, "Wakeup interrupt\n");
+		iwl_pcie_rxq_check_wrptr(trans);
+		iwl_pcie_txq_check_wrptrs(trans);
 
-			isr_stats->wakeup++;
-		}
+		isr_stats->wakeup++;
 	}
 
 	if (inta_hw & MSIX_HW_INT_CAUSES_REG_IML) {

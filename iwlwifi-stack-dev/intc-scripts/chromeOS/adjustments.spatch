@@ -430,6 +430,12 @@ expression E;
 + !ieee80211_viftype_ocb(E)
 
 @@
+expression E;
+@@
+-sdata->wdev.cac_started = E
++set_wdev_cac_started(&sdata->wdev, E)
+
+@@
 identifier sdata;
 @@
 -sdata->wdev.cac_started
@@ -506,34 +512,6 @@ expression E;
 @@
 -E & BIT(NL80211_IFTYPE_NAN)
 + ieee80211_has_nan_iftype(E)
-
-@@
-expression E;
-@@
-switch (E) {
-+#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
-case NL80211_IFTYPE_NAN_DATA:
-+/* keep code in case of fall-through (spatch generated) */
-+#endif
-}
-
-@@
-expression E;
-@@
--E == NL80211_IFTYPE_NAN_DATA
-+ieee80211_viftype_nan_data(E)
-
-@@
-expression E;
-@@
--E != NL80211_IFTYPE_NAN_DATA
-+ !ieee80211_viftype_nan_data(E)
-
-@@
-expression E;
-@@
--E & BIT(NL80211_IFTYPE_NAN_DATA)
-+ ieee80211_has_nan_data_iftype(E)
 
 @@
 @@
@@ -1049,12 +1027,6 @@ struct cfg80211_ibss_params *params;
 +cfg80211_ibss_userspace_handles_dfs(params)
 
 @@
-struct cfg80211_ap_settings *params;
-@@
--params->smps_mode
-+cfg80211_ap_settings_smps_mode(params)
-
-@@
 struct cfg80211_crypto_settings *crypto;
 @@
 -crypto->n_ciphers_group
@@ -1124,6 +1096,27 @@ fn(..., struct cfg80211_ap_settings *params, ...)
 <...
 -params->he_cap
 +cfg_he_cap(params)
+...>
+}
+
+@@
+identifier params;
+@@
+struct cfg80211_ap_settings *params;
+<...
+-params->he_oper
++cfg_he_oper(params)
+...>
+
+@@
+identifier params;
+identifier fn;
+@@
+fn(..., struct cfg80211_ap_settings *params, ...)
+{
+<...
+-params->he_oper
++cfg_he_oper(params)
 ...>
 }
 

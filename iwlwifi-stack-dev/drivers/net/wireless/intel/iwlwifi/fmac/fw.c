@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -76,6 +76,7 @@
 #include "fw-api.h"
 #include "fmac.h"
 #include "fw/dbg.h"
+#include "fw/img.h"
 
 void iwl_fmac_mfu_assert_dump_notif(struct iwl_fmac *fmac,
 				    struct iwl_rx_cmd_buffer *rxb)
@@ -258,8 +259,9 @@ remove_notif:
 
 static int iwl_fmac_send_phy_cfg_cmd(struct iwl_fmac *fmac)
 {
-	struct iwl_phy_cfg_cmd phy_cfg_cmd;
+	struct iwl_phy_cfg_cmd_v3 phy_cfg_cmd;
 	enum iwl_ucode_type ucode_type = fmac->fwrt.cur_fw_img;
+	size_t cmd_size;
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	u32 override_mask, flow_override, flow_src;
 	u32 event_override, event_src;
@@ -346,11 +348,15 @@ static int iwl_fmac_send_phy_cfg_cmd(struct iwl_fmac *fmac)
 				event_override);
 	}
 #endif
+	cmd_size = iwl_fw_lookup_cmd_ver(fmac->fw, IWL_ALWAYS_LONG_GROUP,
+					 PHY_CONFIGURATION_CMD) == 3 ?
+					    sizeof(struct iwl_phy_cfg_cmd_v3) :
+					    sizeof(struct iwl_phy_cfg_cmd_v1);
 	IWL_DEBUG_INFO(fmac, "Sending Phy CFG command: 0x%x\n",
 		       phy_cfg_cmd.phy_cfg);
 
 	return iwl_fmac_send_cmd_pdu(fmac, PHY_CONFIGURATION_CMD, 0,
-				sizeof(phy_cfg_cmd), &phy_cfg_cmd);
+				cmd_size, &phy_cfg_cmd);
 }
 
 struct ieee80211_regdomain *
@@ -440,8 +446,7 @@ static int iwl_fmac_config_regulatory(struct iwl_fmac *fmac)
 	int ret;
 
 	/* we do not support FMAC without LAR */
-	if (iwlwifi_mod_params.lar_disable ||
-	    !fw_has_capa(&fmac->fw->ucode_capa,
+	if (!fw_has_capa(&fmac->fw->ucode_capa,
 			 IWL_UCODE_TLV_CAPA_LAR_SUPPORT)) {
 		IWL_ERR(fmac, "Error: LAR can't be disabled in FMAC FW\n");
 		return -ENOTSUPP;
@@ -744,55 +749,6 @@ int iwl_fmac_run_init_fw(struct iwl_fmac *fmac)
 	return _iwl_fmac_run_init_fw(fmac, true);
 }
 
-static int iwl_fmac_init_triggers(struct iwl_fmac *fmac)
-{
-	struct iwl_fmac_trigger_cmd *cmd;
-	enum iwl_fmac_vif_type cmd_vif_type;
-	enum iwl_fw_dbg_trigger_vif_type trig_vif_type;
-	size_t cmd_len;
-	size_t trigger_len;
-	int ret = 0, i;
-
-	for (i = 0; i < ARRAY_SIZE(fmac->fw->dbg.trigger_tlv); i++) {
-		if (!fmac->fw->dbg.trigger_tlv[i])
-			continue;
-
-		trigger_len = fmac->fw->dbg.trigger_tlv_len[i] -
-			sizeof(*fmac->fw->dbg.trigger_tlv[i]);
-		cmd_len = trigger_len + sizeof(*cmd);
-		cmd = kzalloc(cmd_len, GFP_KERNEL);
-		if (!cmd)
-			return -ENOMEM;
-		cmd->len = cpu_to_le32(trigger_len);
-		cmd->id = fmac->fw->dbg.trigger_tlv[i]->id;
-		trig_vif_type =
-			le32_to_cpu(fmac->fw->dbg.trigger_tlv[i]->vif_type);
-
-		switch (trig_vif_type) {
-		case IWL_FW_DBG_CONF_VIF_ANY:
-			cmd_vif_type = IWL_FMAC_IFTYPE_ANY;
-			break;
-		case IWL_FW_DBG_CONF_VIF_STATION:
-			cmd_vif_type = IWL_FMAC_IFTYPE_MGD;
-			break;
-		default:
-			IWL_ERR(fmac, "Invalid vif type %d\n", trig_vif_type);
-			kfree(cmd);
-			return -EINVAL;
-		}
-		cmd->vif_type = cpu_to_le32(cmd_vif_type);
-		memcpy(&cmd->data, fmac->fw->dbg.trigger_tlv[i]->data,
-		       trigger_len);
-		ret = iwl_fmac_send_config_cmd(fmac, IWL_FMAC_VIF_ID_GLOBAL,
-					       IWL_FMAC_CONFIG_TRIGGER, cmd,
-					       cmd_len);
-		kfree(cmd);
-		if (ret)
-			return ret;
-	}
-	return ret;
-}
-
 int iwl_fmac_run_rt_fw(struct iwl_fmac *fmac)
 {
 	u32 uapsd_enabled = 0;
@@ -846,13 +802,16 @@ int iwl_fmac_run_rt_fw(struct iwl_fmac *fmac)
 
 	/* Configure WRT, if needed */
 	iwl_fw_start_dbg_conf(&fmac->fwrt, FW_DBG_START_FROM_ALIVE);
-	iwl_fmac_init_triggers(fmac);
 
 	ret = iwl_fmac_send_nvm_cmd(fmac);
 	if (ret)
 		goto error;
 
 	ret = iwl_send_rss_cfg_cmd(fmac);
+	if (ret)
+		goto error;
+
+	ret = iwl_set_soc_latency(&fmac->fwrt);
 	if (ret)
 		goto error;
 

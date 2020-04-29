@@ -5,7 +5,7 @@
  * Copyright 2006-2007	Jiri Benc <jbenc@suse.cz>
  * Copyright 2007-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2015  Intel Mobile Communications GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2020 Intel Corporation
  */
 
 #ifndef IEEE80211_I_H
@@ -292,10 +292,7 @@ struct ieee80211_if_ap {
 
 	struct ps_data ps;
 	atomic_t num_mcast_sta; /* number of stations receiving multicast */
-	enum ieee80211_smps_mode req_smps, /* requested smps mode */
-			 driver_smps_mode; /* smps mode request */
 
-	struct work_struct request_smps_work;
 	bool multicast_to_unicast;
 };
 
@@ -1571,6 +1568,7 @@ struct ieee802_11_elems {
 	const struct ieee80211_tim_ie *tim;
 	const u8 *challenge;
 	const u8 *rsn;
+	const u8 *rsnx;
 	const u8 *erp_info;
 	const u8 *ext_supp_rates;
 	const u8 *wmm_info;
@@ -1617,6 +1615,7 @@ struct ieee802_11_elems {
 	u8 tim_len;
 	u8 challenge_len;
 	u8 rsn_len;
+	u8 rsnx_len;
 	u8 ext_supp_rates_len;
 	u8 wmm_info_len;
 	u8 wmm_param_len;
@@ -1824,6 +1823,13 @@ int ieee80211_channel_switch(struct wiphy *wiphy, struct net_device *dev,
 			     struct cfg80211_csa_settings *params);
 
 /* interface handling */
+#define MAC80211_SUPPORTED_FEATURES_TX	(NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM | \
+					 NETIF_F_HW_CSUM | NETIF_F_SG | \
+					 NETIF_F_HIGHDMA | NETIF_F_GSO_SOFTWARE)
+#define MAC80211_SUPPORTED_FEATURES_RX	(NETIF_F_RXCSUM)
+#define MAC80211_SUPPORTED_FEATURES	(MAC80211_SUPPORTED_FEATURES_TX | \
+					 MAC80211_SUPPORTED_FEATURES_RX)
+
 int ieee80211_iface_init(void);
 void ieee80211_iface_exit(void);
 int ieee80211_if_add(struct ieee80211_local *local, const char *name,
@@ -2224,8 +2230,6 @@ u32 ieee80211_sta_get_rates(struct ieee80211_sub_if_data *sdata,
 			    enum nl80211_band band, u32 *basic_rates);
 int __ieee80211_request_smps_mgd(struct ieee80211_sub_if_data *sdata,
 				 enum ieee80211_smps_mode smps_mode);
-int __ieee80211_request_smps_ap(struct ieee80211_sub_if_data *sdata,
-				enum ieee80211_smps_mode smps_mode);
 void ieee80211_recalc_smps(struct ieee80211_sub_if_data *sdata);
 void ieee80211_recalc_min_chandef(struct ieee80211_sub_if_data *sdata);
 

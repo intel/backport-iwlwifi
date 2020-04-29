@@ -164,6 +164,13 @@ def check_internal_names():
                  'sunny', 'solar', 'typhoon',
 		 'cherrytrail', 'cht', 'broxton', 'bxt', 'sofia', 'brtns', 'brighton', 'btns', 'phoenix', 'gsd',
 		 'goldsand', 'google', 'fiber', 'asus', 'rockchip', 'quasar', 'qsr', 'icp', 'hrp', 'gfp', 'garfield']
+
+    def remove_whitelist(line):
+        whitelist = ['GFP_KERNEL', 'GFP_ATOMIC']
+        for item in whitelist:
+            line = line.replace(item, '')
+        return line
+
     p = subprocess.Popen(["git", "format-patch", "--stdout", "HEAD~1.."],
                          stdout=subprocess.PIPE)
     msg_and_diff = p.communicate()[0]
@@ -175,6 +182,7 @@ def check_internal_names():
     assert len(diff) > 0
 
     for line in msg.split('\n'):
+        line = remove_whitelist(line)
         for n in int_names:
             m = re.search(n, line, re.IGNORECASE)
             if m:
@@ -182,6 +190,7 @@ def check_internal_names():
     for line in diff.split('\n'):
         if not line.startswith('+'):
             continue
+        line = remove_whitelist(line)
         for n in int_names:
             m = re.search(n, line, re.IGNORECASE)
             if m:

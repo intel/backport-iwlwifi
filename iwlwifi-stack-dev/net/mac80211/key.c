@@ -273,9 +273,8 @@ static int _ieee80211_set_tx_key(struct ieee80211_key *key, bool force)
 
 	sta->ptk_idx = key->conf.keyidx;
 
-	 if (force)
-               clear_sta_flag(sta, WLAN_STA_BLOCK_BA);
-
+	if (force)
+		clear_sta_flag(sta, WLAN_STA_BLOCK_BA);
 	ieee80211_check_fast_xmit(sta);
 
 	return 0;
@@ -283,7 +282,7 @@ static int _ieee80211_set_tx_key(struct ieee80211_key *key, bool force)
 
 int ieee80211_set_tx_key(struct ieee80211_key *key)
 {
-       return _ieee80211_set_tx_key(key, false);
+	return _ieee80211_set_tx_key(key, false);
 }
 
 static int ieee80211_hw_key_replace(struct ieee80211_key *old_key,
@@ -440,9 +439,8 @@ static int ieee80211_key_replace(struct ieee80211_sub_if_data *sdata,
 		if (pairwise) {
 			rcu_assign_pointer(sta->ptk[idx], new);
 			if (new &&
-                           !(new->conf.flags & IEEE80211_KEY_FLAG_NO_AUTO_TX)) {
-                               _ieee80211_set_tx_key(new, true);
-			}
+			    !(new->conf.flags & IEEE80211_KEY_FLAG_NO_AUTO_TX))
+				_ieee80211_set_tx_key(new, true);
 		} else {
 			rcu_assign_pointer(sta->gtk[idx], new);
 		}

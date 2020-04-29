@@ -7,7 +7,7 @@
  * Copyright 2006-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014 Intel Mobile Communications GmbH
  * Copyright 2015-2017	Intel Deutschland GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2020 Intel Corporation
  */
 
 #include <linux/netdevice.h>
@@ -399,6 +399,25 @@ ieee80211_get_he_sta_cap(const struct ieee80211_supported_band *sband)
 		return &data->he_cap;
 
 	return NULL;
+}
+
+/**
+ * ieee80211_get_he_6ghz_sta_cap - return HE 6GHZ capabilities for an sband's
+ * STA
+ * @sband: the sband to search for the STA on
+ *
+ * Return: the 6GHz capabilities
+ */
+static inline __le16
+ieee80211_get_he_6ghz_sta_cap(const struct ieee80211_supported_band *sband)
+{
+	const struct ieee80211_sband_iftype_data *data =
+		ieee80211_get_sband_iftype_data(sband, NL80211_IFTYPE_STATION);
+
+	if (WARN_ON(!data || !data->he_cap.has_he))
+		return 0;
+
+	return data->he_6ghz_capa;
 }
 
 /**
@@ -882,7 +901,9 @@ enum cfg80211_ap_settings_flags {
  * @he_cap: HE capabilities (or %NULL if HE isn't enabled)
  * @ht_required: stations must support HT
  * @vht_required: stations must support VHT
+ * @he_required: stations must support HE
  * @flags: flags, as defined in enum cfg80211_ap_settings_flags
+ * @he_oper: HE operation IE (or %NULL if HE isn't enabled)
  */
 struct cfg80211_ap_settings {
 	struct cfg80211_chan_def chandef;
@@ -907,7 +928,8 @@ struct cfg80211_ap_settings {
 	const struct ieee80211_ht_cap *ht_cap;
 	const struct ieee80211_vht_cap *vht_cap;
 	const struct ieee80211_he_cap_elem *he_cap;
-	bool ht_required, vht_required;
+	const struct ieee80211_he_operation *he_oper;
+	bool ht_required, vht_required, he_required;
 	u32 flags;
 };
 
@@ -1794,11 +1816,13 @@ struct cfg80211_scan_info {
  * @bssid: bssid to scan for
  * @channel_idx: idx of the channel in the channel array in the scan request
  *	 which the above info relvant to
+ * @unsolicited_probe: the AP transmits unsolicited probe response every 20 TU
  */
 struct cfg80211_scan_6ghz_params {
 	u32 short_ssid;
 	u32 channel_idx;
 	u8 bssid[ETH_ALEN];
+	bool unsolicited_probe;
 };
 
 /**
@@ -7482,5 +7506,20 @@ void cfg80211_pmsr_complete(struct wireless_dev *wdev,
 void cfg80211_update_owe_info_event(struct net_device *netdev,
 				    struct cfg80211_update_owe_info *owe_info,
 				    gfp_t gfp);
+
+/**
+ * cfg80211_is_psc - Check if the channel is PSC
+ * @chan: control channel to check
+ *
+ * The Preferred Scanning Channels (PSC) are defined in
+ * Draft IEEE P802.11ax/D5.0, 26.17.2.3.3
+ */
+static inline bool cfg80211_is_psc(struct ieee80211_channel *chan)
+{
+	int chan_num =
+		ieee80211_frequency_to_channel(chan->center_freq);
+
+	return chan->band == NL80211_BAND_6GHZ && chan_num % 16 == 5;
+}
 
 #endif /* __NET_CFG80211_H */

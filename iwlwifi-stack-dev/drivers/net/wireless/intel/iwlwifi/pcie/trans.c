@@ -5,10 +5,9 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2007 - 2015 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2007 - 2015, 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -28,10 +27,9 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2005 - 2015 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2007 - 2015, 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1055,21 +1053,8 @@ static int iwl_pcie_load_given_ucode(struct iwl_trans *trans,
 			return ret;
 	}
 
-	/* supported for 7000 only for the moment */
-	if (iwlwifi_mod_params.fw_monitor &&
-	    trans->trans_cfg->device_family == IWL_DEVICE_FAMILY_7000) {
-		struct iwl_dram_data *fw_mon = &trans->dbg.fw_mon;
-
-		iwl_pcie_alloc_fw_monitor(trans, 0);
-		if (fw_mon->size) {
-			iwl_write_prph(trans, MON_BUFF_BASE_ADDR,
-				       fw_mon->physical >> 4);
-			iwl_write_prph(trans, MON_BUFF_END_ADDR,
-				       (fw_mon->physical + fw_mon->size) >> 4);
-		}
-	} else if (iwl_pcie_dbg_on(trans)) {
+	if (iwl_pcie_dbg_on(trans))
 		iwl_pcie_apply_destination(trans);
-	}
 
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	iwl_dnt_configure(trans, image);
@@ -1517,9 +1502,14 @@ void iwl_trans_pcie_rf_kill(struct iwl_trans *trans, bool state)
 	}
 }
 
-void iwl_pcie_d3_complete_suspend(struct iwl_trans *trans,
-				  bool test, bool reset)
+static void iwl_trans_pcie_d3_suspend(struct iwl_trans *trans,
+				      bool test, bool reset)
 {
+	if (!reset) {
+		/* Enable persistence mode to avoid reset */
+		iwl_set_bit(trans, CSR_HW_IF_CONFIG_REG,
+			    CSR_HW_IF_CONFIG_REG_PERSIST_MODE);
+	}
 	iwl_disable_interrupts(trans);
 
 	/*
@@ -1549,42 +1539,6 @@ void iwl_pcie_d3_complete_suspend(struct iwl_trans *trans,
 	iwl_pcie_set_pwr(trans, true);
 }
 
-static int iwl_trans_pcie_d3_suspend(struct iwl_trans *trans, bool test,
-				     bool reset)
-{
-	int ret;
-	struct iwl_trans_pcie *trans_pcie =  IWL_TRANS_GET_PCIE_TRANS(trans);
-
-	/*
-	 * Family IWL_DEVICE_FAMILY_AX210 and above persist mode is set by FW.
-	 */
-	if (!reset && trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210) {
-		/* Enable persistence mode to avoid reset */
-		iwl_set_bit(trans, CSR_HW_IF_CONFIG_REG,
-			    CSR_HW_IF_CONFIG_REG_PERSIST_MODE);
-	}
-
-	if (trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) {
-		iwl_write_umac_prph(trans, UREG_DOORBELL_TO_ISR6,
-				    UREG_DOORBELL_TO_ISR6_SUSPEND);
-
-		ret = wait_event_timeout(trans_pcie->sx_waitq,
-					 trans_pcie->sx_complete, 2 * HZ);
-		/*
-		 * Invalidate it toward resume.
-		 */
-		trans_pcie->sx_complete = false;
-
-		if (!ret) {
-			IWL_ERR(trans, "Timeout entering D3\n");
-			return -ETIMEDOUT;
-		}
-	}
-	iwl_pcie_d3_complete_suspend(trans, test, reset);
-
-	return 0;
-}
-
 static int iwl_trans_pcie_d3_resume(struct iwl_trans *trans,
 				    enum iwl_d3_status *status,
 				    bool test,  bool reset)
@@ -1596,7 +1550,7 @@ static int iwl_trans_pcie_d3_resume(struct iwl_trans *trans,
 	if (test) {
 		iwl_enable_interrupts(trans);
 		*status = IWL_D3_STATUS_ALIVE;
-		goto out;
+		return 0;
 	}
 
 	iwl_set_bit(trans, CSR_GP_CNTRL,
@@ -1643,25 +1597,6 @@ static int iwl_trans_pcie_d3_resume(struct iwl_trans *trans,
 	else
 		*status = IWL_D3_STATUS_ALIVE;
 
-out:
-	if (*status == IWL_D3_STATUS_ALIVE &&
-	    trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) {
-		trans_pcie->sx_complete = false;
-		iwl_write_umac_prph(trans, UREG_DOORBELL_TO_ISR6,
-				    UREG_DOORBELL_TO_ISR6_RESUME);
-
-		ret = wait_event_timeout(trans_pcie->sx_waitq,
-					 trans_pcie->sx_complete, 2 * HZ);
-		/*
-		 * Invalidate it toward next suspend.
-		 */
-		trans_pcie->sx_complete = false;
-
-		if (!ret) {
-			IWL_ERR(trans, "Timeout exiting D3\n");
-			return -ETIMEDOUT;
-		}
-	}
 	return 0;
 }
 
@@ -1673,11 +1608,15 @@ iwl_pcie_set_interrupt_capa(struct pci_dev *pdev,
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	int max_irqs, num_irqs, i, ret;
 	u16 pci_cmd;
+	u32 max_rx_queues = IWL_MAX_RX_HW_QUEUES;
 
 	if (!cfg_trans->mq_rx_supported || iwlwifi_mod_params.disable_msix)
 		goto enable_msi;
 
-	max_irqs = min_t(u32, num_online_cpus() + 2, IWL_MAX_RX_HW_QUEUES);
+	if (cfg_trans->device_family <= IWL_DEVICE_FAMILY_9000)
+		max_rx_queues = IWL_9000_MAX_RX_HW_QUEUES;
+
+	max_irqs = min_t(u32, num_online_cpus() + 2, max_rx_queues);
 	for (i = 0; i < max_irqs; i++)
 		trans_pcie->msix_entries[i].entry = i;
 
@@ -3735,7 +3674,24 @@ struct iwl_trans *iwl_trans_pcie_alloc(struct pci_dev *pdev,
 	/* Initialize the wait queue for commands */
 	init_waitqueue_head(&trans_pcie->wait_command_queue);
 
-	init_waitqueue_head(&trans_pcie->sx_waitq);
+	/*
+	 * For gen2 devices, we use a single allocation for each byte-count
+	 * table, but they're pretty small (1k) so use a DMA pool that we
+	 * allocate here.
+	 */
+	if (cfg_trans->gen2) {
+		size_t bc_tbl_size;
+
+		if (cfg_trans->device_family >= IWL_DEVICE_FAMILY_AX210)
+			bc_tbl_size = sizeof(struct iwl_gen3_bc_tbl);
+		else
+			bc_tbl_size = sizeof(struct iwlagn_scd_bc_tbl);
+
+		trans_pcie->bc_pool = dmam_pool_create("iwlwifi:bc", &pdev->dev,
+						       bc_tbl_size, 256, 0);
+		if (!trans_pcie->bc_pool)
+			goto out_no_pci;
+	}
 
 	if (trans_pcie->msix_enabled) {
 		ret = iwl_pcie_init_msix_handler(pdev, trans_pcie);

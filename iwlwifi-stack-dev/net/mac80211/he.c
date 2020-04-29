@@ -3,7 +3,7 @@
  * HE handling
  *
  * Copyright(c) 2017 Intel Deutschland GmbH
- * Copyright(c) 2019 Intel Corporation
+ * Copyright(c) 2019 - 2020 Intel Corporation
  */
 
 #include "ieee80211_i.h"
@@ -14,21 +14,25 @@ ieee80211_update_from_he_6ghz_capa(const struct ieee80211_he_6ghz_capa *he_6ghz_
 {
 	enum ieee80211_smps_mode smps_mode;
 
-	switch (le16_get_bits(he_6ghz_capa->capa,
-			      IEEE80211_HE_6GHZ_CAP_SM_PS)) {
-	case WLAN_HT_CAP_SM_PS_INVALID:
-	case WLAN_HT_CAP_SM_PS_STATIC:
-		smps_mode = IEEE80211_SMPS_STATIC;
-		break;
-	case WLAN_HT_CAP_SM_PS_DYNAMIC:
-		smps_mode = IEEE80211_SMPS_DYNAMIC;
-		break;
-	case WLAN_HT_CAP_SM_PS_DISABLED:
-		smps_mode = IEEE80211_SMPS_OFF;
-		break;
-	}
+	if (sta->sdata->vif.type == NL80211_IFTYPE_AP) {
+		switch (le16_get_bits(he_6ghz_capa->capa,
+				      IEEE80211_HE_6GHZ_CAP_SM_PS)) {
+		case WLAN_HT_CAP_SM_PS_INVALID:
+		case WLAN_HT_CAP_SM_PS_STATIC:
+			smps_mode = IEEE80211_SMPS_STATIC;
+			break;
+		case WLAN_HT_CAP_SM_PS_DYNAMIC:
+			smps_mode = IEEE80211_SMPS_DYNAMIC;
+			break;
+		case WLAN_HT_CAP_SM_PS_DISABLED:
+			smps_mode = IEEE80211_SMPS_OFF;
+			break;
+		}
 
-	sta->sta.smps_mode = smps_mode;
+		sta->sta.smps_mode = smps_mode;
+	} else {
+		sta->sta.smps_mode = IEEE80211_SMPS_OFF;
+	}
 
 	switch (le16_get_bits(he_6ghz_capa->capa,
 			      IEEE80211_HE_6GHZ_CAP_MAX_MPDU_LEN)) {

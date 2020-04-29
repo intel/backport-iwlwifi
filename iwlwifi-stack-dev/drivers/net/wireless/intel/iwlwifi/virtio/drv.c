@@ -6,7 +6,7 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2019 Intel Corporation
+ * Copyright(c) 2019 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -381,7 +381,9 @@ static bool iwl_virtio_def_rx(struct iwl_trans_virtio *trans_virtio,
 		}
 	}
 
+	local_bh_disable();
 	iwl_op_mode_rx(trans->op_mode, NULL, &rxcb);
+	local_bh_enable();
 
 	/*
 	 * After here, we should always check rxcb._page_stolen,
@@ -528,10 +530,9 @@ static int _send_control_msg(struct iwl_trans_virtio *trans_virtio,
 	if (virtqueue_add_sgs(vq, sgs_list, VIRTIO_IWL_NR_SGS - num_in, num_in,
 			      cpkt_hdr, GFP_ATOMIC) == 0) {
 		virtqueue_kick(vq);
-		/* TODO: this should move to timeout based */
 		while (!virtqueue_get_buf(vq, &in_len) &&
 		       !virtqueue_is_broken(vq))
-			cpu_relax();
+			udelay(1);
 	}
 	kfree(cpkt_hdr);
 
@@ -771,6 +772,7 @@ static int iwl_trans_virtio_start_fw(struct iwl_trans *trans,
 	u32 buf;
 
 	send_control_msg(trans_virtio, VIRTIO_IWL_E_FW_START, 0, 0, &buf, 4);
+	set_bit(STATUS_DEVICE_ENABLED, &trans->status);
 	return 0;
 }
 
@@ -819,6 +821,18 @@ static u32 iwl_trans_virtio_read_prph(struct iwl_trans *trans, u32 ofs)
 	send_control_msg(trans_virtio, VIRTIO_IWL_E_PRPH,
 			 VIRTIO_IWL_F_DIR_IN, ofs, &val, 4);
 	return val;
+}
+
+static int iwl_trans_virtio_write_mem(struct iwl_trans *trans, u32 addr,
+				      const void *buf, int dwords)
+{
+	return 0;
+}
+
+static int iwl_trans_virtio_read_mem(struct iwl_trans *trans, u32 addr,
+				     void *buf, int dwords)
+{
+	return 0;
 }
 
 static int iwl_trans_virtio_wait_txq_empty(struct iwl_trans *trans, int txq_idx)
@@ -1149,6 +1163,7 @@ static void iwl_trans_virtio_stop_device(struct iwl_trans *trans)
 		IWL_TRANS_GET_VIRTIO_TRANS(trans);
 	u32 val;
 
+	clear_bit(STATUS_DEVICE_ENABLED, &trans->status);
 	send_control_msg(trans_virtio, VIRTIO_IWL_E_STOP_DEVICE,
 			 0, 0, &val, 4);
 }
@@ -1313,6 +1328,8 @@ static const struct iwl_trans_ops trans_ops_virtio = {
 	.read32 = iwl_trans_virtio_read32,
 	.write_prph = iwl_trans_virtio_write_prph,
 	.read_prph = iwl_trans_virtio_read_prph,
+	.write_mem = iwl_trans_virtio_write_mem,
+	.read_mem = iwl_trans_virtio_read_mem,
 	.grab_nic_access = iwl_trans_virtio_grab_nic_access,
 	.release_nic_access = iwl_trans_virtio_release_nic_access,
 	.debugfs_cleanup = iwl_trans_virtio_debugfs_cleanup,
@@ -1404,16 +1421,18 @@ static int virtiwl_probe(struct virtio_device *vdev)
 
 	iwl_trans->num_rx_queues = 2;
 
-	/* TODO: maybe get this from config space */
-	trans_virtio->nr_queues = VIRTIO_IWL_Q_MAX;
-	err = init_vqs(trans_virtio);
-
 	spin_lock_init(&trans_virtio->c_ovq.lock);
+	spin_lock_init(&trans_virtio->c_ivq.lock);
+	spin_lock_init(&trans_virtio->h_ovq.lock);
+	spin_lock_init(&trans_virtio->h_ivq.lock);
 
 	INIT_WORK(&trans_virtio->control_work, &control_work_handler);
 	INIT_WORK(&trans_virtio->fw_load.work, &fw_load_work_handler);
 	INIT_WORK(&trans_virtio->rxdef_work, &rxdef_work_handler);
 
+	/* TODO: maybe get this from config space */
+	trans_virtio->nr_queues = VIRTIO_IWL_Q_MAX;
+	err = init_vqs(trans_virtio);
 	iwl_trans->drv = iwl_drv_start(iwl_trans);
 
 	if (err)
@@ -1445,7 +1464,7 @@ static void virtiwl_remove(struct virtio_device *vdev)
 static struct virtio_driver virtio_iwl = {
 	.feature_table			= features,
 	.feature_table_size		= ARRAY_SIZE(features),
-	.driver.name			= KBUILD_MODNAME,
+	.driver.name			= "iwlwifi-virtio",
 	.driver.owner			= THIS_MODULE,
 	.id_table			= id_table,
 	.probe				= virtiwl_probe,

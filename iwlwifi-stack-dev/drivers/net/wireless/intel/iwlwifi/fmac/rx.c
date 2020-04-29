@@ -833,7 +833,7 @@ static bool iwl_fmac_accept_tkip_tsc(struct iwl_fmac *fmac,
 		else
 			skb_trim(skb, skb->len - MICHAEL_MIC_LEN);
 
-		if (key->q[rx->queue].tsc[tid].iv32 != iv32) {
+		if (!mmic_failure && key->q[rx->queue].tsc[tid].iv32 != iv32) {
 			struct iwl_fmac_tkip_mcast_rsc cmd = {
 				.vif_id = rx->vif->id,
 				.key_idx = key->keyidx,

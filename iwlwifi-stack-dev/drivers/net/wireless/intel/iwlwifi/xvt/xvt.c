@@ -5,9 +5,8 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2007 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright (C) 2007 - 2014, 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,9 +26,8 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2005 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2017   Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright (C) 2005 - 2014, 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -551,6 +549,10 @@ static void iwl_xvt_rx_dispatch(struct iwl_op_mode *op_mode,
 {
 	struct iwl_xvt *xvt = IWL_OP_MODE_GET_XVT(op_mode);
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
+	union iwl_dbg_tlv_tp_data tp_data = { .fw_pkt = pkt };
+
+	iwl_dbg_tlv_time_point(&xvt->fwrt,
+			       IWL_FW_INI_TIME_POINT_FW_RSP_OR_NOTIF, &tp_data);
 
 	spin_lock(&xvt->notif_lock);
 	iwl_notification_wait_notify(&xvt->notif_wait, pkt);
@@ -816,10 +818,17 @@ static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 	u16 cmd_wide_id =  WIDE_ID(PHY_OPS_GROUP, GEO_TX_POWER_LIMIT);
 	union geo_tx_power_profiles_cmd cmd;
 	u16 len;
+	int ret;
 
 	cmd.geo_cmd.ops = cpu_to_le32(IWL_PER_CHAIN_OFFSET_SET_TABLES);
 
-	iwl_sar_geo_init(&xvt->fwrt, cmd.geo_cmd.table);
+	ret = iwl_sar_geo_init(&xvt->fwrt, cmd.geo_cmd.table);
+	/*
+	 * It is a valid scenario to not support SAR, or miss wgds table,
+	 * but in that case there is no need to send the command.
+	 */
+	if (ret)
+		return 0;
 
 	cmd.geo_cmd.table_revision = cpu_to_le32(xvt->fwrt.geo_rev);
 
@@ -845,11 +854,10 @@ iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b)
 	union {
 		struct iwl_dev_tx_power_cmd v5;
 		struct iwl_dev_tx_power_cmd_v4 v4;
-	} cmd;
-
+	} cmd = {
+		.v5.v3.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_CHAINS),
+	};
 	u16 len = 0;
-
-	cmd.v5.v3.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_CHAINS);
 
 	if (fw_has_api(&xvt->fw->ucode_capa,
 		       IWL_UCODE_TLV_API_REDUCE_TX_POWER))

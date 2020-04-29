@@ -11,4 +11,4 @@ iwldvm-objs		+= rxon.o devices.o
 iwldvm-$(CPTCFG_IWLWIFI_LEDS) += led.o
 iwldvm-$(CPTCFG_IWLWIFI_DEBUGFS) += debugfs.o
 
-ccflags-y += -I $(src)/../
+ccflags-y += -I$(src)/../

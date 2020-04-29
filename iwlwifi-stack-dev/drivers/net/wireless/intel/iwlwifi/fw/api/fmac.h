@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -265,6 +265,13 @@ enum iwl_fmac_cmds {
 	/* Notifications */
 
 	/**
+	 * @FMAC_OWE_DH_PARAM_NOTIF:
+	 * DH parameter notification. Used during OWE connection.
+	 * The DH IE is specified in &struct iwl_fmac_owe_dh_notif
+	*/
+	FMAC_OWE_DH_PARAM_NOTIF = 0xe6,
+
+	/**
 	 * @FMAC_INTERMEDIATE_UNSUCCESSFUL_CONNECT_RESULT:
 	 * Unsuccessful connect request result notification, with the
 	 * connection information given in &struct iwl_fmac_connect_result.
@@ -340,11 +347,7 @@ enum iwl_fmac_cmds {
 	 */
 	FMAC_REG_UPDATE = 0xf6,
 
-	/**
-	 * @FMAC_TRIGGER_NOTIF: TODO
-	 */
-	FMAC_TRIGGER_NOTIF = 0xf7,
-
+	/* 0xf7 is reserved */
 	/* 0xf8 is reserved */
 
 	/* 0xf9 is reserved */
@@ -610,6 +613,8 @@ enum iwl_fmac_connection_flags {
 #define IWL_FMAC_KEY_MGMT_SAE		BIT(10)
 #define IWL_FMAC_KEY_MGMT_IEEE8021X_SUITE_B	BIT(16)
 #define IWL_FMAC_KEY_MGMT_IEEE8021X_SUITE_B_192	BIT(17)
+#define IWL_FMAC_KEY_MGMT_OWE		BIT(22)
+
 #define IWL_FMAC_SUPPORTED_KEY_MGMT	(IWL_FMAC_KEY_MGMT_PSK	| \
 					 IWL_FMAC_KEY_MGMT_PSK_SHA256 | \
 					 IWL_FMAC_KEY_MGMT_FT_IEEE8021X | \
@@ -618,7 +623,8 @@ enum iwl_fmac_connection_flags {
 					 IWL_FMAC_KEY_MGMT_IEEE8021X_SHA256 | \
 					 IWL_FMAC_KEY_MGMT_SAE | \
 					 IWL_FMAC_KEY_MGMT_IEEE8021X_SUITE_B | \
-					 IWL_FMAC_KEY_MGMT_IEEE8021X_SUITE_B_192)
+					 IWL_FMAC_KEY_MGMT_IEEE8021X_SUITE_B_192 | \
+					 IWL_FMAC_KEY_MGMT_OWE)
 
 /**
  * Supported security protocols:
@@ -706,6 +712,22 @@ struct iwl_fmac_pmk_cache_entry {
 } __packed;
 
 /**
+ * struct iwl_fmac_dh_param - DH parameter used for OWE
+ * @key_id: unique public key identifier
+ * @group: group
+ * @key_len: public key length.
+ * @key: public key (should be dw aligned/padded).
+ */
+struct iwl_fmac_dh_param {
+	__le32 key_id;
+	__le16 group;
+	__le16 key_len;
+#ifndef _MSC_VER
+	u8 key[0];
+#endif
+} __packed;
+
+/**
  * struct iwl_fmac_connect_cmd - connect to a network.
  * @vif_id: the virtual interface identifier as returned in
  *	&iwl_fmac_add_vif_resp.
@@ -715,7 +737,7 @@ struct iwl_fmac_pmk_cache_entry {
  * @flags: see &enum iwl_fmac_connection_flags.
  * @bssid: optional parameter to limit the connection only to a BSS
  *	with the specified BSSID.
- * @reserved1: for alignment.
+ * @dh_params_len: number of items in DH parameters array.
  * @ssid_len: the length of %ssid.
  * @ssid: the SSID of the network to connect to.
  * @crypto: the connection security configuration as specified in
@@ -729,11 +751,13 @@ struct iwl_fmac_pmk_cache_entry {
  * @n_pmkids: the length of the array of %struct iwl_fmac_pmk_cache_entry in
  *	%data.
  * @ie_len: length of IEs in octets.
- * @data: contains 2 concatenated buffers
+ * @data: contains 3 concatenated buffers
  *	1. PMKIDs data as an array of %struct iwl_fmac_pmk_cache_entry.
  *	The length of the array is %n_pmkids.
  *	2. Optional vendor specific IEs added to assoc request. Must be padded
  *	so that the command has a multiple of 4 bytes.
+ *	3. Optional one or more OWE DH parameters as an array of %struct
+ *	iwl_fmac_dh_param. The length of this array is %dh_params_len.
  *
  * A connect request to the network specified in %ssid. The command is allowed
  * if the interface specified in %vif_id is currently idle (i.e., not connected
@@ -746,7 +770,7 @@ struct iwl_fmac_connect_cmd {
 	__le16 center_freq;
 	__le32 flags;
 	u8 bssid[ETH_ALEN];
-	u8 reserved1;
+	u8 dh_params_len;
 	u8 ssid_len;
 	u8 ssid[IEEE80211_MAX_SSID_LEN];
 
@@ -1578,15 +1602,15 @@ enum fmac_sad_mode {
  * @IWL_FMAC_CONFIG_DEBUG_LEVEL: debug level of the FMAC component in the
  *	firmware. Since it can't be stored in the same place as other
  *	CONFIG_U32 confs, it is in this section.
- * @IWL_FMAC_CONFIG_TRIGGER: trigger configuration
+ * @IWL_FMAC_CONFIG_DEPRECATED1: Not in use
  * @IWL_FMAC_CONFIG_MAX: highest index of configs that don't fit a u32.
  * @IWL_FMAC_CONFIG_NUM: number of configs that don't git a u32.
  *
  * @IWL_FMAC_CONFIG_VIF_START: first per-vif configuration
  * @IWL_FMAC_CONFIG_VIF_POWER_DISABLED: power save disablement
  * @IWL_FMAC_CONFIG_VIF_TXPOWER_USER: user-configured txpower in dbm,
+ * @IWL_FMAC_CONFIG_VIF_DEPRECATED1: Not in use
  *	or IWL_FMAC_UNSET_POWER_LEVEL if unset
- * @IWL_FMAC_CONFIG_VIF_LOW_LATENCY: user-configured low latency mode.
  * @IWL_FMAC_CONFIG_VIF_INDICATE_ROAM_IS_NEEDED: config that roam indication
  *	is needed instead of internal FMAC roam flow.
  * @IWL_FMAC_CONFIG_VIF_MAX: highest index of per-vif config
@@ -1626,14 +1650,14 @@ enum iwl_fmac_config_id {
 
 	IWL_FMAC_CONFIG_START = 0x200,
 	IWL_FMAC_CONFIG_DEBUG_LEVEL = IWL_FMAC_CONFIG_START,
-	IWL_FMAC_CONFIG_TRIGGER,
+	IWL_FMAC_CONFIG_DEPRECATED1,
 	IWL_FMAC_CONFIG_MAX,
 	IWL_FMAC_CONFIG_NUM = IWL_FMAC_CONFIG_MAX - IWL_FMAC_CONFIG_START,
 
 	IWL_FMAC_CONFIG_VIF_START = 0x300,
 	IWL_FMAC_CONFIG_VIF_POWER_DISABLED = IWL_FMAC_CONFIG_VIF_START,
 	IWL_FMAC_CONFIG_VIF_TXPOWER_USER,
-	IWL_FMAC_CONFIG_VIF_LOW_LATENCY,
+	IWL_FMAC_CONFIG_VIF_DEPRECATED1,
 	IWL_FMAC_CONFIG_VIF_INDICATE_ROAM_IS_NEEDED,
 	IWL_FMAC_CONFIG_VIF_MAX,
 	IWL_FMAC_CONFIG_VIF_NUM =
@@ -1784,62 +1808,6 @@ struct iwl_fmac_sta_removed {
 	u8 vif_id;
 	u8 sta_id;
 	u8 reserved[2];
-} __packed;
-
-/**
- * enum iwl_fmac_dbg_trigger - triggers available
- */
-enum iwl_fmac_dbg_trigger {
-	/**
-	 * @IWL_FMAC_DBG_TRIGGER_INVALID:
-	 * (reserved)
-	 */
-	IWL_FMAC_DBG_TRIGGER_INVALID = 0,
-
-	/**
-	 * @IWL_FMAC_DBG_TRIGGER_MISSED_BEACONS:
-	 * trigger on missed beacons
-	 */
-	IWL_FMAC_DBG_TRIGGER_MISSED_BEACONS = 3,
-
-	/**
-	 * @IWL_FMAC_DBG_TRIGGER_CHANNEL_SWITCH:
-	 * trigger on channel switch
-	 */
-	IWL_FMAC_DBG_TRIGGER_CHANNEL_SWITCH = 4,
-
-	/**
-	 * @IWL_FMAC_DBG_TRIGGER_MAX:
-	 * maximum number of triggers supported
-	 */
-	IWL_FMAC_DBG_TRIGGER_MAX /* must be last */
-};
-
-/**
- * struct iwl_fmac_trigger_cmd
- * @len: length of %data
- * @id: &enum iwl_fmac_dbg_trigger
- * @vif_type: %iwl_fmac_vif_type
- * @data: trigger-dependent data
- */
-struct iwl_fmac_trigger_cmd {
-	__le32 len;
-	__le32 id;
-	__le32 vif_type;
-#ifndef _MSC_VER
-	u8 data[0];
-#endif
-} __packed;
-
-#define MAX_TRIGGER_STR 64
-/**
- * struct iwl_fmac_trigger_notif - notification with invoked trigger info
- * @id: &enum iwl_fmac_dbg_trigger
- * @data: string that describes what happened
- */
-struct iwl_fmac_trigger_notif {
-	__le32 id;
-	u8 data[MAX_TRIGGER_STR];
 } __packed;
 
 enum iwl_fmac_mcc_source {
@@ -2288,6 +2256,24 @@ struct iwl_fmac_rx_external_auth {
 	u8 vif_id;
 	__le16 len;
 	__le32 freq;
+#ifndef _MSC_VER
+	u8 data[0];
+#endif
+} __packed;
+
+/**
+ * struct iwl_fmac_owe_dh_notif - DH notification to host
+ * @addr: frame source address
+ * @key_id: unique public key identifier
+ * @len: DH IE len
+ * @data: DH IE body
+ *
+ * This message is used to pass OWE DH IE element to host.
+ */
+struct iwl_fmac_owe_dh_notif {
+	u8 addr[ETH_ALEN];
+	__le32 key_id;
+	__le16 len;
 #ifndef _MSC_VER
 	u8 data[0];
 #endif
