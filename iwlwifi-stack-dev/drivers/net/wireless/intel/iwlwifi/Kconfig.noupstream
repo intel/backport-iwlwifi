@@ -165,5 +165,6 @@ config IWLWIFI_WIFI_6_SUPPORT
 config IWLWIFI_VIRTIO
 	def_bool y
 	depends on VIRTIO
+	depends on UML
 	# this means kernel is > 4.17, i.e. no 4.17 backports required
 	depends on !KERNEL_4_17

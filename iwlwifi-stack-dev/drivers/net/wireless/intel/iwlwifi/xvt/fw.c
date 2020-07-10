@@ -108,8 +108,6 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	u16 status, flags;
 	u32 lmac_error_event_table, umac_error_event_table;
 
-	xvt->support_umac_log = false;
-
 	if (rx_packet_payload_size == sizeof(*palive2)) {
 
 		palive2 = (void *)pkt->data;
@@ -124,8 +122,6 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 				  palive2->ucode_minor);
 		umac_error_event_table =
 			le32_to_cpu(palive2->error_info_addr);
-		if (umac_error_event_table)
-			xvt->support_umac_log = true;
 
 		IWL_DEBUG_FW(xvt,
 			     "Alive VER2 ucode status 0x%04x revision 0x%01X "
@@ -173,8 +169,6 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 				  le32_to_cpu(lmac1->ucode_minor));
 		umac_error_event_table =
 			le32_to_cpu(umac->dbg_ptrs.error_info_addr);
-		if (umac_error_event_table)
-			xvt->support_umac_log = true;
 
 		IWL_DEBUG_FW(xvt,
 			     "status 0x%04x rev 0x%01X 0x%01X flags 0x%01X\n",
@@ -186,7 +180,7 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	}
 
 	iwl_fw_lmac1_set_alive_err_table(xvt->trans, lmac_error_event_table);
-	if (xvt->support_umac_log)
+	if (umac_error_event_table)
 		iwl_fw_umac_set_alive_err_table(xvt->trans,
 						umac_error_event_table);
 

@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -909,7 +909,7 @@ static int iwl_fmac_resume(struct wiphy *wiphy)
 	 * For now we run a full NIC restart here instead of tearing down the
 	 * connections in suspend flow and restoring them here.
 	 */
-	iwl_fmac_nic_restart(fmac, false);
+	iwl_fmac_nic_restart(fmac);
 
 	return 0;
 }

@@ -8,7 +8,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -767,14 +767,18 @@ static ssize_t iwl_dbgfs_twt_setup_write(struct ieee80211_vif *vif, char *buf,
 	u8 flow_type;
 	u8 flow_id;
 	u8 protection;
+	u8 twt_request = 1;
 	int ret;
 
-	ret = sscanf(buf, "%u %llu %u %u %u %hhu %hhu %hhu %hhu",
+	ret = sscanf(buf, "%u %llu %u %u %u %hhu %hhu %hhu %hhu %hhu",
 		     &twt_operation, &target_wake_time, &interval_exp,
 		     &interval_mantissa, &min_wake_duration, &trigger,
-		     &flow_type, &flow_id, &protection);
+		     &flow_type, &flow_id, &protection, &twt_request);
 
-	if (ret != 9)
+	// the new twt_request parameter is optional for station
+	if ((ret != 9 && ret != 10) ||
+	    (vif->type != NL80211_IFTYPE_STATION && twt_request == 1) ||
+	    (vif->type == NL80211_IFTYPE_STATION && twt_request != 1))
 		return -EINVAL;
 
 	cmd = kzalloc(sizeof(*cmd) + sizeof(*dhc_twt_cmd), GFP_KERNEL);
@@ -792,6 +796,7 @@ static ssize_t iwl_dbgfs_twt_setup_write(struct ieee80211_vif *vif, char *buf,
 	dhc_twt_cmd->flow_type = flow_type;
 	dhc_twt_cmd->flow_id = flow_id;
 	dhc_twt_cmd->protection = protection;
+	dhc_twt_cmd->twt_request = twt_request;
 
 	cmd->length = cpu_to_le32(sizeof(*dhc_twt_cmd) >> 2);
 	cmd->index_and_mask =
@@ -916,9 +921,7 @@ void iwl_mvm_vif_dbgfs_register(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 		MVM_DEBUGFS_ADD_FILE_VIF(bf_params, mvmvif->dbgfs_dir, 0600);
 
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
-	if (vif->type == NL80211_IFTYPE_STATION)
-		MVM_DEBUGFS_ADD_FILE_VIF(twt_setup, mvmvif->dbgfs_dir,
-					 S_IWUSR);
+	MVM_DEBUGFS_ADD_FILE_VIF(twt_setup, mvmvif->dbgfs_dir, S_IWUSR);
 	MVM_DEBUGFS_ADD_FILE_VIF(htc_omi, mvmvif->dbgfs_dir, 0200);
 #endif
 

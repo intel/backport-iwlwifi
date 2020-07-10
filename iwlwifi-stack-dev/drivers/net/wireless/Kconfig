@@ -81,6 +81,7 @@ config MAC80211_HWSIM
 	tristate "Simulated radio testing tool for mac80211"
 	depends on m
 	depends on MAC80211
+	depends on !KERNEL_4_12
 	---help---
 	  This driver is a developer testing tool that can be used to test
 	  IEEE 802.11 networking stack (mac80211) functionality. This is not

@@ -36,4 +36,8 @@
 #define skb_vlan_tag_get_id(__skb)	((__skb)->vlan_tci & VLAN_VID_MASK)
 #endif
 
+#ifndef VLAN_N_VID
+#define VLAN_N_VID 4096
+#endif
+
 #endif /* __BACKPORT_LINUX_IF_VLAN_H_ */
