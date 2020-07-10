@@ -250,6 +250,17 @@ static inline struct nlattr **genl_family_attrbuf(struct genl_family *family)
 
 	return family->attrbuf;
 }
-#endif /* LINUX_VERSION_IS_LESS(4,20,0) */
+
+#define genlmsg_parse LINUX_BACKPORT(genlmsg_parse)
+static inline int genlmsg_parse(const struct nlmsghdr *nlh,
+				const struct genl_family *family,
+				struct nlattr *tb[], int maxtype,
+				const struct nla_policy *policy,
+				struct netlink_ext_ack *extack)
+{
+	return __nlmsg_parse(nlh, family->hdrsize + GENL_HDRLEN, tb, maxtype,
+			     policy, NL_VALIDATE_STRICT, extack);
+}
+#endif /* LINUX_VERSION_IS_LESS(5,2) */
 
 #endif /* __BACKPORT_NET_GENETLINK_H */

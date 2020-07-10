@@ -199,8 +199,6 @@ static inline struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb,
 #define skb_clone_sk LINUX_BACKPORT(skb_clone_sk)
 struct sk_buff *skb_clone_sk(struct sk_buff *skb);
 #endif
-
-
 #if LINUX_VERSION_IS_LESS(3,18,0)
 #define skb_xmit_more(skb) false
 #elif LINUX_VERSION_IS_LESS(5,2,0)
@@ -391,12 +389,44 @@ static inline struct sk_buff *__skb_peek(const struct sk_buff_head *list_)
 }
 #endif
 
+#if LINUX_VERSION_IS_LESS(4,20,0) && \
+    !LINUX_VERSION_IS_GEQ(4,19,10)
+static inline void skb_mark_not_on_list(struct sk_buff *skb)
+{
+	skb->next = NULL;
+}
+#endif
+
+#if LINUX_VERSION_IS_LESS(4,11,0)
+#define skb_mac_offset LINUX_BACKPORT(skb_mac_offset)
+static inline int skb_mac_offset(const struct sk_buff *skb)
+{
+	return skb_mac_header(skb) - skb->data;
+}
+#endif
+
 #if LINUX_VERSION_IS_LESS(5,4,0)
+/**
+ * skb_frag_off() - Returns the offset of a skb fragment
+ * @frag: the paged fragment
+ */
+#define skb_frag_off LINUX_BACKPORT(skb_frag_off)
+static inline unsigned int skb_frag_off(const skb_frag_t *frag)
+{
+	return frag->page_offset;
+}
+
 #define nf_reset_ct LINUX_BACKPORT(nf_reset_ct)
 static inline void nf_reset_ct(struct sk_buff *skb)
 {
 	nf_reset(skb);
 }
+#endif
+
+#ifndef skb_list_walk_safe
+#define skb_list_walk_safe(first, skb, next_skb)				\
+	for ((skb) = (first), (next_skb) = (skb) ? (skb)->next : NULL; (skb); 	\
+	     (skb) = (next_skb), (next_skb) = (skb) ? (skb)->next : NULL)
 #endif
 
 #endif /* __BACKPORT_SKBUFF_H */

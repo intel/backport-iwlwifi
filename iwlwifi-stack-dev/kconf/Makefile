@@ -13,3 +13,11 @@ mconf: mconf.o zconf.tab.o $(LXDIALOG)
 .PHONY: clean
 clean:
 	@rm -f mconf conf *.o lxdialog/*.o
+
+zconf.tab.c: zconf.lex.c
+
+%.tab.c: %.y
+	$(YACC) -o$@ -t -l $<
+
+%.lex.c: %.l
+	$(LEX) -o$@ -L $<

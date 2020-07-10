@@ -8,7 +8,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -151,6 +151,14 @@
  *	&IWL_MVM_VENDOR_ATTR_FMAC_CONFIG_STR specifies the configuration string.
  * @IWL_MVM_VENDOR_CMD_CSI_EVENT: CSI event, use as a command to enable unicast
  *	reporting to the calling socket
+ * @IWL_MVM_VENDOR_CMD_ADD_PASN_STA: add a PASN station. Only valid when a
+ *	responder is active. &IWL_MVM_VENDOR_ATTR_ADDR specifies the station's
+ *	mac address. &IWL_MVM_VENDOR_ATTR_STA_TK and
+ *	&IWL_MVM_VENDOR_ATTR_STA_CIPHER specify the cipher suite and key to use
+ *	for PMF for this station. &IWL_MVM_VENDOR_ATTR_STA_HLTK specifies the
+ *	HLTK for secure LTF bits generation.
+ * @IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA: remove the PASN station with the mac
+ *	address specified with &IWL_MVM_VENDOR_ATTR_ADDR.
  */
 
 enum iwl_mvm_vendor_cmd {
@@ -191,6 +199,8 @@ enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_FMAC_CONNECT_PARAMS			= 0x22,
 	IWL_MVM_VENDOR_CMD_FMAC_CONFIG				= 0x23,
 	IWL_MVM_VENDOR_CMD_CSI_EVENT				= 0x24,
+	IWL_MVM_VENDOR_CMD_ADD_PASN_STA				= 0x25,
+	IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA			= 0x26,
 };
 
 /**
@@ -803,6 +813,14 @@ enum iwl_vendor_fips_test_vector_hw {
  *	fmac configuration option.
  * @IWL_MVM_VENDOR_ATTR_CSI_HDR: CSI header
  * @IWL_MVM_VENDOR_ATTR_CSI_DATA: CSI data
+ * @IWL_MVM_VENDOR_ATTR_STA_TK: the TK to use for PMF encryption for the
+ *	station with the mac address specified in &IWL_MVM_VENDOR_ATTR_ADDR.
+ * @IWL_MVM_VENDOR_ATTR_STA_HLTK: the HLTK to use for secure LTF bits
+ *	generation for the station with the mac address specified in
+ *	&IWL_MVM_VENDOR_ATTR_ADDR.
+ * @IWL_MVM_VENDOR_ATTR_STA_CIPHER: the cipher to use for the station with the
+ *	mac address specified in &IWL_MVM_VENDOR_ATTR_ADDR.
+ *	One of WLAN_CIPHER_SUITE_*.
  */
 enum iwl_mvm_vendor_attr {
 	__IWL_MVM_VENDOR_ATTR_INVALID				= 0x00,
@@ -884,6 +902,9 @@ enum iwl_mvm_vendor_attr {
 	IWL_MVM_VENDOR_ATTR_FMAC_CONFIG_STR			= 0x4c,
 	IWL_MVM_VENDOR_ATTR_CSI_HDR				= 0x4d,
 	IWL_MVM_VENDOR_ATTR_CSI_DATA				= 0x4e,
+	IWL_MVM_VENDOR_ATTR_STA_TK				= 0x4f,
+	IWL_MVM_VENDOR_ATTR_STA_HLTK				= 0x50,
+	IWL_MVM_VENDOR_ATTR_STA_CIPHER				= 0x51,
 
 	NUM_IWL_MVM_VENDOR_ATTR,
 	MAX_IWL_MVM_VENDOR_ATTR = NUM_IWL_MVM_VENDOR_ATTR - 1,

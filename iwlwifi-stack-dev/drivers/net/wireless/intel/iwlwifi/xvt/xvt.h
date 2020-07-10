@@ -5,9 +5,8 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2007 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2007 - 2014, 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,9 +26,8 @@
  *
  * BSD LICENSE
  *
- * Copyright(c) 2005 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2005 - 2014, 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -377,7 +375,6 @@ struct iwl_xvt {
 	struct iwl_notif_wait_data notif_wait;
 
 	bool fw_running;
-	bool support_umac_log;
 
 	struct iwl_sw_stack_config sw_stack_cfg;
 	bool rx_hdr_enabled;
@@ -408,11 +405,6 @@ struct iwl_xvt {
 	u64 expected_tx_amount;
 	wait_queue_head_t tx_done_wq;
 	struct tx_queue_data queue_data[IWL_MAX_HW_QUEUES];
-};
-
-union geo_tx_power_profiles_cmd {
-	struct iwl_geo_tx_power_profiles_cmd geo_cmd;
-	struct iwl_geo_tx_power_profiles_cmd_v1 geo_cmd_v1;
 };
 
 #define IWL_OP_MODE_GET_XVT(_op_mode) \

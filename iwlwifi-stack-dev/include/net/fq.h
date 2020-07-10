@@ -69,12 +69,12 @@ struct fq {
 	struct list_head backlogs;
 	spinlock_t lock;
 	u32 flows_cnt;
-#if LINUX_VERSION_IS_GEQ(5,3,10) ||	       \
+#if LINUX_VERSION_IS_GEQ(5,3,10) || \
     LINUX_VERSION_IN_RANGE(4,19,83, 4,20,0) || \
     LINUX_VERSION_IN_RANGE(4,14,153, 4,15,0) || \
     LINUX_VERSION_IN_RANGE(4,9,200, 4,10,0) || \
     LINUX_VERSION_IN_RANGE(4,4,200, 4,5,0)
-	siphash_key_t   perturbation;
+	siphash_key_t	perturbation;
 #else
 	u32 perturbation;
 #endif
