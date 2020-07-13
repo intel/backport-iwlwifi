@@ -266,17 +266,17 @@ nla_validate_nested_deprecated(const struct nlattr *start, int maxtype,
 }
 #endif /* < 5.2 */
 
-#if LINUX_VERSION_IS_LESS(5,3,0)
-#define nl80211_validate_nested LINUX_BACKPORT(nl80211_validate_nested)
+#if LINUX_VERSION_IS_LESS(5,6,0)
+#define nla_validate_nested LINUX_BACKPORT(nla_validate_nested)
 static inline int
-nl80211_validate_nested(const struct nlattr *start, int maxtype,
-			const struct nla_policy *policy,
-			struct netlink_ext_ack *extack)
+nla_validate_nested(const struct nlattr *start, int maxtype,
+		    const struct nla_policy *policy,
+		    struct netlink_ext_ack *extack)
 {
 	return __nla_validate_nested(start, maxtype, policy,
 				     NL_VALIDATE_STRICT, extack);
 }
-#endif /* < 5.3 */
+#endif /* < 5.6 */
 
 #if LINUX_VERSION_IS_LESS(5,1,0)
 #undef NLA_POLICY_NESTED

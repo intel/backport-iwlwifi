@@ -7,7 +7,7 @@
  *
  * Copyright(c) 2007 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -28,7 +28,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2005 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2018 - 2019 Intel Corporation
+ * Copyright(c) 2018 - 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -91,40 +91,6 @@ int iwl_xvt_send_cmd_pdu(struct iwl_xvt *xvt, u32 id,
 	return iwl_xvt_send_cmd(xvt, &cmd);
 }
 
-static struct {
-	char *name;
-	u8 num;
-} advanced_lookup[] = {
-	{ "NMI_INTERRUPT_WDG", 0x34 },
-	{ "SYSASSERT", 0x35 },
-	{ "UCODE_VERSION_MISMATCH", 0x37 },
-	{ "BAD_COMMAND", 0x38 },
-	{ "NMI_INTERRUPT_DATA_ACTION_PT", 0x3C },
-	{ "FATAL_ERROR", 0x3D },
-	{ "NMI_TRM_HW_ERR", 0x46 },
-	{ "NMI_INTERRUPT_TRM", 0x4C },
-	{ "NMI_INTERRUPT_BREAK_POINT", 0x54 },
-	{ "NMI_INTERRUPT_WDG_RXF_FULL", 0x5C },
-	{ "NMI_INTERRUPT_WDG_NO_RBD_RXF_FULL", 0x64 },
-	{ "NMI_INTERRUPT_HOST", 0x66 },
-	{ "NMI_INTERRUPT_ACTION_PT", 0x7C },
-	{ "NMI_INTERRUPT_UNKNOWN", 0x84 },
-	{ "NMI_INTERRUPT_INST_ACTION_PT", 0x86 },
-	{ "ADVANCED_SYSASSERT", 0 },
-};
-
-static const char *desc_lookup(u32 num)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(advanced_lookup) - 1; i++)
-		if (advanced_lookup[i].num == num)
-			return advanced_lookup[i].name;
-
-	/* No entry matches 'num', so it is the last: ADVANCED_SYSASSERT */
-	return advanced_lookup[i].name;
-}
-
 #define ERROR_START_OFFSET  (1 * sizeof(u32))
 #define ERROR_ELEM_SIZE     (7 * sizeof(u32))
 
@@ -150,7 +116,7 @@ void iwl_xvt_dump_nic_error_log_v1(struct iwl_xvt *xvt,
 				   struct iwl_error_event_table_v1 *table)
 {
 	IWL_ERR(xvt, "0x%08X | %-28s\n", table->error_id,
-		desc_lookup(table->error_id));
+		iwl_fw_lookup_assert_desc(table->error_id));
 	IWL_ERR(xvt, "0x%08X | uPc\n", table->pc);
 	IWL_ERR(xvt, "0x%08X | branchlink1\n", table->blink1);
 	IWL_ERR(xvt, "0x%08X | branchlink2\n", table->blink2);
@@ -207,7 +173,7 @@ void iwl_xvt_dump_nic_error_log_v2(struct iwl_xvt *xvt,
 				   struct iwl_error_event_table_v2 *table)
 {
 	IWL_ERR(xvt, "0x%08X | %-28s\n", table->error_id,
-		desc_lookup(table->error_id));
+		iwl_fw_lookup_assert_desc(table->error_id));
 	IWL_ERR(xvt, "0x%08X | trm_hw_status0\n", table->trm_hw_status0);
 	IWL_ERR(xvt, "0x%08X | trm_hw_status1\n", table->trm_hw_status1);
 	IWL_ERR(xvt, "0x%08X | branchlink2\n", table->blink2);
@@ -265,7 +231,7 @@ void iwl_xvt_dump_umac_error_log(struct iwl_xvt *xvt,
 				 struct iwl_umac_error_event_table *table)
 {
 	IWL_ERR(xvt, "0x%08X | %s\n", table->error_id,
-		desc_lookup(table->error_id));
+		iwl_fw_lookup_assert_desc(table->error_id));
 	IWL_ERR(xvt, "0x%08X | umac branchlink1\n", table->blink1);
 	IWL_ERR(xvt, "0x%08X | umac branchlink2\n", table->blink2);
 	IWL_ERR(xvt, "0x%08X | umac interruptlink1\n", table->ilink1);

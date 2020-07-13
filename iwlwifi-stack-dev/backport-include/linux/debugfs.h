@@ -60,4 +60,30 @@ debugfs_real_fops(const struct file *filp)
 	debugfs_create_file(name, mode, parent, data, fops)
 #endif
 
+#if LINUX_VERSION_IS_LESS(4,4,0)
+static inline struct dentry *
+debugfs_create_ulong(const char *name, umode_t mode,
+		     struct dentry *parent, unsigned long *value)
+{
+	if (sizeof(unsigned long) == sizeof(u64))
+		return debugfs_create_u64(name, mode, parent, (u64 *)value);
+	if (sizeof(unsigned long) == sizeof(u32))
+		return debugfs_create_u32(name, mode, parent, (u32 *)value);
+	WARN_ON(1);
+	return ERR_PTR(-EINVAL);
+}
+#endif
+
+#if LINUX_VERSION_IS_LESS(5,5,0)
+static inline void debugfs_create_xul(const char *name, umode_t mode,
+				      struct dentry *parent,
+				      unsigned long *value)
+{
+	if (sizeof(*value) == sizeof(u32))
+		debugfs_create_x32(name, mode, parent, (u32 *)value);
+	else
+		debugfs_create_x64(name, mode, parent, (u64 *)value);
+}
+#endif
+
 #endif /* __BACKPORT_DEBUGFS_H_ */

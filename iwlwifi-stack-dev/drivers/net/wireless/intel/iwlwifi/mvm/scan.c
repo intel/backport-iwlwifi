@@ -1724,7 +1724,6 @@ iwl_mvm_umac_scan_fill_6g_chan_list(struct iwl_mvm_scan_params *params,
 				    u8 *sssid_num, u8 *bssid_num)
 {
 	int j, idex_s = 0, idex_b = 0;
-	bool *tmp;
 	struct cfg80211_scan_6ghz_params *scan_6ghz_params =
 		params->scan_6ghz_params;
 
@@ -1738,40 +1737,45 @@ iwl_mvm_umac_scan_fill_6g_chan_list(struct iwl_mvm_scan_params *params,
 		return 0;
 	}
 
-	tmp = kzalloc(params->n_6ghz_params, GFP_KERNEL);
-	if (!tmp)
-		return -ENOMEM;
-
-	/* TODO: improve this logic */
+	/*
+	 * Populate the arrays of the short SSIDs and the BSSIDs using the 6GHz
+	 * collocated parameters. This might not be optimal, as this processing
+	 * does not (yet) correspond to the actual channels, so it is possible
+	 * that some entries would be left out.
+	 *
+	 * TODO: improve this logic.
+	 */
 	for (j = 0; j < params->n_6ghz_params; j++) {
 		int k;
-		bool found = false;
 
-		for (k = 0; k < idex_s; k++) {
-			if (cmd_short_ssid[idex_s] ==
-			    cpu_to_le32(scan_6ghz_params[j].short_ssid))
-				found = true;
-		}
-		if (!found && idex_s < SCAN_SHORT_SSID_MAX_SIZE) {
-			cmd_short_ssid[idex_s++] =
-				cpu_to_le32(scan_6ghz_params[j].short_ssid);
-			tmp[j] = true;
-			(*sssid_num)++;
+		/* First, try to place the short SSID */
+		if (scan_6ghz_params[j].short_ssid_valid) {
+			for (k = 0; k < idex_s; k++) {
+				if (cmd_short_ssid[k] ==
+				    cpu_to_le32(scan_6ghz_params[j].short_ssid))
+					break;
+			}
+
+			if (k == idex_s && idex_s < SCAN_SHORT_SSID_MAX_SIZE) {
+				cmd_short_ssid[idex_s++] =
+					cpu_to_le32(scan_6ghz_params[j].short_ssid);
+				(*sssid_num)++;
+			}
 		}
 
-		found = false;
+		/* try to place BSSID for the same entry */
 		for (k = 0; k < idex_b; k++) {
-			if (!memcmp(&cmd_bssid[ETH_ALEN * idex_b],
+			if (!memcmp(&cmd_bssid[ETH_ALEN * k],
 				    scan_6ghz_params[j].bssid, ETH_ALEN))
-				found = true;
+				break;
 		}
-		if (!tmp[j] && !found && idex_b < SCAN_BSSID_MAX_SIZE) {
+
+		if (k == idex_b && idex_b < SCAN_BSSID_MAX_SIZE) {
 			memcpy(&cmd_bssid[ETH_ALEN * idex_b++],
 			       scan_6ghz_params[j].bssid, ETH_ALEN);
 			(*bssid_num)++;
 		}
 	}
-	kfree(tmp);
 	return 0;
 }
 
@@ -1797,14 +1801,22 @@ iwl_mvm_umac_scan_cfg_channels_v6_6g(struct iwl_mvm_scan_params *params,
 			&cp->channel_config[i];
 
 		u32 s_ssid_bitmap = 0, bssid_bitmap = 0, flags = 0;
-		u8 j, k, s_max = 0, b_max = 0;
+		u8 j, k, s_max = 0, b_max = 0, n_used_bssid_entries;
 		bool found = false, unsolicited_probe_on_chan = false;
 
 		cfg->v1.channel_num = params->channels[i]->hw_value;
 		cfg->v2.band = 2;
 		cfg->v2.iter_count = 1;
 		cfg->v2.iter_interval = 0;
-		/* TODO: improve this logic */
+
+		/*
+		 * The optimize the scan time, i.e., reduce the scan dwell time
+		 * on each channel, the below logic tries to set 3 direct BSSID
+		 * probe requests for each broadcast probe request with a short
+		 * SSID.
+		 * TODO: improve this logic
+		 */
+		n_used_bssid_entries = 3;
 		for (j = 0; j < params->n_6ghz_params; j++) {
 			if (!(scan_6ghz_params[j].channel_idx == i))
 				continue;
@@ -1813,45 +1825,64 @@ iwl_mvm_umac_scan_cfg_channels_v6_6g(struct iwl_mvm_scan_params *params,
 			unsolicited_probe_on_chan |=
 				scan_6ghz_params[j].unsolicited_probe;
 
-			for (k = 0 ; k < sssid_num; k++)
+			for (k = 0; k < sssid_num; k++) {
 				if (!scan_6ghz_params[j].unsolicited_probe &&
 				    le32_to_cpu(cmd_short_ssid[k]) ==
-				    scan_6ghz_params[j].short_ssid &&
-				    s_max <= 2) {
-					s_ssid_bitmap |= BIT(k);
-					s_max++;
-					found = true;
-					break;
-				}
-			if (!found) {
-				for (k = 0; k < bssid_num; k++)
-					if (!memcmp(&cmd_bssid[ETH_ALEN * k],
-						    scan_6ghz_params[j].bssid,
-						    ETH_ALEN) && b_max <= 9) {
-						bssid_bitmap |= BIT(k);
-						b_max++;
+				    scan_6ghz_params[j].short_ssid) {
+					/* Relevant short SSID bit set */
+					if (s_ssid_bitmap & BIT(k)) {
+						found = true;
 						break;
 					}
+
+					/*
+					 * Use short SSID only to create a new
+					 * iteration during channel dwell.
+					 */
+					if (n_used_bssid_entries >= 3) {
+						s_ssid_bitmap |= BIT(k);
+						s_max++;
+						n_used_bssid_entries -= 3;
+						found = true;
+						break;
+					}
+				}
+			}
+
+			if (found)
+				continue;
+
+			for (k = 0; k < bssid_num; k++) {
+				if (!memcmp(&cmd_bssid[ETH_ALEN * k],
+					    scan_6ghz_params[j].bssid,
+					    ETH_ALEN)) {
+					if (!(bssid_bitmap & BIT(k))) {
+						bssid_bitmap |= BIT(k);
+						b_max++;
+						n_used_bssid_entries++;
+					}
+					break;
+				}
 			}
 		}
 
-	flags = bssid_bitmap | (s_ssid_bitmap << 16);
+		flags = bssid_bitmap | (s_ssid_bitmap << 16);
 
-	/*
-	 * If there are more than 3 APs with short SSID and more than 9
-	 * additional APs with known BSSID, more efficient to apply one
-	 * passive scan.
-	 * If this is non PSC channel, but no short SSID or BSSID information
-	 * about this channel also apply passive scan
-	 */
-	if (params->n_6ghz_params > 11 ||
-	    (!flags && !cfg80211_is_psc(params->channels[i])))
-		flags |= IWL_UHB_CHAN_CFG_FLAG_FORCE_PASSIVE;
+		/*
+		 * If there are more than 3 APs with short SSID or more than 9
+		 * additional APs with known BSSID, more efficient to apply one
+		 * passive scan.
+		 * If this is non PSC channel, but no short SSID or BSSID
+		 * information about this channel also apply passive scan
+		 */
+		if (s_max >= 3 || b_max >= 9 ||
+		    (!flags && !cfg80211_is_psc(params->channels[i])))
+			flags |= IWL_UHB_CHAN_CFG_FLAG_FORCE_PASSIVE;
 
-	if (unsolicited_probe_on_chan)
-		flags |= IWL_UHB_CHAN_CFG_FLAG_UNSOLICITED_PROBE_RES;
+		if (unsolicited_probe_on_chan)
+			flags |= IWL_UHB_CHAN_CFG_FLAG_UNSOLICITED_PROBE_RES;
 
-	channel_cfg[i].flags |= cpu_to_le32(flags);
+		channel_cfg[i].flags |= cpu_to_le32(flags);
 	}
 }
 #endif
@@ -2883,6 +2914,15 @@ void iwl_mvm_report_scan_aborted(struct iwl_mvm *mvm)
 			mvm->sched_scan_pass_all = SCHED_SCAN_PASS_ALL_DISABLED;
 			mvm->scan_uid_status[uid] = 0;
 		}
+		uid = iwl_mvm_scan_uid_by_status(mvm,
+						 IWL_MVM_SCAN_STOPPING_REGULAR);
+		if (uid >= 0)
+			mvm->scan_uid_status[uid] = 0;
+
+		uid = iwl_mvm_scan_uid_by_status(mvm,
+						 IWL_MVM_SCAN_STOPPING_SCHED);
+		if (uid >= 0)
+			mvm->scan_uid_status[uid] = 0;
 
 		/* We shouldn't have any UIDs still set.  Loop over all the
 		 * UIDs to make sure there's nothing left there and warn if

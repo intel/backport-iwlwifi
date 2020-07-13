@@ -458,10 +458,10 @@ static ssize_t iwl_dbgfs_sar_geo_profile_read(struct file *file,
 		pos += scnprintf(buf + pos, bufsz - pos,
 				 "Use geographic profile %d\n", tbl_idx);
 		pos += scnprintf(buf + pos, bufsz - pos,
-				 "2.4GHz:\n\tChain A offset: %hhd dBm\n\tChain B offset: %hhd dBm\n\tmax tx power: %hhd dBm\n",
+				 "2.4GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
 				 value[1], value[2], value[0]);
 		pos += scnprintf(buf + pos, bufsz - pos,
-				 "5.2GHz:\n\tChain A offset: %hhd dBm\n\tChain B offset: %hhd dBm\n\tmax tx power: %hhd dBm\n",
+				 "5.2GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
 				 value[4], value[5], value[3]);
 	}
 	mutex_unlock(&mvm->mutex);
@@ -546,41 +546,6 @@ static ssize_t iwl_dbgfs_rs_data_read(struct file *file, char __user *user_buf,
 }
 
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
-static int iwl_rs_send_dhc(struct iwl_mvm *mvm,
-			   struct iwl_lq_sta_rs_fw *lq_sta,
-			   u32 type,
-			   u32 data)
-{
-	int ret;
-	struct iwl_dhc_cmd *dhc_cmd;
-	struct iwl_dhc_tlc_cmd *dhc_tlc_cmd;
-	u32 cmd_id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0);
-
-	dhc_cmd = kzalloc(sizeof(*dhc_cmd) + sizeof(*dhc_tlc_cmd), GFP_KERNEL);
-	if (!dhc_cmd)
-		return -ENOMEM;
-
-	dhc_tlc_cmd = (void *)dhc_cmd->data;
-	dhc_tlc_cmd->sta_id = lq_sta->pers.sta_id;
-	dhc_tlc_cmd->type = cpu_to_le32(type);
-	dhc_tlc_cmd->data[0] = cpu_to_le32(data);
-	dhc_cmd->length = cpu_to_le32(sizeof(*dhc_tlc_cmd) >> 2);
-	dhc_cmd->index_and_mask =
-		cpu_to_le32(DHC_TABLE_INTEGRATION | DHC_TARGET_UMAC |
-			    DHC_INTEGRATION_TLC_DEBUG_CONFIG);
-
-	mutex_lock(&mvm->mutex);
-	ret = iwl_mvm_send_cmd_pdu(mvm, cmd_id, 0,
-				   sizeof(*dhc_cmd) + sizeof(*dhc_tlc_cmd),
-				   dhc_cmd);
-	mutex_unlock(&mvm->mutex);
-	if (ret)
-		IWL_ERR(mvm, "Failed to send TLC Debug command: %d\n", ret);
-
-	kfree(dhc_cmd);
-	return ret;
-}
-
 static ssize_t iwl_dbgfs_send_ps_config_dhc(struct iwl_mvm *mvm,
 					    struct iwl_ps_config *ps_cfg_cmd)
 {
@@ -712,42 +677,21 @@ static ssize_t iwl_dbgfs_tlc_dhc_write(struct ieee80211_sta *sta,
 	return count;
 }
 
-static void iwl_rs_set_ampdu_size(struct iwl_mvm *mvm,
-				  struct iwl_lq_sta_rs_fw *lq_sta)
-{
-	int ret = iwl_rs_send_dhc(mvm, lq_sta,
-				  IWL_TLC_DEBUG_AGG_FRAME_CNT_LIM,
-				  lq_sta->pers.dbg_agg_frame_count_lim);
-
-	if (ret) {
-		lq_sta->pers.dbg_agg_frame_count_lim = 0;
-		return;
-	}
-
-	IWL_DEBUG_RATE(mvm, "sta_id %d agg_frame_cmdt_lim %d\n",
-		       lq_sta->pers.sta_id,
-		       lq_sta->pers.dbg_agg_frame_count_lim);
-
-}
-
 static ssize_t iwl_dbgfs_ampdu_size_write(struct ieee80211_sta *sta,
 					  char *buf, size_t count,
 					  loff_t *ppos)
 {
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->lq_sta.rs_fw;
-	struct iwl_mvm *mvm = lq_sta->pers.drv;
 	u32 ampdu_size;
+	int err;
 
-	if (kstrtou32(buf, 0, &ampdu_size))
-		lq_sta->pers.dbg_agg_frame_count_lim = 0;
-	else
-		lq_sta->pers.dbg_agg_frame_count_lim = ampdu_size;
+	err = kstrtou32(buf, 0, &ampdu_size);
+	if (err)
+		return err;
 
-	iwl_rs_set_ampdu_size(mvm, lq_sta);
+	iwl_rs_dhc_set_ampdu_size(sta, ampdu_size);
 	return count;
 }
-#endif
+#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
 
 static ssize_t iwl_dbgfs_amsdu_len_write(struct ieee80211_sta *sta,
 					 char *buf, size_t count,
@@ -2106,11 +2050,11 @@ static ssize_t iwl_dbgfs_tx_power_status_read(struct file *file,
 	char buf[64];
 	int bufsz = sizeof(buf);
 	int pos = 0;
-	u32 mode = le32_to_cpu(mvm->txp_cmd.v5.v3.set_mode);
+	u32 mode = le32_to_cpu(mvm->txp_cmd.common.set_mode);
 	bool txp_cmd_valid = mode == IWL_TX_POWER_MODE_SET_DEVICE;
-	u16 val_24 = le16_to_cpu(mvm->txp_cmd.v5.v3.dev_24);
-	u16 val_52l = le16_to_cpu(mvm->txp_cmd.v5.v3.dev_52_low);
-	u16 val_52h = le16_to_cpu(mvm->txp_cmd.v5.v3.dev_52_high);
+	u16 val_24 = le16_to_cpu(mvm->txp_cmd.common.dev_24);
+	u16 val_52l = le16_to_cpu(mvm->txp_cmd.common.dev_52_low);
+	u16 val_52h = le16_to_cpu(mvm->txp_cmd.common.dev_52_high);
 	char buf_24[15] = "(not limited)";
 	char buf_52l[15] = "(not limited)";
 	char buf_52h[15] = "(not limited)";

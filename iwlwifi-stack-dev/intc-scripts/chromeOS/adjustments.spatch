@@ -1,3 +1,9 @@
+@tso_header@
+@@
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
+#include <net/tso.h>
++#endif
+
 @abort_scan@
 identifier ops;
 identifier fn;
@@ -1068,6 +1074,12 @@ expression E, F;
 }
 
 @@
+struct ieee80211_tx_status *status;
+@@
+-status->rate->bw
++get_rate_info_bw(status->rate)
+
+@@
 struct cfg80211_nan_conf *conf;
 @@
 -conf->cdw_2g
@@ -1494,3 +1506,83 @@ struct wiphy_vendor_command vendor[] = {
 	},
 ...
 };
+
+@end_cac@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,5,0)
+	.end_cac = fn,
++#endif
+...
+};
+
+@@
+identifier end_cac.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,5,0)
+fn(...)
+{
+...
+}
++#endif
+
+@default_beacon_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
+	.set_default_beacon_key = fn,
++#endif
+...
+};
+
+@@
+identifier default_beacon_key.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+struct cfg80211_gtk_rekey_data *data;
+@@
+<...
+(
+-data->kek_len
++cfg80211_rekey_get_kek_len(data)
+|
+-data->kck_len
++cfg80211_rekey_get_kck_len(data)
+|
+-data->akm
++cfg80211_rekey_akm(data)
+)
+...>
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,8,0)
+if (iwl_fw_lookup_cmd_ver(mvm->fw, IWL_ALWAYS_LONG_GROUP,
+			  WOWLAN_KEK_KCK_MATERIAL) == 3)
+		hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_EXT_KEK_KCK;
++#endif
+
+@@
+@@
+struct{...
++#if CFG80211_VERSION >= KERNEL_VERSION(5,8,0)
+u8 kck[NL80211_KCK_EXT_LEN];
+u8 kek[NL80211_KEK_EXT_LEN];
++#else
++u8 kck[NL80211_KCK_LEN];
++u8 kek[NL80211_KEK_LEN];
++#endif
+...}

@@ -2,20 +2,8 @@
 #ifndef CPTCFG_BPAUTO_REFCOUNT
 #include_next <linux/refcount.h>
 #else
-#undef refcount_add_not_zero_checked
-#define refcount_add_not_zero_checked LINUX_BACKPORT(refcount_add_not_zero_checked)
-#undef refcount_add_checked
-#define refcount_add_checked LINUX_BACKPORT(refcount_add_checked)
-#undef refcount_inc_not_zero_checked
-#define refcount_inc_not_zero_checked LINUX_BACKPORT(refcount_inc_not_zero_checked)
-#undef refcount_inc_checked
-#define refcount_inc_checked LINUX_BACKPORT(refcount_inc_checked)
-#undef refcount_sub_and_test_checked
-#define refcount_sub_and_test_checked LINUX_BACKPORT(refcount_sub_and_test_checked)
-#undef refcount_dec_and_test_checked
-#define refcount_dec_and_test_checked LINUX_BACKPORT(refcount_dec_and_test_checked)
-#undef refcount_dec_checked
-#define refcount_dec_checked LINUX_BACKPORT(refcount_dec_checked)
+#undef refcount_warn_saturate
+#define refcount_warn_saturate LINUX_BACKPORT(refcount_warn_saturate)
 #undef refcount_dec_if_one
 #define refcount_dec_if_one LINUX_BACKPORT(refcount_dec_if_one)
 #undef refcount_dec_not_one
