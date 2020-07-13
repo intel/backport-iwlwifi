@@ -946,8 +946,7 @@ ieee80211_crypto_aes_cmac_encrypt(struct ieee80211_tx_data *tx)
 
 	info = IEEE80211_SKB_CB(skb);
 
-	if (info->control.hw_key &&
-	    !(key->conf.flags & IEEE80211_KEY_FLAG_GENERATE_MMIE))
+	if (info->control.hw_key)
 		return TX_CONTINUE;
 
 	if (WARN_ON(skb_tailroom(skb) < sizeof(*mmie)))
@@ -962,9 +961,6 @@ ieee80211_crypto_aes_cmac_encrypt(struct ieee80211_tx_data *tx)
 	pn64 = atomic64_inc_return(&key->conf.tx_pn);
 
 	bip_ipn_set64(mmie->sequence_number, pn64);
-
-	if (info->control.hw_key)
-		return TX_CONTINUE;
 
 	bip_aad(skb, aad);
 

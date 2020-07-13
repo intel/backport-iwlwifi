@@ -288,7 +288,6 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(bool, no_ldpc)
 	IWL_DBG_CFG_NODEF(u16, rx_agg_subframes)
 	IWL_DBG_CFG_NODEF(bool, tx_siso_80bw_like_160bw)
-	IWL_DBG_CFG_NODEF(u16, ampdu_limit)
 	IWL_DBG_CFG_NODEF(u16, rx_mcs_80)
 	IWL_DBG_CFG_NODEF(u16, tx_mcs_80)
 	IWL_DBG_CFG_NODEF(u16, rx_mcs_160)

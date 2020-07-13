@@ -6,7 +6,7 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2019-2020 Intel Corporation
+ * Copyright(c) 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -58,7 +58,6 @@ struct virtio_iwl_fw_image {
 	u8 data[0];
 } __packed;
 
-#define VIRTIO_IWL_S_LEN 4
 enum virtio_iwl_s_status {
 	VIRTIO_IWL_S_OK,
 	VIRTIO_IWL_S_UNSUPP,

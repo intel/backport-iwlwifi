@@ -186,6 +186,11 @@ enum iwl_power_scheme {
 	IWL_POWER_SCHEME_LP
 };
 
+union geo_tx_power_profiles_cmd {
+	struct iwl_geo_tx_power_profiles_cmd geo_cmd;
+	struct iwl_geo_tx_power_profiles_cmd_v1 geo_cmd_v1;
+};
+
 #define IWL_CONN_MAX_LISTEN_INTERVAL	10
 #define IWL_UAPSD_MAX_SP		IEEE80211_WMM_IE_STA_QOSINFO_SP_ALL
 
@@ -418,11 +423,7 @@ struct iwl_mvm_vif {
 #ifdef CONFIG_PM
 	/* WoWLAN GTK rekey data */
 	struct {
-		u8 kck[NL80211_KCK_EXT_LEN];
-		u8 kek[NL80211_KEK_EXT_LEN];
-		size_t kek_len;
-		size_t kck_len;
-		u32 akm;
+		u8 kck[NL80211_KCK_LEN], kek[NL80211_KEK_LEN];
 		__le64 replay_ctr;
 		bool valid;
 	} rekey_data;
@@ -891,6 +892,7 @@ struct iwl_mvm {
 
 	bool hw_registered;
 	bool rfkill_safe_init_done;
+	bool support_umac_log;
 
 	u32 ampdu_ref;
 	bool ampdu_toggle;
@@ -1154,7 +1156,10 @@ struct iwl_mvm {
 	} tdls_cs;
 
 #ifdef CPTCFG_IWLMVM_VENDOR_CMDS
-	struct iwl_dev_tx_power_cmd txp_cmd;
+	union {
+		struct iwl_dev_tx_power_cmd_v4 v4;
+		struct iwl_dev_tx_power_cmd v5;
+	} txp_cmd;
 #endif
 
 #ifdef CPTCFG_IWLMVM_P2P_OPPPS_TEST_WA
@@ -1179,8 +1184,6 @@ struct iwl_mvm {
 			struct list_head resp;
 		} smooth;
 	} ftm_initiator;
-
-	struct list_head resp_pasn_list;
 
 #ifdef CPTCFG_IWLMVM_VENDOR_CMDS
 	struct iwl_mcast_filter_cmd *mcast_active_filter_cmd;
@@ -2132,14 +2135,6 @@ void iwl_mvm_ftm_restart_responder(struct iwl_mvm *mvm,
 				   struct ieee80211_vif *vif);
 void iwl_mvm_ftm_responder_stats(struct iwl_mvm *mvm,
 				 struct iwl_rx_cmd_buffer *rxb);
-int iwl_mvm_ftm_resp_remove_pasn_sta(struct iwl_mvm *mvm,
-				     struct ieee80211_vif *vif, u8 *addr);
-int iwl_mvm_ftm_respoder_add_pasn_sta(struct iwl_mvm *mvm,
-				      struct ieee80211_vif *vif,
-				      u8 *addr, u32 cipher, u8 *tk, u32 tk_len,
-				      u8 *hltk, u32 hltk_len);
-void iwl_mvm_ftm_responder_clear(struct iwl_mvm *mvm,
-				 struct ieee80211_vif *vif);
 
 /* FTM initiator */
 void iwl_mvm_ftm_restart(struct iwl_mvm *mvm);

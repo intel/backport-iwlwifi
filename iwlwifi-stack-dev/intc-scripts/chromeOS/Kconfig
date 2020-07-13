@@ -8,9 +8,6 @@ config IWL7000
 	# this is because we don't depend on mac80211
 	depends on CFG80211
 
-	# we don't support or test on non-x86 platforms
-	depends on X86_64
-
 	# things mac80211 selects
 	select CRYPTO
 	select CRYPTO_ARC4

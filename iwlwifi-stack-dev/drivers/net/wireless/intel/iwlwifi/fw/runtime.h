@@ -206,8 +206,7 @@ struct iwl_fw_runtime {
 	u8 sar_chain_b_profile;
 	struct iwl_geo_profile geo_profiles[ACPI_NUM_GEO_PROFILES];
 	u32 geo_rev;
-	union iwl_ppag_table_cmd ppag_table;
-	u32 ppag_ver;
+	struct iwl_ppag_table_cmd ppag_table;
 #endif
 };
 

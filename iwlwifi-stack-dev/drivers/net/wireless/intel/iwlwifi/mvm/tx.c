@@ -852,7 +852,10 @@ iwl_mvm_tx_tso_segment(struct sk_buff *skb, unsigned int num_subframes,
 	else if (next)
 		consume_skb(skb);
 
-	skb_list_walk_safe(next, tmp, next) {
+	while (next) {
+		tmp = next;
+		next = tmp->next;
+
 		memcpy(tmp->cb, cb, sizeof(tmp->cb));
 		/*
 		 * Compute the length of all the data added for the A-MSDU.
@@ -882,7 +885,9 @@ iwl_mvm_tx_tso_segment(struct sk_buff *skb, unsigned int num_subframes,
 			skb_shinfo(tmp)->gso_size = 0;
 		}
 
-		skb_mark_not_on_list(tmp);
+		tmp->prev = NULL;
+		tmp->next = NULL;
+
 		__skb_queue_tail(mpdus_skb, tmp);
 		i++;
 	}
@@ -1807,9 +1812,9 @@ static void iwl_mvm_tx_reclaim(struct iwl_mvm *mvm, int sta_id, int tid,
 			       struct ieee80211_tx_info *ba_info, u32 rate)
 {
 	struct sk_buff_head reclaimed_skbs;
-	struct iwl_mvm_tid_data *tid_data = NULL;
+	struct iwl_mvm_tid_data *tid_data;
 	struct ieee80211_sta *sta;
-	struct iwl_mvm_sta *mvmsta = NULL;
+	struct iwl_mvm_sta *mvmsta;
 	struct sk_buff *skb;
 	int freed;
 
@@ -1823,7 +1828,18 @@ static void iwl_mvm_tx_reclaim(struct iwl_mvm *mvm, int sta_id, int tid,
 	sta = rcu_dereference(mvm->fw_id_to_mac_id[sta_id]);
 
 	/* Reclaiming frames for a station that has been deleted ? */
-	if (WARN_ON_ONCE(!sta)) {
+	if (WARN_ON_ONCE(IS_ERR_OR_NULL(sta))) {
+		rcu_read_unlock();
+		return;
+	}
+
+	mvmsta = iwl_mvm_sta_from_mac80211(sta);
+	tid_data = &mvmsta->tid_data[tid];
+
+	if (tid_data->txq_id != txq) {
+		IWL_ERR(mvm,
+			"invalid BA notification: Q %d, tid %d\n",
+			tid_data->txq_id, tid);
 		rcu_read_unlock();
 		return;
 	}
@@ -1836,41 +1852,6 @@ static void iwl_mvm_tx_reclaim(struct iwl_mvm *mvm, int sta_id, int tid,
 	 * transmitted ... if not, it's too late anyway).
 	 */
 	iwl_trans_reclaim(mvm->trans, txq, index, &reclaimed_skbs);
-
-	skb_queue_walk(&reclaimed_skbs, skb) {
-		struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
-
-		iwl_trans_free_tx_cmd(mvm->trans, info->driver_data[1]);
-
-		memset(&info->status, 0, sizeof(info->status));
-		/* Packet was transmitted successfully, failures come as single
-		 * frames because before failing a frame the firmware transmits
-		 * it without aggregation at least once.
-		 */
-		info->flags |= IEEE80211_TX_STAT_ACK;
-	}
-
-	/*
-	 * It's possible to get a BA response after invalidating the rcu (rcu is
-	 * invalidated in order to prevent new Tx from being sent, but there may
-	 * be some frames already in-flight).
-	 * In this case we just want to reclaim, and could skip all the
-	 * sta-dependent stuff since it's in the middle of being removed
-	 * anyways.
-	 */
-	if (IS_ERR(sta))
-		goto out;
-
-	mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	tid_data = &mvmsta->tid_data[tid];
-
-	if (tid_data->txq_id != txq) {
-		IWL_ERR(mvm,
-			"invalid BA notification: Q %d, tid %d\n",
-			tid_data->txq_id, tid);
-		rcu_read_unlock();
-		return;
-	}
 
 	spin_lock_bh(&mvmsta->lock);
 
@@ -1897,6 +1878,15 @@ static void iwl_mvm_tx_reclaim(struct iwl_mvm *mvm, int sta_id, int tid,
 			freed++;
 		else
 			WARN_ON_ONCE(tid != IWL_MAX_TID_COUNT);
+
+		iwl_trans_free_tx_cmd(mvm->trans, info->driver_data[1]);
+
+		memset(&info->status, 0, sizeof(info->status));
+		/* Packet was transmitted successfully, failures come as single
+		 * frames because before failing a frame the firmware transmits
+		 * it without aggregation at least once.
+		 */
+		info->flags |= IEEE80211_TX_STAT_ACK;
 
 #ifdef CPTCFG_IWLMVM_TDLS_PEER_CACHE
 		iwl_mvm_tdls_peer_cache_pkt(mvm, hdr, skb->len, -1);
@@ -1978,14 +1968,8 @@ void iwl_mvm_rx_ba_notif(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 		rcu_read_lock();
 
 		mvmsta = iwl_mvm_sta_from_staid_rcu(mvm, sta_id);
-		/*
-		 * It's possible to get a BA response after invalidating the rcu
-		 * (rcu is invalidated in order to prevent new Tx from being
-		 * sent, but there may be some frames already in-flight).
-		 * In this case we just want to reclaim, and could skip all the
-		 * sta-dependent stuff since it's in the middle of being removed
-		 * anyways.
-		 */
+		if (!mvmsta)
+			goto out_unlock;
 
 		/* Free per TID */
 		for (i = 0; i < le16_to_cpu(ba_res->tfd_cnt); i++) {
@@ -1996,9 +1980,7 @@ void iwl_mvm_rx_ba_notif(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 			if (tid == IWL_MGMT_TID)
 				tid = IWL_MAX_TID_COUNT;
 
-			if (mvmsta)
-				mvmsta->tid_data[i].lq_color = lq_color;
-
+			mvmsta->tid_data[i].lq_color = lq_color;
 			iwl_mvm_tx_reclaim(mvm, sta_id, tid,
 					   (int)(le16_to_cpu(ba_tfd->q_num)),
 					   le16_to_cpu(ba_tfd->tfd_index),
@@ -2006,9 +1988,9 @@ void iwl_mvm_rx_ba_notif(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 					   le32_to_cpu(ba_res->tx_rate));
 		}
 
-		if (mvmsta)
-			iwl_mvm_tx_airtime(mvm, mvmsta,
-					   le32_to_cpu(ba_res->wireless_time));
+		iwl_mvm_tx_airtime(mvm, mvmsta,
+				   le32_to_cpu(ba_res->wireless_time));
+out_unlock:
 		rcu_read_unlock();
 out:
 		IWL_DEBUG_TX_REPLY(mvm,

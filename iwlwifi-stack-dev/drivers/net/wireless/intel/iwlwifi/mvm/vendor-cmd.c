@@ -8,7 +8,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 - 2020 Intel Corporation
+ * Copyright (C) 2018 - 2019 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -31,7 +31,7 @@
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 - 2020 Intel Corporation
+ * Copyright (C) 2018 - 2019 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -114,7 +114,7 @@ iwl_mvm_vendor_attr_policy[NUM_IWL_MVM_VENDOR_ATTR] = {
 	[IWL_MVM_VENDOR_ATTR_COUNTRY] = { .type = NLA_STRING, .len = 2 },
 	[IWL_MVM_VENDOR_ATTR_FILTER_ARP_NA] = { .type = NLA_FLAG },
 	[IWL_MVM_VENDOR_ATTR_FILTER_GTK] = { .type = NLA_FLAG },
-	[IWL_MVM_VENDOR_ATTR_ADDR] = { .type = NLA_BINARY, .len = ETH_ALEN },
+	[IWL_MVM_VENDOR_ATTR_ADDR] = { .len = ETH_ALEN },
 	[IWL_MVM_VENDOR_ATTR_TXP_LIMIT_24] = { .type = NLA_U32 },
 	[IWL_MVM_VENDOR_ATTR_TXP_LIMIT_52L] = { .type = NLA_U32 },
 	[IWL_MVM_VENDOR_ATTR_TXP_LIMIT_52H] = { .type = NLA_U32 },
@@ -139,9 +139,6 @@ iwl_mvm_vendor_attr_policy[NUM_IWL_MVM_VENDOR_ATTR] = {
 	[IWL_MVM_VENDOR_ATTR_FIPS_TEST_VECTOR_HW_CCM] = { .type = NLA_NESTED },
 	[IWL_MVM_VENDOR_ATTR_FIPS_TEST_VECTOR_HW_GCM] = { .type = NLA_NESTED },
 	[IWL_MVM_VENDOR_ATTR_FIPS_TEST_VECTOR_HW_AES] = { .type = NLA_NESTED },
-	[IWL_MVM_VENDOR_ATTR_STA_CIPHER] = { .type = NLA_U32 },
-	[IWL_MVM_VENDOR_ATTR_STA_HLTK] = { .type = NLA_BINARY },
-	[IWL_MVM_VENDOR_ATTR_STA_TK] = { .type = NLA_BINARY },
 };
 
 static struct nlattr **iwl_mvm_parse_vendor_data(const void *data, int data_len)
@@ -464,17 +461,18 @@ static int iwl_vendor_set_nic_txpower_limit(struct wiphy *wiphy,
 {
 	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	struct iwl_dev_tx_power_cmd cmd = {
-		.common.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_DEVICE),
-		.common.dev_24 = cpu_to_le16(IWL_DEV_MAX_TX_POWER),
-		.common.dev_52_low = cpu_to_le16(IWL_DEV_MAX_TX_POWER),
-		.common.dev_52_high = cpu_to_le16(IWL_DEV_MAX_TX_POWER),
+	union {
+		struct iwl_dev_tx_power_cmd_v4 v4;
+		struct iwl_dev_tx_power_cmd v5;
+	} cmd = {
+		.v5.v3.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_DEVICE),
+		.v5.v3.dev_24 = cpu_to_le16(IWL_DEV_MAX_TX_POWER),
+		.v5.v3.dev_52_low = cpu_to_le16(IWL_DEV_MAX_TX_POWER),
+		.v5.v3.dev_52_high = cpu_to_le16(IWL_DEV_MAX_TX_POWER),
 	};
 	struct nlattr **tb;
-	int len;
+	int len = sizeof(cmd);
 	int err;
-	u8 cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
-					   REDUCE_TX_POWER_CMD);
 
 	tb = iwl_mvm_parse_vendor_data(data, data_len);
 	if (IS_ERR(tb))
@@ -487,7 +485,7 @@ static int iwl_vendor_set_nic_txpower_limit(struct wiphy *wiphy,
 			err = -EINVAL;
 			goto free;
 		}
-		cmd.common.dev_24 = cpu_to_le16(txp);
+		cmd.v5.v3.dev_24 = cpu_to_le16(txp);
 	}
 
 	if (tb[IWL_MVM_VENDOR_ATTR_TXP_LIMIT_52L]) {
@@ -497,7 +495,7 @@ static int iwl_vendor_set_nic_txpower_limit(struct wiphy *wiphy,
 			err = -EINVAL;
 			goto free;
 		}
-		cmd.common.dev_52_low = cpu_to_le16(txp);
+		cmd.v5.v3.dev_52_low = cpu_to_le16(txp);
 	}
 
 	if (tb[IWL_MVM_VENDOR_ATTR_TXP_LIMIT_52H]) {
@@ -507,22 +505,19 @@ static int iwl_vendor_set_nic_txpower_limit(struct wiphy *wiphy,
 			err = -EINVAL;
 			goto free;
 		}
-		cmd.common.dev_52_high = cpu_to_le16(txp);
+		cmd.v5.v3.dev_52_high = cpu_to_le16(txp);
 	}
 
-	if (cmd_ver == 6)
-		len = sizeof(mvm->txp_cmd.v6);
-	else if (fw_has_api(&mvm->fw->ucode_capa,
-			    IWL_UCODE_TLV_API_REDUCE_TX_POWER))
+	mvm->txp_cmd.v5 = cmd.v5;
+
+	if (fw_has_api(&mvm->fw->ucode_capa,
+		       IWL_UCODE_TLV_API_REDUCE_TX_POWER))
 		len = sizeof(mvm->txp_cmd.v5);
 	else if (fw_has_capa(&mvm->fw->ucode_capa,
 			     IWL_UCODE_TLV_CAPA_TX_POWER_ACK))
 		len = sizeof(mvm->txp_cmd.v4);
 	else
-		len = sizeof(mvm->txp_cmd.v3);
-
-	/* all structs have the same common part, add it */
-	len += sizeof(cmd.common);
+		len = sizeof(mvm->txp_cmd.v4.v3);
 
 	mutex_lock(&mvm->mutex);
 	err = iwl_mvm_send_cmd_pdu(mvm, REDUCE_TX_POWER_CMD, 0, len, &cmd);
@@ -952,7 +947,6 @@ out:
 
 	return cfg80211_vendor_cmd_reply(skb);
 }
-#endif
 
 static const struct nla_policy
 iwl_mvm_vendor_fips_hw_policy[NUM_IWL_VENDOR_FIPS_TEST_VECTOR_HW] = {
@@ -1186,6 +1180,7 @@ free:
 	kfree(tb);
 	return ret;
 }
+#endif
 
 static int iwl_mvm_vendor_csi_register(struct wiphy *wiphy,
 				       struct wireless_dev *wdev,
@@ -1197,74 +1192,6 @@ static int iwl_mvm_vendor_csi_register(struct wiphy *wiphy,
 	mvm->csi_portid = cfg80211_vendor_cmd_get_sender(wiphy);
 
 	return 0;
-}
-
-static int iwl_mvm_vendor_add_pasn_sta(struct wiphy *wiphy,
-				       struct wireless_dev *wdev,
-				       const void *data, int data_len)
-{
-	struct nlattr **tb;
-	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
-	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	struct ieee80211_vif *vif = wdev_to_ieee80211_vif(wdev);
-	u8 *addr, *tk, *hltk;
-	u32 tk_len, hltk_len, cipher;
-	int ret;
-
-	if (!vif)
-		return -ENODEV;
-
-	tb = iwl_mvm_parse_vendor_data(data, data_len);
-	if (IS_ERR(tb))
-		return PTR_ERR(tb);
-
-	if (!tb[IWL_MVM_VENDOR_ATTR_ADDR] ||
-	    !tb[IWL_MVM_VENDOR_ATTR_STA_TK] ||
-	    !tb[IWL_MVM_VENDOR_ATTR_STA_HLTK] ||
-	    !tb[IWL_MVM_VENDOR_ATTR_STA_CIPHER])
-		return -EINVAL;
-
-	addr = nla_data(tb[IWL_MVM_VENDOR_ATTR_ADDR]);
-	cipher = nla_get_u32(tb[IWL_MVM_VENDOR_ATTR_STA_CIPHER]);
-	tk = nla_data(tb[IWL_MVM_VENDOR_ATTR_STA_TK]);
-	tk_len = nla_len(tb[IWL_MVM_VENDOR_ATTR_STA_TK]);
-	hltk = nla_data(tb[IWL_MVM_VENDOR_ATTR_STA_HLTK]);
-	hltk_len = nla_len(tb[IWL_MVM_VENDOR_ATTR_STA_HLTK]);
-
-	mutex_lock(&mvm->mutex);
-	ret = iwl_mvm_ftm_respoder_add_pasn_sta(mvm, vif, addr, cipher, tk,
-						tk_len, hltk, hltk_len);
-	mutex_unlock(&mvm->mutex);
-	return ret;
-}
-
-static int iwl_mvm_vendor_remove_pasn_sta(struct wiphy *wiphy,
-					  struct wireless_dev *wdev,
-					  const void *data, int data_len)
-{
-	struct nlattr **tb;
-	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
-	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	struct ieee80211_vif *vif = wdev_to_ieee80211_vif(wdev);
-	u8 *addr;
-	int ret;
-
-	if (!vif)
-		return -ENODEV;
-
-	tb = iwl_mvm_parse_vendor_data(data, data_len);
-	if (IS_ERR(tb))
-		return PTR_ERR(tb);
-
-	if (!tb[IWL_MVM_VENDOR_ATTR_ADDR])
-		return -EINVAL;
-
-	addr = nla_data(tb[IWL_MVM_VENDOR_ATTR_ADDR]);
-
-	mutex_lock(&mvm->mutex);
-	ret = iwl_mvm_ftm_resp_remove_pasn_sta(mvm, vif, addr);
-	mutex_unlock(&mvm->mutex);
-	return ret;
 }
 
 static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
@@ -1437,7 +1364,6 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.policy = iwl_mvm_vendor_attr_policy,
 		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
-#endif
 	{
 		.info = {
 			.vendor_id = INTEL_OUI,
@@ -1449,6 +1375,7 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.policy = iwl_mvm_vendor_fips_hw_policy,
 		.maxattr = MAX_IWL_VENDOR_FIPS_TEST_VECTOR_HW,
 	},
+#endif
 	{
 		.info = {
 			.vendor_id = INTEL_OUI,
@@ -1458,29 +1385,6 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.policy = iwl_mvm_vendor_attr_policy,
 		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
-	{
-		.info = {
-			.vendor_id = INTEL_OUI,
-			.subcmd = IWL_MVM_VENDOR_CMD_ADD_PASN_STA,
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
-			 WIPHY_VENDOR_CMD_NEED_RUNNING,
-		.doit = iwl_mvm_vendor_add_pasn_sta,
-		.policy = iwl_mvm_vendor_attr_policy,
-		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
-	},
-	{
-		.info = {
-			.vendor_id = INTEL_OUI,
-			.subcmd = IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA,
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
-			 WIPHY_VENDOR_CMD_NEED_RUNNING,
-		.doit = iwl_mvm_vendor_remove_pasn_sta,
-		.policy = iwl_mvm_vendor_attr_policy,
-		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
-	},
-
 };
 
 enum iwl_mvm_vendor_events_idx {

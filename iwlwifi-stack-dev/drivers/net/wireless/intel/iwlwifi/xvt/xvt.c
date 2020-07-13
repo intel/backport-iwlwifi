@@ -78,7 +78,7 @@
 
 #define DRV_DESCRIPTION	"Intel(R) xVT driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
-MODULE_AUTHOR(DRV_AUTHOR);
+MODULE_AUTHOR(DRV_COPYRIGHT " " DRV_AUTHOR);
 MODULE_LICENSE("GPL");
 
 #define TX_QUEUE_CFG_TID (6)
@@ -186,7 +186,6 @@ static const struct iwl_hcmd_names iwl_xvt_system_names[] = {
 };
 
 static const struct iwl_hcmd_names iwl_xvt_xvt_names[] = {
-	HCMD_NAME(MPAPD_EXEC_DONE_NOTIF),
 	HCMD_NAME(RUN_TIME_CALIB_DONE_NOTIF),
 	HCMD_NAME(IQ_CALIB_CONFIG_NOTIF),
 };
@@ -656,7 +655,7 @@ static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode)
 	p_table = kmemdup(&table_v2, sizeof(table_v2), GFP_ATOMIC);
 	table_size = sizeof(table_v2);
 
-	if (xvt->trans->dbg.umac_error_event_table ||
+	if (xvt->support_umac_log ||
 	    (xvt->trans->dbg.error_event_table_tlv_status &
 	     IWL_ERROR_EVENT_TABLE_UMAC)) {
 		iwl_xvt_get_umac_error_log(xvt, &table_umac);
@@ -816,16 +815,14 @@ void iwl_xvt_txq_disable(struct iwl_xvt *xvt)
 #ifdef CONFIG_ACPI
 static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 {
-	union iwl_geo_tx_power_profiles_cmd cmd;
+	u16 cmd_wide_id =  WIDE_ID(PHY_OPS_GROUP, GEO_TX_POWER_LIMIT);
+	union geo_tx_power_profiles_cmd cmd;
 	u16 len;
 	int ret;
-	u8 cmd_ver = iwl_fw_lookup_cmd_ver(xvt->fw,
-					   PHY_OPS_GROUP, GEO_TX_POWER_LIMIT);
 
-	/* the table is also at the same position both in v1 and v2 */
-	ret = iwl_sar_geo_init(&xvt->fwrt, &cmd.v1.table[0][0],
-			       ACPI_WGDS_NUM_BANDS);
+	cmd.geo_cmd.ops = cpu_to_le32(IWL_PER_CHAIN_OFFSET_SET_TABLES);
 
+	ret = iwl_sar_geo_init(&xvt->fwrt, cmd.geo_cmd.table);
 	/*
 	 * It is a valid scenario to not support SAR, or miss wgds table,
 	 * but in that case there is no need to send the command.
@@ -833,23 +830,16 @@ static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 	if (ret)
 		return 0;
 
-	/* the ops field is at the same spot for all versions, so set in v1 */
-	cmd.v1.ops = cpu_to_le32(IWL_PER_CHAIN_OFFSET_SET_TABLES);
+	cmd.geo_cmd.table_revision = cpu_to_le32(xvt->fwrt.geo_rev);
 
-	if (cmd_ver == 3) {
-		len = sizeof(cmd.v3);
-		cmd.v3.table_revision = cpu_to_le32(xvt->fwrt.geo_rev);
-	} else if (fw_has_api(&xvt->fwrt.fw->ucode_capa,
-			      IWL_UCODE_TLV_API_SAR_TABLE_VER)) {
-		len =  sizeof(cmd.v2);
-		cmd.v2.table_revision = cpu_to_le32(xvt->fwrt.geo_rev);
+	if (!fw_has_api(&xvt->fwrt.fw->ucode_capa,
+			IWL_UCODE_TLV_API_SAR_TABLE_VER)) {
+		len = sizeof(struct iwl_geo_tx_power_profiles_cmd_v1);
 	} else {
-		len = sizeof(cmd.v1);
+		len =  sizeof(cmd.geo_cmd);
 	}
 
-	return iwl_xvt_send_cmd_pdu(xvt,
-				    WIDE_ID(PHY_OPS_GROUP, GEO_TX_POWER_LIMIT),
-				    0, len, &cmd);
+	return iwl_xvt_send_cmd_pdu(xvt, cmd_wide_id, 0, len, &cmd);
 }
 #else /* CONFIG_ACPI */
 static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
@@ -861,39 +851,25 @@ static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 static int
 iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b)
 {
-	struct iwl_dev_tx_power_cmd cmd = {
-		.common.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_CHAINS),
+	union {
+		struct iwl_dev_tx_power_cmd v5;
+		struct iwl_dev_tx_power_cmd_v4 v4;
+	} cmd = {
+		.v5.v3.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_CHAINS),
 	};
-	__le16 *per_chain;
 	u16 len = 0;
-	u32 n_subbands;
-	u8 cmd_ver = iwl_fw_lookup_cmd_ver(xvt->fw, LONG_GROUP,
-					   REDUCE_TX_POWER_CMD);
-	if (cmd_ver == 6) {
-		len = sizeof(cmd.v6);
-		n_subbands = IWL_NUM_SUB_BANDS_V2;
-		per_chain = cmd.v6.per_chain[0][0];
-	} else if (fw_has_api(&xvt->fw->ucode_capa,
-			      IWL_UCODE_TLV_API_REDUCE_TX_POWER)) {
+
+	if (fw_has_api(&xvt->fw->ucode_capa,
+		       IWL_UCODE_TLV_API_REDUCE_TX_POWER))
 		len = sizeof(cmd.v5);
-		n_subbands = IWL_NUM_SUB_BANDS;
-		per_chain = cmd.v5.per_chain[0][0];
-	} else if (fw_has_capa(&xvt->fw->ucode_capa,
-			       IWL_UCODE_TLV_CAPA_TX_POWER_ACK)) {
-		len = sizeof(cmd.v4);
-		n_subbands = IWL_NUM_SUB_BANDS;
-		per_chain = cmd.v4.per_chain[0][0];
-	} else {
-		len = sizeof(cmd.v3);
-		n_subbands = IWL_NUM_SUB_BANDS;
-		per_chain = cmd.v3.per_chain[0][0];
-	}
+	else if (fw_has_capa(&xvt->fw->ucode_capa,
+			     IWL_UCODE_TLV_CAPA_TX_POWER_ACK))
+		len = sizeof(struct iwl_dev_tx_power_cmd_v4);
+	else
+		len = sizeof(cmd.v4.v3);
 
-	/* all structs have the same common part, add it */
-	len += sizeof(cmd.common);
-
-	if (iwl_sar_select_profile(&xvt->fwrt, per_chain, ACPI_SAR_NUM_TABLES,
-				   n_subbands, prof_a, prof_b))
+	if (iwl_sar_select_profile(&xvt->fwrt, cmd.v5.v3.per_chain_restriction,
+				   prof_a, prof_b))
 		return -ENOENT;
 
 	IWL_DEBUG_RADIO(xvt, "Sending REDUCE_TX_POWER_CMD per chain\n");

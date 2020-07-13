@@ -20,8 +20,4 @@
 #define BIT_ULL(nr) (1ULL << (nr))
 #endif
 
-#ifndef BITS_PER_TYPE
-#define BITS_PER_TYPE(type) (sizeof(type) * BITS_PER_BYTE)
-#endif
-
 #endif /* __BACKPORT_BITOPS_H */
