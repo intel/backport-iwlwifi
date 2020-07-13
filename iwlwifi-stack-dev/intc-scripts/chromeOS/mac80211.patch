@@ -153,6 +153,18 @@ index db72da515..19c5af106 100644
  	return ret;
  }
  
+@@ -1056,9 +1056,11 @@ static int ieee80211_start_ap(struct wiphy *wiphy, struct net_device *dev,
+ 	sdata->vif.bss_conf.dtim_period = params->dtim_period;
+ 	sdata->vif.bss_conf.enable_beacon = true;
+ 	sdata->vif.bss_conf.allow_p2p_go_ps = sdata->vif.p2p;
++#if CFG80211_VERSION >= KERNEL_VERSION(5,5,0)
+ 	sdata->vif.bss_conf.twt_responder = params->twt_responder;
+ 	memcpy(&sdata->vif.bss_conf.he_obss_pd, &params->he_obss_pd,
+ 	       sizeof(struct ieee80211_he_obss_pd));
++#endif
+ 
+ 	sdata->vif.bss_conf.ssid_len = params->ssid_len;
+ 	if (params->ssid_len)
 @@ -1462,6 +1481,7 @@ static int sta_apply_parameters(struct ieee80211_local *local,
  	if (params->listen_interval >= 0)
  		sta->listen_interval = params->listen_interval;
@@ -904,3 +916,23 @@ index 2865872da..2756b15cf 100644
  		    __ieee80211_request_sched_scan_start(sched_scan_sdata,
  							 sched_scan_req)) {
  			RCU_INIT_POINTER(local->sched_scan_sdata, NULL);
+--- a/net/mac80211/status.c
++++ b/net/mac80211/status.c
+@@ -428,6 +428,9 @@ ieee80211_add_tx_radiotap_header(struct ieee80211_local *local,
+ 		pos += 2;
+ 	} else if (status && status->rate &&
+ 		   (status->rate->flags & RATE_INFO_FLAGS_HE_MCS)) {
++#if CFG80211_VERSION < KERNEL_VERSION(4,19,0)
++		WARN_ON_ONCE(1);
++#else
+ 		struct ieee80211_radiotap_he *he;
+ 
+ 		rthdr->it_present |= cpu_to_le32(1 << IEEE80211_RADIOTAP_HE);
+@@ -498,6 +501,7 @@ ieee80211_add_tx_radiotap_header(struct ieee80211_local *local,
+ 		}
+ 
+ 		pos += sizeof(struct ieee80211_radiotap_he);
++#endif
+ 	}
+ 
+ 	if ((status && status->rate) || info->status.rates[0].idx < 0)

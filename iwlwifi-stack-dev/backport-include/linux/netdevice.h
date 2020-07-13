@@ -304,7 +304,13 @@ static inline bool backport_napi_complete_done(struct napi_struct *n, int work_d
 #endif /* < 3.19 */
 	return true;
 }
+
+static inline bool backport_napi_complete(struct napi_struct *n)
+{
+	return backport_napi_complete_done(n, 0);
+}
 #define napi_complete_done LINUX_BACKPORT(napi_complete_done)
+#define napi_complete LINUX_BACKPORT(napi_complete)
 #endif /* < 4.10 */
 
 #if LINUX_VERSION_IS_LESS(4,5,0)
@@ -359,11 +365,7 @@ static inline void netif_trans_update(struct net_device *dev)
 static inline int _bp_netdev_upper_dev_link(struct net_device *dev,
 					    struct net_device *upper_dev)
 {
-#if LINUX_VERSION_IS_LESS(3,9,0)
-	return 0;
-#else
 	return netdev_upper_dev_link(dev, upper_dev);
-#endif
 }
 #define netdev_upper_dev_link3(dev, upper, extack) \
 	netdev_upper_dev_link(dev, upper)

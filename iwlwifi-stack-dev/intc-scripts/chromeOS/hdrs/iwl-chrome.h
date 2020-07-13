@@ -4,7 +4,7 @@
  *
  * ChromeOS backport definitions
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2020 Intel Corporation
  */
 
 #include <linux/version.h>
@@ -251,15 +251,9 @@ static inline bool ether_addr_equal_unaligned(const u8 *addr1, const u8 *addr2)
 }
 #endif
 
-#if LINUX_VERSION_IS_GEQ(5,3,0)
-/*
- * In v5.3, this function was renamed, so rename it here for v5.3+.
- * When we merge v5.3 back from upstream, the opposite should be done
- * (i.e. we will have _boottime_ and need to rename to _boot_ in <
- * v5.3 instead).
-*/
-#define ktime_get_boot_ns ktime_get_boottime_ns
-#endif /* > 5.3.0 */
+#if LINUX_VERSION_IS_LESS(5,3,0)
+#define ktime_get_boottime_ns ktime_get_boot_ns
+#endif
 
 #if LINUX_VERSION_IS_GEQ(5,3,0)
 /*
@@ -1048,10 +1042,97 @@ rcu_head_after_call_rcu(struct rcu_head *rhp, void *f)
 	WARN_ON_ONCE(READ_ONCE(rhp->func) != (void *)~0L);
 	return false;
 }
+
+#define skb_mark_not_on_list iwl7000_skb_mark_not_on_list
+static inline void skb_mark_not_on_list(struct sk_buff *skb)
+{
+	skb->next = NULL;
+}
 #endif /* LINUX_VERSION_IS_LESS(4,20,0) */
 
 #if LINUX_VERSION_IS_LESS(5,4,0)
 #include <linux/pci-aspm.h>
 #endif
+
+#if LINUX_VERSION_IS_LESS(5,5,0)
+#include <linux/debugfs.h>
+
+#define debugfs_create_xul iwl7000_debugfs_create_xul
+static inline void debugfs_create_xul(const char *name, umode_t mode,
+				      struct dentry *parent,
+				      unsigned long *value)
+{
+	if (sizeof(*value) == sizeof(u32))
+		debugfs_create_x32(name, mode, parent, (u32 *)value);
+	else
+		debugfs_create_x64(name, mode, parent, (u64 *)value);
+}
+#endif
+
+#ifndef skb_list_walk_safe
+#define skb_list_walk_safe(first, skb, next_skb)				\
+	for ((skb) = (first), (next_skb) = (skb) ? (skb)->next : NULL; (skb);	\
+	     (skb) = (next_skb), (next_skb) = (skb) ? (skb)->next : NULL)
+#endif
+
+#if LINUX_VERSION_IS_LESS(4,13,0) && \
+	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
+#include <linux/acpi.h>
+#include <linux/uuid.h>
+
+#define guid_t uuid_le
+#define uuid_t uuid_be
+
+static inline void guid_gen(guid_t *u)
+{
+	return uuid_le_gen(u);
+}
+
+static inline void uuid_gen(uuid_t *u)
+{
+	return uuid_be_gen(u);
+}
+
+static inline void guid_copy(guid_t *dst, const guid_t *src)
+{
+	memcpy(dst, src, sizeof(guid_t));
+}
+
+#define GUID_INIT(a, b, c, d0, d1, d2, d3, d4, d5, d6, d7)	\
+	UUID_LE(a, b, c, d0, d1, d2, d3, d4, d5, d6, d7)
+
+static inline union acpi_object *
+LINUX_BACKPORT(acpi_evaluate_dsm)(acpi_handle handle, const guid_t *guid,
+				  u64 rev, u64 func, union acpi_object *args)
+{
+	return acpi_evaluate_dsm(handle, guid->b, rev, func, args);
+}
+
+#define acpi_evaluate_dsm LINUX_BACKPORT(acpi_evaluate_dsm)
+#endif
+
+#if LINUX_VERSION_IS_LESS(4,18,0)
+#define firmware_request_nowarn(fw, name, device) request_firmware(fw, name, device)
+#endif
+
+#if LINUX_VERSION_IS_LESS(5,4,0)
+
+/**
+ * list_for_each_entry_rcu	-	iterate over rcu list of given type
+ * @pos:	the type * to use as a loop cursor.
+ * @head:	the head for your list.
+ * @member:	the name of the list_head within the struct.
+ * @cond...:	optional lockdep expression if called from non-RCU protection.
+ *
+ * This list-traversal primitive may safely run concurrently with
+ * the _rcu list-mutation primitives such as list_add_rcu()
+ * as long as the traversal is guarded by rcu_read_lock().
+ */
+#undef list_for_each_entry_rcu
+#define list_for_each_entry_rcu(pos, head, member, cond...)		\
+	for (pos = list_entry_rcu((head)->next, typeof(*pos), member); \
+		&pos->member != (head); \
+		pos = list_entry_rcu(pos->member.next, typeof(*pos), member))
+#endif /* < 5.4 */
 
 #endif /* __IWL_CHROME */

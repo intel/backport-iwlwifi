@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 '''
 Removes unnecessary code to create a "pruned" version
 for projects. Additionally, it can rename all symbols

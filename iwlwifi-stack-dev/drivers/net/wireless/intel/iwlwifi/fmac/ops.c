@@ -87,7 +87,7 @@
 
 #define DRV_DESCRIPTION	"Intel(R) wireless full-MAC driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
-MODULE_AUTHOR(DRV_COPYRIGHT " " DRV_AUTHOR);
+MODULE_AUTHOR(DRV_AUTHOR);
 MODULE_LICENSE("GPL");
 
 static const struct iwl_op_mode_ops iwl_fmac_ops;
@@ -783,7 +783,7 @@ static void iwl_fmac_rx_reg_update(struct iwl_fmac *fmac,
 	regd = iwl_parse_nvm_mcc_info(fmac->dev, fmac->cfg,
 				      __le32_to_cpu(rsp->n_channels),
 				      rsp->channels,
-				      __le16_to_cpu(rsp->mcc), 0, 0);
+				      __le16_to_cpu(rsp->mcc), 0, 0, 0);
 	if (IS_ERR_OR_NULL(regd)) {
 		IWL_ERR(fmac, "Could not parse notif from FW %d\n",
 			PTR_ERR_OR_ZERO(regd));
@@ -937,6 +937,14 @@ static void iwl_fmac_restart_station(struct iwl_fmac *fmac,
 	/* this will also call to synchronize_net() */
 	iwl_fmac_free_sta(fmac, sta->sta_id, true);
 	vif->u.mgd.connect_state = IWL_FMAC_CONNECT_IDLE;
+
+	iwl_fmac_send_config_u32(fmac, vif->id,
+				 IWL_FMAC_CONFIG_VIF_POWER_DISABLED,
+				 wdev->ps ? 0 : 1);
+
+	iwl_fmac_send_config_u32(fmac, vif->id,
+				 IWL_FMAC_CONFIG_VIF_TXPOWER_USER,
+				 vif->user_power_level);
 }
 
 void iwl_fmac_remove_mcast_sta(struct iwl_fmac *fmac,
@@ -968,34 +976,13 @@ static void iwl_fmac_rx_dhc(struct iwl_fmac *fmac,
 }
 #endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
 
-static bool
-iwl_fmac_recover_complete(struct iwl_notif_wait_data *notif_wait,
-			  struct iwl_rx_packet *pkt, void *data)
-{
-	const struct iwl_fmac_recovery_complete *notif = (void *)pkt->data;
-	struct iwl_fmac_recovery_complete *complete_notif = data;
-
-	*complete_notif = *notif;
-
-	return true;
-}
-
-void iwl_fmac_nic_restart(struct iwl_fmac *fmac, bool recover)
+void iwl_fmac_nic_restart(struct iwl_fmac *fmac)
 {
 	struct wiphy *wiphy = wiphy_from_fmac(fmac);
-	struct iwl_fmac_recover_cmd *recover_cmd;
-	struct iwl_notification_wait recov_wait;
-	static const u16 recov_complete[] = {
-		WIDE_ID(FMAC_GROUP, FMAC_RECOVERY_COMPLETE),
-	};
-	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_RECOVER, FMAC_GROUP, 0),
-	};
 	struct wireless_dev *wdev;
 	struct cfg80211_scan_info info = {
 		.aborted = true,
 	};
-	struct iwl_fmac_recovery_complete complete_notif = {};
 	int ret = 0;
 	int i;
 
@@ -1052,37 +1039,6 @@ void iwl_fmac_nic_restart(struct iwl_fmac *fmac, bool recover)
 		fmac->scan_request = NULL;
 	}
 
-	recover_cmd = kzalloc(sizeof(*recover_cmd), GFP_KERNEL);
-	if (!recover_cmd)
-		goto out_unlock;
-
-	/* remove all stations, notify user space */
-	list_for_each_entry(wdev, &wiphy->wdev_list, list) {
-		struct iwl_fmac_vif *vif = vif_from_wdev(wdev);
-		struct iwl_fmac_sta *sta;
-
-		switch (wdev->iftype) {
-		case NL80211_IFTYPE_STATION:
-			recover_cmd->add_vif_bitmap |= BIT(vif->id);
-			recover_cmd->vif_types[vif->id] = IWL_FMAC_IFTYPE_MGD;
-			sta = rcu_dereference_protected(vif->u.mgd.ap_sta,
-					  lockdep_is_held(&fmac->mutex));
-
-			/* The firmware can't restore secure connections */
-			if (sta->encryption)
-				break;
-
-			recover_cmd->restore_vif_bitmap |= BIT(vif->id);
-			memcpy(&recover_cmd->vif_addrs[vif->id * ETH_ALEN],
-			       vif->addr, ETH_ALEN);
-
-			break;
-		default:
-			WARN_ON(1);
-			break;
-		}
-	}
-
 	if (!atomic_read(&fmac->open_count))
 		goto out_unlock;
 
@@ -1096,112 +1052,49 @@ void iwl_fmac_nic_restart(struct iwl_fmac *fmac, bool recover)
 		goto out_unlock;
 	}
 
-	if (!recover)
-		goto do_not_recover;
-
-	if (!fmac->error_recovery_buf) {
-		ret = -EINVAL;
-		goto out_unlock;
-	}
-
-	iwl_init_notification_wait(&fmac->notif_wait, &recov_wait,
-				   recov_complete, ARRAY_SIZE(recov_complete),
-				   iwl_fmac_recover_complete,
-				   &complete_notif);
-
-	hcmd.data[0] = recover_cmd;
-	hcmd.len[0] = sizeof(*recover_cmd);
-	hcmd.data[1] = fmac->error_recovery_buf;
-	hcmd.len[1] = fmac->fw->ucode_capa.fmac_error_log_size;
-	hcmd.dataflags[1] = IWL_HCMD_DFL_NOCOPY;
-
-	ret = iwl_fmac_send_cmd(fmac, &hcmd);
-	if (ret)
-		goto out_rem_notif;
-
-	/* We wait for the recovery complete notification */
-	ret = iwl_wait_notification(&fmac->notif_wait, &recov_wait, HZ);
-	if (ret)
-		goto out_unlock;
-
-	IWL_ERR(fmac, "Restart completed: recovered vifs = %x\n",
-		complete_notif.vif_id_bitmap);
-
-	kfree(fmac->error_recovery_buf);
-	fmac->error_recovery_buf = NULL;
-
-do_not_recover:
 	/* if there were any vifs - add them back */
 	list_for_each_entry(wdev, &wiphy->wdev_list, list) {
 		struct iwl_fmac_vif *vif = vif_from_wdev(wdev);
 
-		if (!recover) {
-			struct iwl_fmac_add_vif_cmd cmd = {};
-			struct iwl_fmac_add_vif_resp *resp;
-			struct iwl_host_cmd hcmd = {
-				.id = iwl_cmd_id(FMAC_ADD_VIF, FMAC_GROUP, 0),
-				.flags = CMD_WANT_SKB,
-				.data = { &cmd, },
-				.len = { sizeof(cmd) },
-			};
+		struct iwl_fmac_add_vif_cmd cmd = {};
+		struct iwl_fmac_add_vif_resp *resp;
+		struct iwl_host_cmd hcmd = {
+			.id = iwl_cmd_id(FMAC_ADD_VIF, FMAC_GROUP, 0),
+			.flags = CMD_WANT_SKB,
+			.data = { &cmd, },
+			.len = { sizeof(cmd) },
+		};
 
-			cmd.type = iwl_fmac_nl_to_fmac_type(vif->wdev.iftype);
-			ether_addr_copy(cmd.addr, wdev->netdev->dev_addr);
+		cmd.type = iwl_fmac_nl_to_fmac_type(vif->wdev.iftype);
+		ether_addr_copy(cmd.addr, wdev->netdev->dev_addr);
 
-			ret = iwl_fmac_send_cmd(fmac, &hcmd);
-			if (ret)
-				goto out_unlock;
+		ret = iwl_fmac_send_cmd(fmac, &hcmd);
+		if (ret)
+			goto out_unlock;
 
-			resp = (void *)hcmd.resp_pkt->data;
-			if (resp->status != IWL_ADD_VIF_SUCCESS) {
-				ret = resp->status;
-				iwl_free_resp(&hcmd);
-				goto out_unlock;
-			}
-			vif->id = resp->id;
+		resp = (void *)hcmd.resp_pkt->data;
+		if (resp->status != IWL_ADD_VIF_SUCCESS) {
+			ret = resp->status;
+			iwl_free_resp(&hcmd);
+			goto out_unlock;
 		}
-		/*
-		 * If the vif wasn't recovered by the firmware, do it
-		 * here.
-		 */
-		if (!(BIT(vif->id) & complete_notif.vif_id_bitmap)) {
-			switch (wdev->iftype) {
+		vif->id = resp->id;
+		switch (wdev->iftype) {
 			case NL80211_IFTYPE_STATION:
 				iwl_fmac_restart_station(fmac, wdev);
-			break;
+				break;
 			default:
 				WARN_ON(1);
 				break;
-			}
-
-			continue;
 		}
-
-		/* set vif power management */
-		if (wdev->iftype == NL80211_IFTYPE_STATION)
-			iwl_fmac_send_config_u32(fmac, vif->id,
-					IWL_FMAC_CONFIG_VIF_POWER_DISABLED,
-					wdev->ps ? 0 : 1);
-
-		iwl_fmac_send_config_u32(fmac, vif->id,
-					 IWL_FMAC_CONFIG_VIF_TXPOWER_USER,
-					 vif->user_power_level);
-
-		if (BIT(vif->id) & complete_notif.vif_id_bitmap)
-			netif_tx_wake_all_queues(vif->wdev.netdev);
 	}
 
-	goto out_unlock;
-
-out_rem_notif:
-	iwl_remove_notification(&fmac->notif_wait, &recov_wait);
 out_unlock:
 	if (ret) {
 		IWL_ERR(fmac, "Recovery from HW error failed\n");
 		iwl_fmac_stop_device(fmac);
 	}
 	mutex_unlock(&fmac->mutex);
-	kfree(recover_cmd);
 }
 
 static void iwl_fmac_nic_restart_wk(struct work_struct *work)
@@ -1221,7 +1114,7 @@ static void iwl_fmac_nic_restart_wk(struct work_struct *work)
 	synchronize_net();
 
 	rtnl_lock();
-	iwl_fmac_nic_restart(fmac, true);
+	iwl_fmac_nic_restart(fmac);
 	rtnl_unlock();
 }
 
@@ -2020,8 +1913,6 @@ static void iwl_fmac_nic_error(struct iwl_op_mode *op_mode)
 {
 	struct iwl_fmac *fmac = iwl_fmac_from_opmode(op_mode);
 	struct wiphy *wiphy = wiphy_from_fmac(fmac);
-	u32 recov_buf_addr = fmac->fw->ucode_capa.fmac_error_log_addr;
-	u32 recov_buf_sz = fmac->fw->ucode_capa.fmac_error_log_size;
 	struct wireless_dev *wdev;
 
 	/* Close the data path immediately and clean up later */
@@ -2033,14 +1924,6 @@ static void iwl_fmac_nic_error(struct iwl_op_mode *op_mode)
 	rcu_read_unlock();
 
 	iwl_fmac_dump_nic_error_log(fmac);
-
-	if (iwlwifi_mod_params.fw_restart) {
-		fmac->error_recovery_buf = kmalloc(recov_buf_sz, GFP_ATOMIC);
-
-		iwl_trans_read_mem_bytes(fmac->trans, recov_buf_addr,
-					 fmac->error_recovery_buf,
-					 recov_buf_sz);
-	}
 
 	iwl_fw_error_collect(&fmac->fwrt);
 
@@ -2148,7 +2031,6 @@ static void iwl_op_mode_fmac_stop(struct iwl_op_mode *op_mode)
 	cancel_work_sync(&fmac->async_handlers_wk);
 	iwl_fmac_async_handlers_purge(fmac);
 	cancel_work_sync(&fmac->restart_wk);
-	kfree(fmac->error_recovery_buf);
 	flush_work(&fmac->add_stream_wk);
 
 	iwl_fmac_dbgfs_exit(fmac);

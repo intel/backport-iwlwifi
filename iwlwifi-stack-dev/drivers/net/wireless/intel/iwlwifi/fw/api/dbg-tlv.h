@@ -135,6 +135,25 @@ struct iwl_fw_ini_region_err_table {
 } __packed; /* FW_TLV_DEBUG_REGION_ERROR_TABLE_API_S_VER_1 */
 
 /**
+ * struct iwl_fw_ini_region_special_device_memory - special device memory
+ *
+ * Configuration to read a special memory
+ *
+ * @type: type of the special memory
+ * @version: version of the special memory
+ * @base_addr: base address of the error table
+ * @size: size of the error table
+ * @offset: offset to add to &base_addr
+ */
+struct iwl_fw_ini_region_special_device_memory {
+	__le16 type;
+	__le16 version;
+	__le32 base_addr;
+	__le32 size;
+	__le32 offset;
+} __packed; /* FW_TLV_DEBUG_REGION_SPECIAL_DEVICE_ADDR_API_S_VER_1 */
+
+/**
  * struct iwl_fw_ini_region_internal_buffer - internal buffer region data
  *
  * Configuration to read internal monitor buffer
@@ -185,6 +204,7 @@ struct iwl_fw_ini_region_tlv {
 		struct iwl_fw_ini_region_fifos fifos;
 		struct iwl_fw_ini_region_err_table err_table;
 		struct iwl_fw_ini_region_internal_buffer internal_buffer;
+		struct iwl_fw_ini_region_special_device_memory special_mem;
 		__le32 dram_alloc_id;
 		__le32 tlv_mask;
 	}; /* FW_TLV_DEBUG_REGION_CONF_PARAMS_API_U_VER_1 */
@@ -327,6 +347,7 @@ enum iwl_fw_ini_buffer_location {
  * @IWL_FW_INI_REGION_CSR: CSR registers
  * @IWL_FW_INI_REGION_DRAM_IMR: IMR memory
  * @IWL_FW_INI_REGION_PCI_IOSF_CONFIG: PCI/IOSF config
+ * @IWL_FW_INI_REGION_SPECIAL_DEVICE_MEMORY: special device memroy
  * @IWL_FW_INI_REGION_NUM: number of region types
  */
 enum iwl_fw_ini_region_type {
@@ -347,6 +368,7 @@ enum iwl_fw_ini_region_type {
 	IWL_FW_INI_REGION_CSR,
 	IWL_FW_INI_REGION_DRAM_IMR,
 	IWL_FW_INI_REGION_PCI_IOSF_CONFIG,
+	IWL_FW_INI_REGION_SPECIAL_DEVICE_MEMORY,
 	IWL_FW_INI_REGION_NUM
 }; /* FW_TLV_DEBUG_REGION_TYPE_API_E */
 
@@ -368,7 +390,7 @@ enum iwl_fw_ini_region_type {
  * @IWL_FW_INI_TIME_POINT_USER_TRIGGER: user trigger time point
  * @IWL_FW_INI_TIME_POINT_PERIODIC: periodic timepoint that fires in constant
  *	intervals. data field holds the interval time in msec
- * @IWL_FW_INI_TIME_POINT_WDG_TIMEOUT: watchdog timeout
+ * @IWL_FW_INI_TIME_POINT_RESERVED: reserved
  * @IWL_FW_INI_TIME_POINT_HOST_ASSERT: Unused
  * @IWL_FW_INI_TIME_POINT_HOST_ALIVE_TIMEOUT: alive timeout
  * @IWL_FW_INI_TIME_POINT_HOST_DEVICE_ENABLE: device enable
@@ -399,7 +421,7 @@ enum iwl_fw_ini_time_point {
 	IWL_FW_INI_TIME_POINT_FW_RSP_OR_NOTIF,
 	IWL_FW_INI_TIME_POINT_USER_TRIGGER,
 	IWL_FW_INI_TIME_POINT_PERIODIC,
-	IWL_FW_INI_TIME_POINT_WDG_TIMEOUT,
+	IWL_FW_INI_TIME_POINT_RESERVED,
 	IWL_FW_INI_TIME_POINT_HOST_ASSERT,
 	IWL_FW_INI_TIME_POINT_HOST_ALIVE_TIMEOUT,
 	IWL_FW_INI_TIME_POINT_HOST_DEVICE_ENABLE,

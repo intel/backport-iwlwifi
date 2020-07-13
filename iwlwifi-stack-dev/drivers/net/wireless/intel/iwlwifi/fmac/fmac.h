@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017        Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019        Intel Corporation
+ * Copyright(c) 2018 - 2020        Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017        Intel Deutschland GmbH
- * Copyright(c) 2018 - 2019        Intel Corporation
+ * Copyright(c) 2018 - 2020        Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -319,9 +319,6 @@ struct iwl_fmac {
 
 	struct iwl_notif_wait_data notif_wait;
 
-	/* firmware related */
-	void *error_recovery_buf;
-
 	/* scan */
 	struct cfg80211_scan_request *scan_request;
 
@@ -570,7 +567,7 @@ struct net_device *iwl_fmac_create_netdev(struct iwl_fmac *fmac,
 					  enum nl80211_iftype iftype,
 					  struct vif_params *params);
 void iwl_fmac_destroy_vif(struct iwl_fmac_vif *vif);
-void iwl_fmac_nic_restart(struct iwl_fmac *fmac, bool recover);
+void iwl_fmac_nic_restart(struct iwl_fmac *fmac);
 
 /* firmware functions */
 int iwl_fmac_run_init_fw(struct iwl_fmac *fmac);

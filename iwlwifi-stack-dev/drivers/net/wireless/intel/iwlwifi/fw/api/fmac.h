@@ -6,7 +6,7 @@
  * GPL LICENSE SUMMARY
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 Intel Corporation
+ * Copyright(c) 2018, 2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -27,7 +27,7 @@
  * BSD LICENSE
  *
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 Intel Corporation
+ * Copyright(c) 2018, 2020 Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1727,7 +1727,7 @@ enum iwl_fmac_chan_width {
 #define IWL_FMAC_NUM_SUB_BANDS		5
 
 struct iwl_fmac_sar_restrictions {
-	__le16 per_chain_restriction[IWL_FMAC_NUM_CHAIN_LIMITS][IWL_FMAC_NUM_SUB_BANDS];
+	__le16 per_chain[IWL_FMAC_NUM_CHAIN_LIMITS][IWL_FMAC_NUM_SUB_BANDS];
 } __packed;
 
 /**
