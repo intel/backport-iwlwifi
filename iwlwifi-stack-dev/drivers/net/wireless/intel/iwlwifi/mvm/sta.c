@@ -196,7 +196,6 @@ int iwl_mvm_sta_send_to_fw(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 		mpdu_dens = sta->ht_cap.ampdu_density;
 	}
 
-
 #ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	if (mvm_sta->vif->bss_conf.chandef.chan->band == NL80211_BAND_6GHZ) {
 		add_sta_cmd.station_flags_msk |=
@@ -217,23 +216,6 @@ int iwl_mvm_sta_send_to_fw(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	} else if (sta->ht_cap.ht_supported) {
 		agg_size = sta->ht_cap.ampdu_factor;
 	}
-
-	/* D6.0 10.12.2 A-MPDU length limit rules
-	 * A STA indicates the maximum length of the A-MPDU preEOF padding
-	 * that it can receive in an HE PPDU in the Maximum A-MPDU Length
-	 * Exponent field in its HT Capabilities, VHT Capabilities,
-	 * and HE 6 GHz Band Capabilities elements (if present) and the
-	 * Maximum AMPDU Length Exponent Extension field in its HE
-	 * Capabilities element
-	 */
-	if (sta->he_cap.has_he)
-		agg_size += u8_get_bits(sta->he_cap.he_cap_elem.mac_cap_info[3],
-					IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_MASK);
-
-	/* Limit to max A-MPDU supported by FW */
-	if (agg_size > (STA_FLG_MAX_AGG_SIZE_4M >> STA_FLG_MAX_AGG_SIZE_SHIFT))
-		agg_size = (STA_FLG_MAX_AGG_SIZE_4M >>
-			    STA_FLG_MAX_AGG_SIZE_SHIFT);
 
 	add_sta_cmd.station_flags |=
 		cpu_to_le32(agg_size << STA_FLG_MAX_AGG_SIZE_SHIFT);
@@ -554,6 +536,8 @@ static int iwl_mvm_free_inactive_queue(struct iwl_mvm *mvm, int queue,
 
 	sta_id = mvm->queue_info[queue].ra_sta_id;
 	tid = mvm->queue_info[queue].txq_tid;
+
+	same_sta = sta_id == new_sta_id;
 
 	same_sta = sta_id == new_sta_id;
 
@@ -2035,7 +2019,7 @@ static int iwl_mvm_enable_aux_snif_queue_tvqm(struct iwl_mvm *mvm, u8 sta_id)
 }
 
 static int iwl_mvm_add_int_sta_with_queue(struct iwl_mvm *mvm, int macidx,
-					  int maccolor, u8 *addr,
+					  int maccolor,
 					  struct iwl_mvm_int_sta *sta,
 					  u16 *queue, int fifo)
 {
@@ -2045,7 +2029,7 @@ static int iwl_mvm_add_int_sta_with_queue(struct iwl_mvm *mvm, int macidx,
 	if (!iwl_mvm_has_new_tx_api(mvm))
 		iwl_mvm_enable_aux_snif_queue(mvm, *queue, sta->sta_id, fifo);
 
-	ret = iwl_mvm_add_int_sta_common(mvm, sta, addr, macidx, maccolor);
+	ret = iwl_mvm_add_int_sta_common(mvm, sta, NULL, macidx, maccolor);
 	if (ret) {
 		if (!iwl_mvm_has_new_tx_api(mvm))
 			iwl_mvm_disable_txq(mvm, NULL, *queue,
@@ -2085,7 +2069,7 @@ int iwl_mvm_add_aux_sta(struct iwl_mvm *mvm)
 	if (ret)
 		return ret;
 
-	ret = iwl_mvm_add_int_sta_with_queue(mvm, MAC_INDEX_AUX, 0, NULL,
+	ret = iwl_mvm_add_int_sta_with_queue(mvm, MAC_INDEX_AUX, 0,
 					     &mvm->aux_sta, &mvm->aux_queue,
 					     IWL_MVM_TX_FIFO_MCAST);
 	if (ret) {
@@ -2103,8 +2087,7 @@ int iwl_mvm_add_snif_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	lockdep_assert_held(&mvm->mutex);
 
 	return iwl_mvm_add_int_sta_with_queue(mvm, mvmvif->id, mvmvif->color,
-					      NULL, &mvm->snif_sta,
-					      &mvm->snif_queue,
+					      &mvm->snif_sta, &mvm->snif_queue,
 					      IWL_MVM_TX_FIFO_BE);
 }
 
@@ -3941,44 +3924,4 @@ u16 iwl_mvm_tid_queued(struct iwl_mvm *mvm, struct iwl_mvm_tid_data *tid_data)
 		sn &= 0xff;
 
 	return ieee80211_sn_sub(sn, tid_data->next_reclaimed);
-}
-
-int iwl_mvm_add_pasn_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
-			 struct iwl_mvm_int_sta *sta, u8 *addr, u32 cipher,
-			 u8 *key, u32 key_len)
-{
-	int ret;
-	u16 queue;
-	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-	struct ieee80211_key_conf *keyconf;
-
-	ret = iwl_mvm_allocate_int_sta(mvm, sta, 0,
-				       NL80211_IFTYPE_UNSPECIFIED,
-				       IWL_STA_LINK);
-	if (ret)
-		return ret;
-
-	ret = iwl_mvm_add_int_sta_with_queue(mvm, mvmvif->id, mvmvif->color,
-					     addr, sta, &queue,
-					     IWL_MVM_TX_FIFO_BE);
-	if (ret)
-		goto out;
-
-	keyconf = kzalloc(sizeof(*keyconf) + key_len, GFP_KERNEL);
-	if (!keyconf) {
-		ret = -ENOBUFS;
-		goto out;
-	}
-
-	keyconf->cipher = cipher;
-	memcpy(keyconf->key, key, key_len);
-	keyconf->keylen = key_len;
-
-	ret = iwl_mvm_send_sta_key(mvm, sta->sta_id, keyconf, false,
-				   0, NULL, 0, 0, true);
-	kfree(keyconf);
-	return 0;
-out:
-	iwl_mvm_dealloc_int_sta(mvm, sta);
-	return ret;
 }

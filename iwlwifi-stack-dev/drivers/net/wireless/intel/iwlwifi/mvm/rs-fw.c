@@ -419,62 +419,39 @@ out:
 }
 
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
-int iwl_rs_send_dhc(struct iwl_mvm *mvm, struct iwl_lq_sta_rs_fw *lq_sta,
-		    u32 type, u32 data)
+static void iwl_mvm_rs_disable_tx_agg(struct iwl_mvm *mvm,
+				      struct iwl_lq_sta_rs_fw *lq_sta)
 {
-	int ret;
 	struct iwl_dhc_cmd *dhc_cmd;
 	struct iwl_dhc_tlc_cmd *dhc_tlc_cmd;
 	u32 cmd_id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0);
+	int ret;
 
 	dhc_cmd = kzalloc(sizeof(*dhc_cmd) + sizeof(*dhc_tlc_cmd), GFP_KERNEL);
 	if (!dhc_cmd)
-		return -ENOMEM;
+		return;
+
+	IWL_DEBUG_RATE(mvm, "Disabling Tx agg for station id %d\n",
+		       lq_sta->pers.sta_id);
 
 	dhc_tlc_cmd = (void *)dhc_cmd->data;
 	dhc_tlc_cmd->sta_id = lq_sta->pers.sta_id;
-	dhc_tlc_cmd->type = cpu_to_le32(type);
-	dhc_tlc_cmd->data[0] = cpu_to_le32(data);
+	dhc_tlc_cmd->data[0] = cpu_to_le32(1);
+	dhc_tlc_cmd->type = cpu_to_le32(IWL_TLC_DEBUG_AGG_FRAME_CNT_LIM);
 	dhc_cmd->length = cpu_to_le32(sizeof(*dhc_tlc_cmd) >> 2);
 	dhc_cmd->index_and_mask =
 		cpu_to_le32(DHC_TABLE_INTEGRATION | DHC_TARGET_UMAC |
 			    DHC_INTEGRATION_TLC_DEBUG_CONFIG);
 
-	ret = iwl_mvm_send_cmd_pdu(mvm, cmd_id, CMD_ASYNC,
+	ret = iwl_mvm_send_cmd_pdu(mvm, cmd_id, 0,
 				   sizeof(*dhc_cmd) + sizeof(*dhc_tlc_cmd),
 				   dhc_cmd);
 	if (ret)
 		IWL_ERR(mvm, "Failed to send TLC Debug command: %d\n", ret);
 
 	kfree(dhc_cmd);
-	return ret;
 }
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
-
-#if defined(CPTCFG_MAC80211_DEBUGFS) && \
-	defined(CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED)
-int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta, u32 ampdu_size)
-{
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->lq_sta.rs_fw;
-	struct iwl_mvm *mvm = lq_sta->pers.drv;
-
-	int ret = iwl_rs_send_dhc(mvm, lq_sta,
-				  IWL_TLC_DEBUG_AGG_FRAME_CNT_LIM,
-				  ampdu_size);
-	if (!ret)
-		return ret;
-
-	lq_sta->pers.dbg_agg_frame_count_lim = ampdu_size;
-
-	IWL_DEBUG_RATE(mvm, "sta_id ret: %d, %d agg_frame_cmdt_lim %d\n",
-		       ret,
-		       lq_sta->pers.sta_id,
-		       lq_sta->pers.dbg_agg_frame_count_lim);
-
-	return 0;
-}
-#endif /* CPTCFG_MAC80211_DEBUGFS */
+#endif
 
 u16 rs_fw_get_max_amsdu_len(struct ieee80211_sta *sta)
 {
@@ -561,11 +538,12 @@ void rs_fw_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	    cfg_cmd.ht_rates[IWL_TLC_NSS_1][IWL_TLC_HT_BW_160] &&
 	    !cfg_cmd.ht_rates[IWL_TLC_NSS_2][IWL_TLC_HT_BW_160])
 		cfg_cmd.ht_rates[IWL_TLC_NSS_2][IWL_TLC_HT_BW_NONE_160] = 0;
+
 #endif
 
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 	if (iwlwifi_mod_params.disable_11n & IWL_DISABLE_HT_TXAGG)
-		iwl_rs_dhc_set_ampdu_size(sta, 1);
+		iwl_mvm_rs_disable_tx_agg(mvm, lq_sta);
 #endif
 	/*
 	 * since TLC offload works with one mode we can assume
@@ -577,12 +555,6 @@ void rs_fw_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 				   &cfg_cmd);
 	if (ret)
 		IWL_ERR(mvm, "Failed to send rate scale config (%d)\n", ret);
-
-#ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
-	if (mvm->trans->dbg_cfg.ampdu_limit)
-		iwl_rs_dhc_set_ampdu_size(sta,
-					  mvm->trans->dbg_cfg.ampdu_limit);
-#endif
 }
 
 void iwl_mvm_rs_add_sta(struct iwl_mvm *mvm, struct iwl_mvm_sta *mvmsta)

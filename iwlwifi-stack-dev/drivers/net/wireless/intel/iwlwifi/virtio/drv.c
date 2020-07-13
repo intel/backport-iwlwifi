@@ -52,6 +52,9 @@ struct iwl_virtqueue {
 struct iwl_trans_virtio {
 	struct iwl_trans *trans;
 
+	/* Protect sending usim commands */
+	struct mutex mutex;
+
 	/* The virtio device we're associated with */
 	struct virtio_device *vdev;
 
@@ -485,9 +488,9 @@ static void *_iwl_virtio_dequeue_cmd(struct iwl_virtqueue *iwl_q, u32 *size)
  * buf - buffer to r/w
  * len - buf len
  */
-static int send_control_msg(struct iwl_trans_virtio *trans_virtio,
-			    u32 event, u32 flags, u32 value,
-			    void *buf, u32 len)
+static int _send_control_msg(struct iwl_trans_virtio *trans_virtio,
+			     u32 event, u32 flags, u32 value,
+			     void *buf, u32 len)
 {
 	struct scatterlist sgs[VIRTIO_IWL_NR_SGS];
 	struct scatterlist *sgs_list[VIRTIO_IWL_NR_SGS];
@@ -496,19 +499,14 @@ static int send_control_msg(struct iwl_trans_virtio *trans_virtio,
 	struct virtqueue *vq;
 	unsigned int in_len;
 	int i;
-	struct virtio_iwl_control_hdr *cpkt_hdr;
+	struct virtio_iwl_control_hdr *cpkt_hdr =
+		kzalloc(sizeof(struct virtio_iwl_control_hdr) + 4,
+			GFP_KERNEL);
 
-	u8 *alloc_buf = kzalloc(len + VIRTIO_IWL_S_LEN + sizeof(*cpkt_hdr),
-				GFP_ATOMIC);
-
-	if (!alloc_buf)
+	if (!cpkt_hdr)
 		return -ENOMEM;
 
-	cpkt_hdr = (struct virtio_iwl_control_hdr *)
-			(alloc_buf + VIRTIO_IWL_S_LEN + len);
-
-	if (!(flags & VIRTIO_IWL_F_DIR_IN))
-		memcpy(alloc_buf, buf, len);
+	lockdep_assert_held(&trans_virtio->mutex);
 
 	vq = trans_virtio->c_ovq.vq;
 
@@ -517,36 +515,41 @@ static int send_control_msg(struct iwl_trans_virtio *trans_virtio,
 	cpkt_hdr->value = cpu_to_le32(value);
 	cpkt_hdr->len = cpu_to_le32(len);
 
-	sg_init_one(&sgs[0], cpkt_hdr, sizeof(*cpkt_hdr));
-
-	/* in/out buf */
-	sg_init_one(&sgs[1], alloc_buf, len);
-
-	/* out status buf VIRTIO_IWL_S_OK/VIRTIO_IWL_S_UNSUPP */
-	sg_init_one(&sgs[2], alloc_buf + len, VIRTIO_IWL_S_LEN);
+	sg_init_one(&sgs[0], cpkt_hdr, sizeof(struct virtio_iwl_control_hdr));
+	sg_init_one(&sgs[1], buf, len);
+	sg_init_one(&sgs[2], cpkt_hdr + 1, 4);
 
 	for (i = 0; i < VIRTIO_IWL_NR_SGS; i++)
 		sgs_list[i] = &sgs[i];
 
+	spin_lock(&trans_virtio->c_ovq.lock);
+
 	/* for status we always have at least one */
 	num_in = 1;
 	num_in += (flags & VIRTIO_IWL_F_DIR_IN) ? 1 : 0;
-
-	spin_lock_bh(&trans_virtio->c_ovq.lock);
 	if (virtqueue_add_sgs(vq, sgs_list, VIRTIO_IWL_NR_SGS - num_in, num_in,
-			      alloc_buf, GFP_ATOMIC) == 0) {
+			      cpkt_hdr, GFP_ATOMIC) == 0) {
 		virtqueue_kick(vq);
 		while (!virtqueue_get_buf(vq, &in_len) &&
-		       !WARN_ON(virtqueue_is_broken(vq)))
+		       !virtqueue_is_broken(vq))
 			udelay(1);
 	}
-	spin_unlock_bh(&trans_virtio->c_ovq.lock);
+	kfree(cpkt_hdr);
 
-	if (flags & VIRTIO_IWL_F_DIR_IN)
-		memcpy(buf, alloc_buf, len);
-
-	kfree(alloc_buf);
+	spin_unlock(&trans_virtio->c_ovq.lock);
 	return 0;
+}
+
+static ssize_t send_control_msg(struct iwl_trans_virtio *trans_virtio,
+				u32 event, u32 flags, u32 value,
+				void *buf, u32 len)
+{
+	int ret;
+
+	mutex_lock(&trans_virtio->mutex);
+	ret = _send_control_msg(trans_virtio, event, flags, value, buf, len);
+	mutex_unlock(&trans_virtio->mutex);
+	return ret;
 }
 
 /*
@@ -1354,7 +1357,8 @@ iwl_trans_virtio_alloc(struct virtio_device *vdev,
 	/* just use the old large allocation here - easier */
 	trans = iwl_trans_alloc(sizeof(*trans_virtio),
 				&vdev->dev, &trans_ops_virtio,
-				cfg_trans);
+				sizeof(struct iwl_device_cmd),
+				sizeof(void *));
 	if (!trans)
 		return ERR_PTR(-ENOMEM);
 
@@ -1362,6 +1366,7 @@ iwl_trans_virtio_alloc(struct virtio_device *vdev,
 		IWL_TRANS_GET_VIRTIO_TRANS(trans);
 
 	trans_virtio->trans = trans;
+	mutex_init(&trans_virtio->mutex);
 
 	/* Initialize the wait queue for commands */
 	init_waitqueue_head(&trans_virtio->wait_command_queue);
@@ -1372,6 +1377,7 @@ iwl_trans_virtio_alloc(struct virtio_device *vdev,
 
 static void iwl_trans_virtio_free(struct iwl_trans_virtio *trans_virtio)
 {
+	mutex_destroy(&trans_virtio->mutex);
 	iwl_trans_free(trans_virtio->trans);
 }
 
@@ -1447,16 +1453,11 @@ static void virtiwl_remove(struct virtio_device *vdev)
 	vdev->config->reset(vdev);
 
 	iwl_drv_stop(trans_virtio->trans->drv);
+
 	cancel_work_sync(&trans_virtio->control_work);
 	cancel_work_sync(&trans_virtio->rxdef_work);
 	cancel_work_sync(&trans_virtio->fw_load.work);
 	remove_vqs(trans_virtio);
-
-	/*
-	 * This should be done in generic trans (without DMA support)
-	 * but only virtio doesn't support DMA, so we do it here.
-	 */
-	kmem_cache_destroy(trans_virtio->trans->txqs.bc_pool);
 	iwl_trans_virtio_free(trans_virtio);
 }
 

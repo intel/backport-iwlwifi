@@ -91,7 +91,7 @@
 
 #define DRV_DESCRIPTION	"Intel(R) Wireless WiFi driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
-MODULE_AUTHOR(DRV_AUTHOR);
+MODULE_AUTHOR(DRV_COPYRIGHT " " DRV_AUTHOR);
 MODULE_LICENSE("GPL");
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
@@ -1418,6 +1418,20 @@ fw_dbg_conf:
 			capa->fmac_api_version =
 				le32_to_cpup((__le32 *)tlv_data);
 			break;
+		case IWL_UCODE_TLV_FW_FMAC_RECOVERY_INFO: {
+			struct {
+				__le32 buf_addr;
+				__le32 buf_size;
+			} *recov_info = (void *)tlv_data;
+
+			if (tlv_len != sizeof(*recov_info))
+				goto invalid_tlv_len;
+			capa->fmac_error_log_addr =
+				le32_to_cpu(recov_info->buf_addr);
+			capa->fmac_error_log_size =
+				le32_to_cpu(recov_info->buf_size);
+			}
+			break;
 #endif
 		case IWL_UCODE_TLV_FW_FSEQ_VERSION: {
 			struct {
@@ -2177,6 +2191,7 @@ static int __init iwl_drv_init(void)
 #endif
 
 	pr_info(DRV_DESCRIPTION "\n");
+	pr_info(DRV_COPYRIGHT "\n");
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	/* Create the root of iwlwifi debugfs subsystem. */
@@ -2187,13 +2202,11 @@ static int __init iwl_drv_init(void)
 	if (err)
 		goto cleanup_debugfs;
 
-#ifdef CPTCFG_IWLWIFI_VIRTIO
 	err = iwl_virtio_register_driver();
 	if (err) {
 		iwl_pci_unregister_driver();
 		goto cleanup_debugfs;
 	}
-#endif
 
 	return 0;
 
@@ -2215,10 +2228,7 @@ module_init(iwl_drv_init);
 static void __exit iwl_drv_exit(void)
 {
 	iwl_pci_unregister_driver();
-
-#ifdef CPTCFG_IWLWIFI_VIRTIO
 	iwl_virtio_unregister_driver();
-#endif
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	debugfs_remove_recursive(iwl_dbgfs_root);
