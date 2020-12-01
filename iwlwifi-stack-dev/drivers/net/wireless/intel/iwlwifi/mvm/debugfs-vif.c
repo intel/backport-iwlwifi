@@ -1,66 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ */
 #include "mvm.h"
 #include "debugfs.h"
 
@@ -519,7 +462,10 @@ static ssize_t iwl_dbgfs_os_device_timediff_read(struct file *file,
 	const size_t bufsz = sizeof(buf);
 	int pos = 0;
 
+	mutex_lock(&mvm->mutex);
 	iwl_mvm_get_sync_time(mvm, &curr_gp2, &curr_os);
+	mutex_unlock(&mvm->mutex);
+
 	do_div(curr_os, NSEC_PER_USEC);
 	diff = curr_os - curr_gp2;
 	pos += scnprintf(buf + pos, bufsz - pos, "diff=%lld\n", diff);
@@ -850,6 +796,39 @@ static ssize_t iwl_dbgfs_htc_omi_write(struct ieee80211_vif *vif, char *buf,
 
 	return ret ?: count;
 }
+
+static ssize_t iwl_dbgfs_twt_info_frame_write(struct ieee80211_vif *vif, char *buf,
+					      size_t count, loff_t *ppos)
+{
+	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
+	struct iwl_mvm *mvm = mvmvif->mvm;
+	struct iwl_dhc_cmd *cmd;
+	u32 nextTwtOffset;
+	int ret;
+
+	if (kstrtou32(buf, 0, &nextTwtOffset))
+		return -EINVAL;
+
+	cmd = kzalloc(sizeof(*cmd) + sizeof(nextTwtOffset), GFP_KERNEL);
+	if (!cmd)
+		return -ENOMEM;
+
+	cmd->length = cpu_to_le32(sizeof(nextTwtOffset) >> 2);
+	cmd->index_and_mask =
+		cpu_to_le32(DHC_TABLE_INTEGRATION | DHC_TARGET_UMAC |
+			    DHC_INT_UMAC_SEND_TWT_INFO);
+	*(__le32 *)cmd->data = cpu_to_le32(nextTwtOffset);
+
+	mutex_lock(&mvm->mutex);
+	ret = iwl_mvm_send_cmd_pdu(mvm, iwl_cmd_id(DEBUG_HOST_COMMAND,
+						   IWL_ALWAYS_LONG_GROUP, 0),
+				   0, sizeof(*cmd) + sizeof(nextTwtOffset),
+				   cmd);
+	mutex_unlock(&mvm->mutex);
+	kfree(cmd);
+
+	return ret ?: count;
+}
 #endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
 
 #define MVM_DEBUGFS_WRITE_FILE_OPS(name, bufsz) \
@@ -874,6 +853,7 @@ MVM_DEBUGFS_READ_FILE_OPS(os_device_timediff);
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 MVM_DEBUGFS_WRITE_FILE_OPS(twt_setup, 256);
 MVM_DEBUGFS_WRITE_FILE_OPS(htc_omi, 32);
+MVM_DEBUGFS_WRITE_FILE_OPS(twt_info_frame, 32);
 #endif
 
 
@@ -923,6 +903,7 @@ void iwl_mvm_vif_dbgfs_register(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 	MVM_DEBUGFS_ADD_FILE_VIF(twt_setup, mvmvif->dbgfs_dir, S_IWUSR);
 	MVM_DEBUGFS_ADD_FILE_VIF(htc_omi, mvmvif->dbgfs_dir, 0200);
+	MVM_DEBUGFS_ADD_FILE_VIF(twt_info_frame, mvmvif->dbgfs_dir, 0200);
 #endif
 
 	/*

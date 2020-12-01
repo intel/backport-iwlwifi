@@ -383,4 +383,30 @@ static inline int backport_dev_open(struct net_device *dev, struct netlink_ext_a
 #define dev_open LINUX_BACKPORT(dev_open)
 #endif
 
+#if LINUX_VERSION_IS_LESS(4,4,0)
+#define netif_is_bridge_port LINUX_BACKPORT(netif_is_bridge_port)
+static inline bool netif_is_bridge_port(const struct net_device *dev)
+{
+	return dev->priv_flags & IFF_BRIDGE_PORT;
+}
+#endif
+
+#if LINUX_VERSION_IS_LESS(4,19,0)
+static inline void netif_receive_skb_list(struct list_head *head)
+{
+	struct sk_buff *skb;
+	struct list_head *l, *next;
+
+	if (list_empty(head))
+		return;
+
+	list_for_each_safe(l, next, head) {
+		skb = (void *)l;
+
+		skb_list_del_init(skb);
+		netif_receive_skb(skb);
+	}
+}
+#endif
+
 #endif /* __BACKPORT_NETDEVICE_H */

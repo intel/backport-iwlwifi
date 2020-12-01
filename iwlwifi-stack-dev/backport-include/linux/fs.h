@@ -59,4 +59,13 @@ extern long compat_ptr_ioctl(struct file *file, unsigned int cmd,
 #endif
 #endif /* < 5.5 */
 
+#if LINUX_VERSION_IS_LESS(5,6,0)
+#define proc_ops file_operations
+#define proc_open open
+#define proc_read read
+#define proc_lseek llseek
+#define proc_release release
+#define proc_write write
+#endif /* < 5.6 */
+
 #endif	/* _COMPAT_LINUX_FS_H */

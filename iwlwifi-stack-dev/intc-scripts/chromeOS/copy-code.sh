@@ -77,9 +77,12 @@ mv "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/iwlwifi/mvm/mac80211.c
 mv "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/cfg.c_NOTESTMODE" \
 	"$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/cfg.c"
 # now the spatch will apply ...
-spatch --include-headers --sp-file "$source_path/adjustments.spatch" --in-place --dir "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/iwlwifi/" &
-spatch --include-headers --sp-file "$source_path/adjustments.spatch" --in-place --dir "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/"
-wait
+for sp in $(ls $source_path/adjustments/*.spatch | sort); do
+    echo "Applying" `basename $sp`
+    spatch --very-quiet --no-show-diff --include-headers --sp-file $sp --in-place --dir "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/iwlwifi/" &
+    spatch --very-quiet --no-show-diff --include-headers --sp-file $sp --in-place --dir "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/"
+    wait
+done
 # now put back the diffs
 ( # patch needs to be in / to use absolute paths without prompting ...
 cd /

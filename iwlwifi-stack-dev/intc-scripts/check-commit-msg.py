@@ -157,6 +157,13 @@ def _check_restriction(v, req):
         return False
     return True
 
+def _check_origin(v, req):
+    vals = ['upstream', 'chromeos']
+    if not v in vals:
+        print 'invalid value %s for origin=, should be one of %s' % (v, ','.join(vals))
+        return False
+    return True
+
 def check_internal_names():
     int_names = ['pulsar', 'windstorm', 'wsp', 'lnp' , 'lightning', 'snowfield', 'sfp', 'thunder',
 		 'thp', 'lincoln', 'lcp', 'cleaveland', 'cleveland', 'cvp', 'jefferson', 'jfp', 'sandy',

@@ -1,64 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2012 - 2015, 2018 - 2020 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2012 - 2015, 2018 - 2020 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2012-2015, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ */
 #include <net/mac80211.h>
 
 #include "mvm.h"
@@ -85,7 +30,7 @@ static int iwl_mvm_find_free_sta_id(struct iwl_mvm *mvm,
 	int sta_id;
 	u32 reserved_ids = 0;
 
-	BUILD_BUG_ON(IWL_MVM_STATION_COUNT > 32);
+	BUILD_BUG_ON(IWL_MVM_STATION_COUNT_MAX > 32);
 	WARN_ON_ONCE(test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status));
 
 	lockdep_assert_held(&mvm->mutex);
@@ -95,7 +40,7 @@ static int iwl_mvm_find_free_sta_id(struct iwl_mvm *mvm,
 		reserved_ids = BIT(0);
 
 	/* Don't take rcu_read_lock() since we are protected by mvm->mutex */
-	for (sta_id = 0; sta_id < ARRAY_SIZE(mvm->fw_id_to_mac_id); sta_id++) {
+	for (sta_id = 0; sta_id < mvm->fw->ucode_capa.num_stations; sta_id++) {
 		if (BIT(sta_id) & reserved_ids)
 			continue;
 
@@ -800,8 +745,6 @@ static int iwl_mvm_tvqm_enable_txq(struct iwl_mvm *mvm,
 	IWL_DEBUG_TX_QUEUES(mvm, "Enabling TXQ #%d for sta %d tid %d\n",
 			    queue, sta_id, tid);
 
-	IWL_DEBUG_TX_QUEUES(mvm, "Enabling TXQ #%d\n", queue);
-
 	return queue;
 }
 
@@ -1397,14 +1340,6 @@ out_err:
 	return ret;
 }
 
-static inline u8 iwl_mvm_tid_to_ac_queue(int tid)
-{
-	if (tid == IWL_MAX_TID_COUNT)
-		return IEEE80211_AC_VO; /* MGMT */
-
-	return tid_to_mac80211_ac[tid];
-}
-
 void iwl_mvm_add_new_dqa_stream_wk(struct work_struct *wk)
 {
 	struct iwl_mvm *mvm = container_of(wk, struct iwl_mvm,
@@ -1578,8 +1513,15 @@ static int iwl_mvm_add_int_sta_common(struct iwl_mvm *mvm,
 
 	memset(&cmd, 0, sizeof(cmd));
 	cmd.sta_id = sta->sta_id;
-	cmd.mac_id_n_color = cpu_to_le32(FW_CMD_ID_AND_COLOR(mac_id,
-							     color));
+
+	if (iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP, ADD_STA,
+				  0) >= 12 &&
+	    sta->type == IWL_STA_AUX_ACTIVITY)
+		cmd.mac_id_n_color = cpu_to_le32(mac_id);
+	else
+		cmd.mac_id_n_color = cpu_to_le32(FW_CMD_ID_AND_COLOR(mac_id,
+								     color));
+
 	if (fw_has_api(&mvm->fw->ucode_capa, IWL_UCODE_TLV_API_STA_TYPE))
 		cmd.station_type = sta->type;
 
@@ -1896,7 +1838,7 @@ int iwl_mvm_rm_sta(struct iwl_mvm *mvm,
 		return ret;
 
 	/* flush its queues here since we are freeing mvm_sta */
-	ret = iwl_mvm_flush_sta(mvm, mvm_sta, false, 0);
+	ret = iwl_mvm_flush_sta(mvm, mvm_sta, false);
 	if (ret)
 		return ret;
 	if (iwl_mvm_has_new_tx_api(mvm)) {
@@ -2072,7 +2014,7 @@ static int iwl_mvm_add_int_sta_with_queue(struct iwl_mvm *mvm, int macidx,
 	return 0;
 }
 
-int iwl_mvm_add_aux_sta(struct iwl_mvm *mvm)
+int iwl_mvm_add_aux_sta(struct iwl_mvm *mvm, u32 lmac_id)
 {
 	int ret;
 
@@ -2085,7 +2027,11 @@ int iwl_mvm_add_aux_sta(struct iwl_mvm *mvm)
 	if (ret)
 		return ret;
 
-	ret = iwl_mvm_add_int_sta_with_queue(mvm, MAC_INDEX_AUX, 0, NULL,
+	/*
+	 * In CDB NICs we need to specify which lmac to use for aux activity
+	 * using the mac_id argument place to send lmac_id to the function
+	 */
+	ret = iwl_mvm_add_int_sta_with_queue(mvm, lmac_id, 0, NULL,
 					     &mvm->aux_sta, &mvm->aux_queue,
 					     IWL_MVM_TX_FIFO_MCAST);
 	if (ret) {
@@ -2228,7 +2174,7 @@ static void iwl_mvm_free_bcast_sta_queues(struct iwl_mvm *mvm,
 
 	lockdep_assert_held(&mvm->mutex);
 
-	iwl_mvm_flush_sta(mvm, &mvmvif->bcast_sta, true, 0);
+	iwl_mvm_flush_sta(mvm, &mvmvif->bcast_sta, true);
 
 	switch (vif->type) {
 	case NL80211_IFTYPE_AP:
@@ -2477,7 +2423,7 @@ int iwl_mvm_rm_mcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 
 	lockdep_assert_held(&mvm->mutex);
 
-	iwl_mvm_flush_sta(mvm, &mvmvif->mcast_sta, true, 0);
+	iwl_mvm_flush_sta(mvm, &mvmvif->mcast_sta, true);
 
 	iwl_mvm_disable_txq(mvm, NULL, mvmvif->cab_queue, 0, 0);
 
@@ -2492,12 +2438,12 @@ int iwl_mvm_rm_mcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 
 static void iwl_mvm_sync_rxq_del_ba(struct iwl_mvm *mvm, u8 baid)
 {
-	struct iwl_mvm_rss_sync_notif notif = {
-		.metadata.type = IWL_MVM_RXQ_NOTIF_DEL_BA,
-		.metadata.sync = 1,
-		.delba.baid = baid,
+	struct iwl_mvm_delba_data notif = {
+		.baid = baid,
 	};
-	iwl_mvm_sync_rx_queues_internal(mvm, (void *)&notif, sizeof(notif));
+
+	iwl_mvm_sync_rx_queues_internal(mvm, IWL_MVM_RXQ_NOTIF_DEL_BA, true,
+					&notif, sizeof(notif));
 };
 
 static void iwl_mvm_free_reorder(struct iwl_mvm *mvm,
@@ -3162,11 +3108,11 @@ int iwl_mvm_sta_tx_agg_flush(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 
 		if (iwl_mvm_has_new_tx_api(mvm)) {
 			if (iwl_mvm_flush_sta_tids(mvm, mvmsta->sta_id,
-						   BIT(tid), 0))
+						   BIT(tid)))
 				IWL_ERR(mvm, "Couldn't flush the AGG queue\n");
 			iwl_trans_wait_txq_empty(mvm->trans, txq_id);
 		} else {
-			if (iwl_mvm_flush_tx_path(mvm, BIT(txq_id), 0))
+			if (iwl_mvm_flush_tx_path(mvm, BIT(txq_id)))
 				IWL_ERR(mvm, "Couldn't flush the AGG queue\n");
 			iwl_trans_wait_tx_queues_empty(mvm->trans, BIT(txq_id));
 		}
@@ -3361,7 +3307,8 @@ static int iwl_mvm_send_sta_igtk(struct iwl_mvm *mvm,
 
 	/* verify the key details match the required command's expectations */
 	if (WARN_ON((keyconf->flags & IEEE80211_KEY_FLAG_PAIRWISE) ||
-		    (keyconf->keyidx != 4 && keyconf->keyidx != 5) ||
+		    (keyconf->keyidx != 4 && keyconf->keyidx != 5 &&
+		     keyconf->keyidx != 6 && keyconf->keyidx != 7) ||
 		    (keyconf->cipher != WLAN_CIPHER_SUITE_AES_CMAC &&
 		     keyconf->cipher != WLAN_CIPHER_SUITE_BIP_GMAC_128 &&
 		     keyconf->cipher != WLAN_CIPHER_SUITE_BIP_GMAC_256)))
@@ -3410,9 +3357,10 @@ static int iwl_mvm_send_sta_igtk(struct iwl_mvm *mvm,
 						       ((u64) pn[0] << 40));
 	}
 
-	IWL_DEBUG_INFO(mvm, "%s igtk for sta %u\n",
+	IWL_DEBUG_INFO(mvm, "%s %sIGTK (%d) for sta %u\n",
 		       remove_key ? "removing" : "installing",
-		       igtk_cmd.sta_id);
+		       keyconf->keyidx >= 6 ? "B" : "",
+		       keyconf->keyidx, igtk_cmd.sta_id);
 
 	if (!iwl_mvm_has_new_rx_api(mvm)) {
 		struct iwl_mvm_mgmt_mcast_key_cmd_v1 igtk_cmd_v1 = {
@@ -3800,7 +3748,7 @@ void iwl_mvm_rx_eosp_notif(struct iwl_mvm *mvm,
 	struct ieee80211_sta *sta;
 	u32 sta_id = le32_to_cpu(notif->sta_id);
 
-	if (WARN_ON_ONCE(sta_id >= IWL_MVM_STATION_COUNT))
+	if (WARN_ON_ONCE(sta_id >= mvm->fw->ucode_capa.num_stations))
 		return;
 
 	rcu_read_lock();
@@ -3883,7 +3831,7 @@ void iwl_mvm_modify_all_sta_disable_tx(struct iwl_mvm *mvm,
 	lockdep_assert_held(&mvm->mutex);
 
 	/* Block/unblock all the stations of the given mvmvif */
-	for (i = 0; i < ARRAY_SIZE(mvm->fw_id_to_mac_id); i++) {
+	for (i = 0; i < mvm->fw->ucode_capa.num_stations; i++) {
 		sta = rcu_dereference_protected(mvm->fw_id_to_mac_id[i],
 						lockdep_is_held(&mvm->mutex));
 		if (IS_ERR_OR_NULL(sta))

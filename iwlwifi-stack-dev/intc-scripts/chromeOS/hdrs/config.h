@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2018-2019 Intel Corporation
+ * Copyright(c) 2018-2020 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -71,6 +71,10 @@
 #else
 #define CFG80211_VERSION LINUX_VERSION_CODE
 #endif
+
+#if CFG80211_VERSION >= KERNEL_VERSION(5, 10, 0)
+#define CPTCFG_IWLWIFI_WIFI_6_SUPPORT 1
+#endif /* >= 5.10.0 */
 
 #if defined(CONFIG_IWL7000_VENDOR_CMDS) && \
 	(CFG80211_VERSION >= KERNEL_VERSION(3, 14, 0))

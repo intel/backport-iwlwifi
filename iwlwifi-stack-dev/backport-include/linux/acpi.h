@@ -69,14 +69,4 @@ static inline int devm_acpi_dev_add_driver_gpios(struct device *dev,
 }
 #endif /* LINUX_VERSION_IN_RANGE(3,19,0, 4,13,0) */
 
-#if LINUX_VERSION_IS_LESS(4,13,0)
-static inline union acpi_object *
-LINUX_BACKPORT(acpi_evaluate_dsm)(acpi_handle handle, const guid_t *guid,
-				  u64 rev, u64 func, union acpi_object *argv4)
-{
-	return acpi_evaluate_dsm(handle, guid->b, rev, func, argv4);
-}
-#define acpi_evaluate_dsm LINUX_BACKPORT(acpi_evaluate_dsm)
-#endif /* < 4.13 */
-
 #endif /* __BACKPORT_LINUX_ACPI_H */

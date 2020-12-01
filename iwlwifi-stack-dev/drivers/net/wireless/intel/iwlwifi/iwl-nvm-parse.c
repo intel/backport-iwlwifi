@@ -1,63 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2008 - 2014, 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2005 - 2014, 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2005-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ */
 #include <linux/types.h>
 #include <linux/slab.h>
 #include <linux/export.h>
@@ -101,9 +47,11 @@ enum ext_nvm_offsets {
 
 	/* NVM SW-Section offset (in words) definitions */
 	NVM_VERSION_EXT_NVM = 0,
+	N_HW_ADDRS_FAMILY_8000 = 3,
+
+	/* NVM PHY_SKU-Section offset (in words) definitions */
 	RADIO_CFG_FAMILY_EXT_NVM = 0,
 	SKU_FAMILY_8000 = 2,
-	N_HW_ADDRS_FAMILY_8000 = 3,
 
 	/* NVM REGULATORY -Section offset (in words) definitions */
 	NVM_CHANNELS_EXTENDED = 0,
@@ -382,12 +330,17 @@ static u32 iwl_get_channel_flags(u8 ch_num, int ch_idx, enum nl80211_band band,
 	return flags;
 }
 
-static enum nl80211_band iwl_nl80211_band_from_channel_idx(int ch_idx)
+static int iwl_nl80211_band_from_channel_idx(int ch_idx)
 {
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
-	if (ch_idx >= NUM_2GHZ_CHANNELS + NUM_5GHZ_CHANNELS)
+	if (ch_idx >= NUM_2GHZ_CHANNELS + NUM_5GHZ_CHANNELS) {
+#ifndef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
+		/* Skip 6 GHz band/channels if UHB is unsupported */
+		return -1;
+#else
 		return NL80211_BAND_6GHZ;
-#endif
+#endif /* CPTCFG_IWLWIFI_WIFI_6_SUPPORT */
+	}
+
 	if (ch_idx >= NUM_2GHZ_CHANNELS)
 		return NL80211_BAND_5GHZ;
 	return NL80211_BAND_2GHZ;
@@ -404,6 +357,7 @@ static int iwl_init_channel_map(struct device *dev, const struct iwl_cfg *cfg,
 	u32 ch_flags;
 	int num_of_ch;
 	const u16 *nvm_chan;
+	int band;
 
 	if (cfg->uhb_supported) {
 		num_of_ch = IWL_NVM_NUM_CHANNELS_UHB;
@@ -417,8 +371,9 @@ static int iwl_init_channel_map(struct device *dev, const struct iwl_cfg *cfg,
 	}
 
 	for (; ch_idx < num_of_ch; ch_idx++) {
-		enum nl80211_band band =
-			iwl_nl80211_band_from_channel_idx(ch_idx);
+		band = iwl_nl80211_band_from_channel_idx(ch_idx);
+		if (band == -1)
+			continue;
 
 		if (v4)
 			ch_flags =
@@ -797,7 +752,7 @@ static void iwl_init_he_6ghz_capa(struct iwl_trans *trans,
 	IWL_DEBUG_EEPROM(trans->dev, "he_6ghz_capa=0x%x\n", he_6ghz_capa);
 
 	for (i = 0; i < sband->n_iftype_data; i++)
-		iwl_he_capa[i].he_6ghz_capa = cpu_to_le16(he_6ghz_capa);
+		iwl_he_capa[i].he_6ghz_capa.capa = cpu_to_le16(he_6ghz_capa);
 }
 #endif
 
@@ -914,6 +869,10 @@ static void iwl_init_he_override(struct iwl_trans *trans,
 				cpu_to_le16(IEEE80211_HE_MCS_NOT_SUPPORTED << 2);
 		}
 
+		if (trans->dbg_cfg.ack_en & 0x1)
+			iftype_data->he_cap.he_cap_elem.mac_cap_info[2] |=
+				IEEE80211_HE_MAC_CAP2_ACK_EN;
+
 		if (trans->dbg_cfg.no_ldpc)
 			iftype_data->he_cap.he_cap_elem.phy_cap_info[1] &=
 				~IEEE80211_HE_PHY_CAP1_LDPC_CODING_IN_PAYLOAD;
@@ -957,14 +916,19 @@ static void iwl_init_he_override(struct iwl_trans *trans,
 				       trans->dbg_cfg.he_phy_cap.data,
 				       trans->dbg_cfg.he_phy_cap.len);
 			}
-		}
-
-		if (iftype_data->types_mask == BIT(NL80211_IFTYPE_STATION) &&
-		    trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
+		} else if (iftype_data->types_mask == BIT(NL80211_IFTYPE_STATION) &&
+		    trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) {
 			iftype_data->he_cap.he_cap_elem.phy_cap_info[2] |=
 				IEEE80211_HE_PHY_CAP2_UL_MU_FULL_MU_MIMO |
 				IEEE80211_HE_PHY_CAP2_UL_MU_PARTIAL_MU_MIMO;
+			iftype_data->he_cap.he_cap_elem.phy_cap_info[9] |=
+				IEEE80211_HE_PHY_CAP9_TX_1024_QAM_LESS_THAN_242_TONE_RU |
+				IEEE80211_HE_PHY_CAP9_RX_1024_QAM_LESS_THAN_242_TONE_RU;
+		}
 
+		if (trans->dbg_cfg.smps_disabled)
+			iftype_data->he_cap.he_cap_elem.mac_cap_info[5] &=
+				~IEEE80211_HE_MAC_CAP5_HE_DYNAMIC_SM_PS;
 	}
 }
 #endif
@@ -1376,11 +1340,15 @@ static u32 iwl_nvm_get_regdom_bw_flags(const u16 *nvm_chan,
 			flags &= ~NL80211_RRF_NO_HT40PLUS;
 		if (nvm_chan[ch_idx] >= FIRST_2GHZ_HT_MINUS)
 			flags &= ~NL80211_RRF_NO_HT40MINUS;
-	} else if (nvm_flags & NVM_CHANNEL_40MHZ) {
+	} else if (ch_idx < NUM_2GHZ_CHANNELS + NUM_5GHZ_CHANNELS &&
+		   nvm_flags & NVM_CHANNEL_40MHZ) {
 		if ((ch_idx - NUM_2GHZ_CHANNELS) % 2 == 0)
 			flags &= ~NL80211_RRF_NO_HT40PLUS;
 		else
 			flags &= ~NL80211_RRF_NO_HT40MINUS;
+	} else if (nvm_flags & NVM_CHANNEL_40MHZ) {
+		flags &= ~NL80211_RRF_NO_HT40PLUS;
+		flags &= ~NL80211_RRF_NO_HT40MINUS;
 	}
 
 	if (!(nvm_flags & NVM_CHANNEL_80MHZ))
@@ -1452,7 +1420,7 @@ iwl_parse_nvm_mcc_info(struct device *dev, const struct iwl_cfg *cfg,
 	const u16 *nvm_chan;
 	struct ieee80211_regdomain *regd, *copy_rd;
 	struct ieee80211_reg_rule *rule;
-	enum nl80211_band band;
+	int band;
 	int center_freq, prev_center_freq = 0;
 	int valid_rules = 0;
 	bool new_rule;
@@ -1492,8 +1460,11 @@ iwl_parse_nvm_mcc_info(struct device *dev, const struct iwl_cfg *cfg,
 	reg_capa = iwl_get_reg_capa(cap, resp_ver);
 
 	for (ch_idx = 0; ch_idx < num_of_ch; ch_idx++) {
-		ch_flags = (u16)__le32_to_cpup(channels + ch_idx);
 		band = iwl_nl80211_band_from_channel_idx(ch_idx);
+		if (band == -1)
+			continue;
+
+		ch_flags = (u16)__le32_to_cpup(channels + ch_idx);
 		center_freq = ieee80211_channel_to_frequency(nvm_chan[ch_idx],
 							     band);
 		new_rule = false;

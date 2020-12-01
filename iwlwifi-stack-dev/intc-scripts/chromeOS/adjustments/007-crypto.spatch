@@ -1,0 +1,24 @@
+@@
+struct cfg80211_crypto_settings *crypto;
+@@
+-crypto->n_ciphers_group
++cfg80211_crypto_n_ciphers_group(crypto)
+
+@@
+struct cfg80211_crypto_settings *crypto;
+expression idx;
+@@
+-crypto->ciphers_group[idx]
++cfg80211_crypto_ciphers_group(crypto, idx)
+
+@@
+struct cfg80211_crypto_settings *crypto;
+@@
+-crypto->control_port_no_preauth
++cfg80211_crypto_control_port_no_preauth(crypto)
+
+@@
+identifier i;
+@@
+-i->crypto.control_port_no_preauth
++cfg80211_crypto_control_port_no_preauth(&i->crypto)

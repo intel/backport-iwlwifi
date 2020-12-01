@@ -1,62 +1,8 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2007 - 2014, 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2005 - 2014, 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2005-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2015-2017 Intel Deutschland GmbH
+ */
 #include "iwl-trans.h"
 #include "iwl-op-mode.h"
 #include "fw/img.h"
@@ -67,6 +13,7 @@
 #include "fw/dbg.h"
 #include "fw/testmode.h"
 #include "fw/api/power.h"
+#include "fw/pnvm.h"
 
 #define XVT_UCODE_ALIVE_TIMEOUT	(HZ * CPTCFG_IWL_TIMEOUT_FACTOR)
 
@@ -100,8 +47,9 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 		container_of(notif_wait, struct iwl_xvt, notif_wait);
 	struct iwl_xvt_alive_data *alive_data = data;
 	struct xvt_alive_resp_ver2 *palive2;
-	struct mvm_alive_resp_v3 *palive3;
-	struct mvm_alive_resp *palive4;
+	struct iwl_alive_ntf_v3 *palive3;
+	struct iwl_alive_ntf_v4 *palive4;
+	struct iwl_alive_ntf_v5 *palive5;
 	struct iwl_lmac_alive *lmac1, *lmac2;
 	struct iwl_umac_alive *umac;
 	u32 rx_packet_payload_size = iwl_rx_packet_payload_len(pkt);
@@ -154,7 +102,30 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 			xvt->trans->dbg.lmac_error_event_table[1] =
 				le32_to_cpu(lmac2_err_ptr);
 
-			IWL_DEBUG_FW(xvt, "Alive VER4 CDB\n");
+			IWL_DEBUG_FW(xvt, "Alive VER4\n");
+		} else if (iwl_fw_lookup_notif_ver(xvt->fw, LEGACY_GROUP,
+						   UCODE_ALIVE_NTFY, 0) == 5) {
+			__le32 lmac2_err_ptr;
+
+			palive5 = (void *)pkt->data;
+			status = le16_to_cpu(palive5->status);
+			flags = le16_to_cpu(palive5->flags);
+			lmac1 = &palive5->lmac_data[0];
+			lmac2 = &palive5->lmac_data[1];
+			umac = &palive5->umac_data;
+			lmac2_err_ptr = lmac2->dbg_ptrs.error_event_table_ptr;
+			xvt->trans->dbg.lmac_error_event_table[1] =
+				le32_to_cpu(lmac2_err_ptr);
+
+			xvt->trans->sku_id[0] = le32_to_cpu(palive5->sku_id.data[0]);
+			xvt->trans->sku_id[1] = le32_to_cpu(palive5->sku_id.data[1]);
+			xvt->trans->sku_id[2] = le32_to_cpu(palive5->sku_id.data[2]);
+
+			IWL_DEBUG_FW(xvt,
+				     "Alive VER5 - Got sku_id: 0x0%x 0x0%x 0x0%x\n",
+				     xvt->trans->sku_id[0],
+				     xvt->trans->sku_id[1],
+				     xvt->trans->sku_id[2]);
 		} else {
 			IWL_ERR(xvt, "unrecognized alive notificatio\n");
 			return false;
@@ -195,7 +166,7 @@ static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
 	const struct fw_img *fw;
 	int ret;
 	enum iwl_ucode_type old_type = xvt->fwrt.cur_fw_img;
-	static const u16 alive_cmd[] = { MVM_ALIVE };
+	static const u16 alive_cmd[] = { UCODE_ALIVE_NTFY };
 	struct iwl_scd_txq_cfg_cmd cmd = {
 				.scd_queue = IWL_XVT_DEFAULT_TX_QUEUE,
 				.action = SCD_CFG_ENABLE_QUEUE,
@@ -246,6 +217,13 @@ static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
 
 	/* fresh firmware was loaded */
 	xvt->fw_error = false;
+
+	ret = iwl_pnvm_load(xvt->trans, &xvt->notif_wait);
+	if (ret) {
+		IWL_ERR(xvt, "Timeout waiting for PNVM load!\n");
+		iwl_fw_set_current_image(&xvt->fwrt, old_type);
+		return ret;
+	}
 
 	iwl_trans_fw_alive(xvt->trans, alive_data.scd_base_addr);
 

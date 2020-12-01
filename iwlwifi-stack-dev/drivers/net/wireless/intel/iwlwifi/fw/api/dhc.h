@@ -1,65 +1,8 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 Intel Corporation
- * Copyright(c) 2019 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 Intel Corporation
- * Copyright(c) 2019 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
-
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
+/*
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ * Copyright (C) 2018-2020 Intel Corporation
+ */
 #ifndef __iwl_fw_api_dhc_h__
 #define __iwl_fw_api_dhc_h__
 #include "scan.h"
@@ -148,6 +91,14 @@ enum iwl_dhc_umac_automation_table {
  * @DHC_COEX_ATS_USER_OVERRIDES_SET: (not implemented in the driver)
  * @DHC_COEX_ATS_LOW_LATENCY_SET: (not implemented in the driver)
  * @DHC_INT_UMAC_OMI_OPERATION: send a one-time QoS NULL with HTC-OM control
+ * @DHC_INT_BT_COEX_FEATURE_ENABLEMENT_OVERRIDES: BT coex hooks
+ * @DHC_INT_TX_ANT_CONFIG: Get valid Tx antennas
+ * @DHC_INT_UMAC_TWT_CONTROL: TWT hooks (like disable internal TWT triggers)
+ * @DHC_DP_TAS_CONFIG: config TAS
+ * @DHC_INT_UMAC_TWT_AP_DEBUG_CONFIG: config TWT soft AP test mode
+ * @DHC_INT_UMAC_WMAL_READ_PARAMS: read WMAL params
+ * @DHC_INT_UMAC_RFI_CONFIG: RFI config
+ * @DHC_INT_UMAC_SEND_TWT_INFO: send a TWT info
  * @DHC_INTEGRATION_MAX: Maximum UMAC integration table entries
  */
 enum iwl_dhc_umac_integration_table {
@@ -159,6 +110,14 @@ enum iwl_dhc_umac_integration_table {
 	DHC_COEX_ATS_USER_OVERRIDES_SET,
 	DHC_COEX_ATS_LOW_LATENCY_SET,
 	DHC_INT_UMAC_OMI_OPERATION,
+	DHC_INT_BT_COEX_FEATURE_ENABLEMENT_OVERRIDES,
+	DHC_INT_TX_ANT_CONFIG,
+	DHC_INT_UMAC_TWT_CONTROL,
+	DHC_DP_TAS_CONFIG,
+	DHC_INT_UMAC_TWT_AP_DEBUG_CONFIG,
+	DHC_INT_UMAC_WMAL_READ_PARAMS,
+	DHC_INT_UMAC_RFI_CONFIG,
+	DHC_INT_UMAC_SEND_TWT_INFO,
 	DHC_INTEGRATION_MAX
 };
 
@@ -513,10 +472,11 @@ struct iwl_profiling_umac_metrics_report {
  * @missed_multicast_counter: number of missed multicasts [cnt]
  * @misbehave_counter: number of instances of misbehave AP, which forces
  *	PM to change mode [cnt]
- * @reserved1: reserved1
- * @reserved2: reserved2
- * @reserved3: reserved3
- * @reserved4: reserved4
+ * @max_sleep_duration: maximum sleep time in usecs
+ * @total_page_faults: total page faults counter, include both code page
+ *	fault and data page fault
+ * @sleep_abort_count: total sleep abort counter
+ * @max_active_duration: maximum active timer in usecs
  */
 struct iwl_ps_report {
 	__le32 total_sleep_counter;
@@ -535,10 +495,10 @@ struct iwl_ps_report {
 	__le16 multicast_indication_tim_counter;
 	__le16 missed_multicast_counter;
 	__le32 misbehave_counter;
-	__le32 reserved1;
-	__le32 reserved2;
-	__le32 reserved3;
-	__le32 reserved4;
+	__le32 max_sleep_duration;
+	__le32 total_page_faults;
+	__le32 sleep_abort_count;
+	__le32 max_active_duration;
 } __packed; /* PS_REPORT_API_S */
 
 /**
@@ -726,5 +686,16 @@ struct iwl_dhc_htc_omi {
 	u8 mac_id;
 	u8 reserved[3];
 }; /* DHC_OMI_OPERATION_API_S */
+
+/**
+ * struct iwl_dhc_twt_control - control TWT behavior
+ *
+ * @twt_test_mode: if 1 TWT internal triggers (e.g. PM) will be disabled
+ * @reserved: reserved
+ */
+struct iwl_dhc_twt_control {
+	u8 twt_test_mode;
+	u8 reserved[3];
+}; /* DHC_TWT_CONTROL_API_S_VER_1 */
 
 #endif /* __iwl_fw_api_dhc_h__ */

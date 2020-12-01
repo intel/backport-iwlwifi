@@ -1,8 +1,8 @@
 diff --git a/drivers/net/wireless/intel/iwlwifi/iwl-nvm-parse.c b/drivers/net/wireless/intel/iwlwifi/iwl-nvm-parse.c
-index c83de0ecc3a7..af8779247bdd 100644
+index 52fe97481..98f1edb72 100644
 --- a/drivers/net/wireless/intel/iwlwifi/iwl-nvm-parse.c
 +++ b/drivers/net/wireless/intel/iwlwifi/iwl-nvm-parse.c
-@@ -1331,7 +1331,9 @@ iwl_parse_nvm_mcc_info(struct device *dev, const struct iwl_cfg *cfg,
+@@ -1471,7 +1471,9 @@ iwl_parse_nvm_mcc_info(struct device *dev, const struct iwl_cfg *cfg,
  		    band == NL80211_BAND_2GHZ)
  			continue;
  
@@ -13,10 +13,10 @@ index c83de0ecc3a7..af8779247bdd 100644
  
  	regd->n_reg_rules = valid_rules;
 diff --git a/drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c b/drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c
-index b7da674c4798..abffa4d356d0 100644
+index 55358f5e7..abc500df6 100644
 --- a/drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c
 +++ b/drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c
-@@ -1080,6 +1080,9 @@ static __genl_const struct genl_ops iwl_tm_gnl_ops[] = {
+@@ -1084,6 +1084,9 @@ static __genl_const struct genl_ops iwl_tm_gnl_ops[] = {
  #endif
  
  	  .doit = iwl_tm_gnl_cmd_do,
@@ -36,7 +36,7 @@ index b7da674c4798..abffa4d356d0 100644
  	},
  };
  
-@@ -1094,7 +1100,9 @@ static struct genl_family iwl_tm_gnl_family __genl_ro_after_init = {
+@@ -1102,7 +1108,9 @@ static struct genl_family iwl_tm_gnl_family __genl_ro_after_init = {
  	.name		= IWL_TM_GNL_FAMILY_NAME,
  	.version	= IWL_TM_GNL_VERSION_NR,
  	.maxattr	= IWL_TM_GNL_MSG_ATTR_MAX,
@@ -46,43 +46,11 @@ index b7da674c4798..abffa4d356d0 100644
  	.module		= THIS_MODULE,
  	.ops		= iwl_tm_gnl_ops,
  	.n_ops		= ARRAY_SIZE(iwl_tm_gnl_ops),
-diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/d3.c b/drivers/net/wireless/intel/iwlwifi/mvm/d3.c
-index 5e6cd7585cf9..073cb6462d89 100644
---- a/drivers/net/wireless/intel/iwlwifi/mvm/d3.c
-+++ b/drivers/net/wireless/intel/iwlwifi/mvm/d3.c
-@@ -712,7 +712,11 @@ iwl_mvm_get_wowlan_config(struct iwl_mvm *mvm,
- 		wowlan_config_cmd->wakeup_filter |=
- 			cpu_to_le32(IWL_WOWLAN_WAKEUP_RF_KILL_DEASSERT);
- 
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,9,0)
- 	if (wowlan->tcp) {
-+#else
-+	if (0) {
-+#endif
- 		/*
- 		 * Set the "link change" (really "link lost") flag as well
- 		 * since that implies losing the TCP connection.
-@@ -1156,6 +1160,7 @@ static void iwl_mvm_report_wakeup_reasons(struct iwl_mvm *mvm,
- 	if (reasons & IWL_WOWLAN_WAKEUP_BY_FOUR_WAY_HANDSHAKE)
- 		wakeup.four_way_handshake = true;
- 
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,9,0)
- 	if (reasons & IWL_WOWLAN_WAKEUP_BY_REM_WAKE_LINK_LOSS)
- 		wakeup.tcp_connlost = true;
- 
-@@ -1164,6 +1169,7 @@ static void iwl_mvm_report_wakeup_reasons(struct iwl_mvm *mvm,
- 
- 	if (reasons & IWL_WOWLAN_WAKEUP_BY_REM_WAKE_WAKEUP_PACKET)
- 		wakeup.tcp_match = true;
-+#endif
- 
- 	if (status->wake_packet_bufsize) {
- 		int pktsize = status->wake_packet_bufsize;
 diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c b/drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c
-index 9d5f7b853d52..49d44e8fedfe 100644
+index bf94e1dcf..592453577 100644
 --- a/drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c
 +++ b/drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c
-@@ -93,6 +93,37 @@
+@@ -91,6 +91,37 @@
  #endif
  #include "fw/api/nan.h"
  
@@ -120,7 +88,7 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  static const struct ieee80211_iface_limit iwl_mvm_limits[] = {
  	{
  		.max = CPTCFG_IWLWIFI_NUM_STA_INTERFACES,
-@@ -223,6 +254,7 @@ static const struct iwl_fw_bcast_filter iwl_mvm_default_bcast_filters[] = {
+@@ -221,6 +252,7 @@ static const struct iwl_fw_bcast_filter iwl_mvm_default_bcast_filters[] = {
  };
  #endif
  
@@ -128,23 +96,15 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
  	.max_peers = IWL_MVM_TOF_MAX_APS,
  	.report_ap_tsf = 1,
-@@ -245,6 +277,7 @@ static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
- 			     BIT(NL80211_PREAMBLE_VHT),
+@@ -246,6 +278,7 @@ static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
+ 			     BIT(NL80211_PREAMBLE_HE),
  	},
  };
 +#endif
  
  static int __iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
  				 enum set_key_cmd cmd,
-@@ -419,7 +452,6 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
- 	ieee80211_hw_set(hw, AMPDU_AGGREGATION);
- 	ieee80211_hw_set(hw, TIMING_BEACON_ONLY);
- 	ieee80211_hw_set(hw, CONNECTION_MONITOR);
--	ieee80211_hw_set(hw, CHANCTX_STA_CSA);
- 	ieee80211_hw_set(hw, SUPPORT_FAST_XMIT);
- 	ieee80211_hw_set(hw, SUPPORTS_CLONED_SKBS);
- 	ieee80211_hw_set(hw, SUPPORTS_AMSDU_IN_AMPDU);
-@@ -546,12 +578,14 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
+@@ -561,12 +593,14 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
  		hw->wiphy->n_cipher_suites++;
  	}
  
@@ -157,9 +117,9 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  	}
 +#endif
  
- 	ieee80211_hw_set(hw, SINGLE_SCAN_ON_ALL_BANDS);
- 	hw->wiphy->features |=
-@@ -669,6 +703,7 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
+ 	if (fw_has_capa(&mvm->fw->ucode_capa,
+ 			IWL_UCODE_TLV_CAPA_BIGTK_SUPPORT))
+@@ -689,6 +723,7 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
  	/* we create the 802.11 header and zero length SSID IE. */
  	hw->wiphy->max_sched_scan_ie_len =
  		SCAN_OFFLOAD_PROBE_REQ_SIZE - 24 - 2;
@@ -167,7 +127,7 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  	hw->wiphy->max_sched_scan_plans = IWL_MAX_SCHED_SCAN_PLANS;
  	hw->wiphy->max_sched_scan_plan_interval = U16_MAX;
  
-@@ -677,6 +712,7 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
+@@ -697,6 +732,7 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
  	 * infinite loop, so the maximum number of iterations is actually 254.
  	 */
  	hw->wiphy->max_sched_scan_plan_iterations = 254;
@@ -175,19 +135,7 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  
  	hw->wiphy->features |= NL80211_FEATURE_P2P_GO_CTWIN |
  			       NL80211_FEATURE_LOW_PRIORITY_SCAN |
-@@ -754,7 +791,11 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
- 		mvm->wowlan.pattern_max_len = IWL_WOWLAN_MAX_PATTERN_LEN;
- 		mvm->wowlan.max_nd_match_sets =
- 			iwl_umac_scan_get_max_profiles(mvm->fw);
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,11,0)
- 		hw->wiphy->wowlan = &mvm->wowlan;
-+#else
-+		hw->wiphy->wowlan = mvm->wowlan;
-+#endif
- 	}
- #endif
- 
-@@ -3350,6 +3390,66 @@ static void iwl_mvm_sta_rc_update(struct ieee80211_hw *hw,
+@@ -3425,6 +3465,66 @@ static void iwl_mvm_sta_rc_update(struct ieee80211_hw *hw,
  		iwl_mvm_sf_update(mvm, vif, false);
  }
  
@@ -254,7 +202,7 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  static int iwl_mvm_mac_conf_tx(struct ieee80211_hw *hw,
  			       struct ieee80211_vif *vif, u16 ac,
  			       const struct ieee80211_tx_queue_params *params)
-@@ -3359,6 +3459,10 @@ static int iwl_mvm_mac_conf_tx(struct ieee80211_hw *hw,
+@@ -3434,6 +3534,10 @@ static int iwl_mvm_mac_conf_tx(struct ieee80211_hw *hw,
  
  	mvmvif->queue_params[ac] = *params;
  
@@ -265,7 +213,7 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  	/*
  	 * No need to update right away, we'll get BSS_CHANGED_QOS
  	 * The exception is P2P_DEVICE interface which needs immediate update.
-@@ -4989,6 +4989,7 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
+@@ -5004,6 +5108,7 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
  		if (rate_n_flags & RATE_MCS_SGI_MSK)
  			rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
  	} else if (rate_n_flags & RATE_MCS_HE_MSK) {
@@ -273,59 +221,30 @@ index 9d5f7b853d52..49d44e8fedfe 100644
  		u32 gi_ltf = u32_get_bits(rate_n_flags,
  					  RATE_MCS_HE_GI_LTF_MSK);
  
-@@ -5033,6 +5034,7 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
+@@ -5048,6 +5153,7 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
  
- 		if (rate_n_flags & RATE_HE_DUAL_CARRIER_MODE)
+ 		if (rate_n_flags & RATE_HE_DUAL_CARRIER_MODE_MSK)
  			rinfo->he_dcm = 1;
 +#endif
  	} else {
  		switch (u32_get_bits(rate_n_flags, RATE_LEGACY_RATE_MSK)) {
  		case IWL_RATE_1M_PLCP:
 diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/scan.c b/drivers/net/wireless/intel/iwlwifi/mvm/scan.c
-index 4acee82e230d..98f4161725e5 100644
+index 49159a2b2..cbd63694b 100644
 --- a/drivers/net/wireless/intel/iwlwifi/mvm/scan.c
 +++ b/drivers/net/wireless/intel/iwlwifi/mvm/scan.c
-@@ -338,6 +338,7 @@ iwl_mvm_scan_type iwl_mvm_get_scan_type_band(struct iwl_mvm *mvm,
- 	return _iwl_mvm_get_scan_type(mvm, vif, load, low_latency);
- }
- 
-+#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
- static int
- iwl_mvm_get_measurement_dwell(struct iwl_mvm *mvm,
- 			      struct cfg80211_scan_request *req,
-@@ -364,6 +365,7 @@ iwl_mvm_get_measurement_dwell(struct iwl_mvm *mvm,
- 
- 	return min_t(u32, (u32)req->duration, duration);
- }
-+#endif
- 
- static inline bool iwl_mvm_rrm_scan_needed(struct iwl_mvm *mvm)
- {
-@@ -1778,11 +1780,13 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
+@@ -2265,8 +2265,10 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
  
  	iwl_mvm_fill_scan_type(mvm, &params, vif);
  
 +#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
- 	ret = iwl_mvm_get_measurement_dwell(mvm, req, &params);
- 	if (ret < 0)
- 		return ret;
- 
- 	params.measurement_dwell = ret;
+ 	if (req->duration)
+ 		params.iter_notif = true;
 +#endif
  
  	iwl_mvm_build_scan_probe(mvm, vif, ies, &params);
  
-@@ -1834,6 +1838,9 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
- 	};
- 	struct iwl_mvm_scan_params params = {};
- 	int ret;
-+#if CFG80211_VERSION < KERNEL_VERSION(4,4,0)
-+	struct cfg80211_sched_scan_plan scan_plan = {};
-+#endif
- 
- 	lockdep_assert_held(&mvm->mutex);
- 
-@@ -1864,11 +1871,20 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
+@@ -2663,11 +2663,20 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
  	params.pass_all =  iwl_mvm_scan_pass_all(mvm, req);
  	params.n_match_sets = req->n_match_sets;
  	params.match_sets = req->match_sets;
@@ -346,84 +265,14 @@ index 4acee82e230d..98f4161725e5 100644
  
  	iwl_mvm_fill_scan_type(mvm, &params, vif);
  
-diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/tt.c b/drivers/net/wireless/intel/iwlwifi/mvm/tt.c
-index 32a708301cfc..22867609b687 100644
---- a/drivers/net/wireless/intel/iwlwifi/mvm/tt.c
-+++ b/drivers/net/wireless/intel/iwlwifi/mvm/tt.c
-@@ -607,8 +607,13 @@ send:
- }
- 
- #ifdef CONFIG_THERMAL
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,18,0)
-+static int iwl_mvm_tzone_get_temp(struct thermal_zone_device *device,
-+				  unsigned long *temperature)
-+#else
- static int iwl_mvm_tzone_get_temp(struct thermal_zone_device *device,
- 				  int *temperature)
-+#endif
- {
- 	struct iwl_mvm *mvm = (struct iwl_mvm *)device->devdata;
- 	int ret;
-@@ -633,8 +638,13 @@ out:
- 	return ret;
- }
- 
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,18,0)
-+static int iwl_mvm_tzone_get_trip_temp(struct thermal_zone_device *device,
-+				       int trip, unsigned long *temp)
-+#else
- static int iwl_mvm_tzone_get_trip_temp(struct thermal_zone_device *device,
- 				       int trip, int *temp)
-+#endif
- {
- 	struct iwl_mvm *mvm = (struct iwl_mvm *)device->devdata;
- 
-@@ -657,8 +667,13 @@ static int iwl_mvm_tzone_get_trip_type(struct thermal_zone_device *device,
- 	return 0;
- }
- 
-+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,18,0)
-+static int iwl_mvm_tzone_set_trip_temp(struct thermal_zone_device *device,
-+				       int trip, unsigned long temp)
-+#else
- static int iwl_mvm_tzone_set_trip_temp(struct thermal_zone_device *device,
- 				       int trip, int temp)
-+#endif
- {
- 	struct iwl_mvm *mvm = (struct iwl_mvm *)device->devdata;
- 	struct iwl_mvm_thermal_device *tzone;
-diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/vendor-cmd.c b/drivers/net/wireless/intel/iwlwifi/mvm/vendor-cmd.c
-index c3ab21be4d15..575ce260f147 100644
---- a/drivers/net/wireless/intel/iwlwifi/mvm/vendor-cmd.c
-+++ b/drivers/net/wireless/intel/iwlwifi/mvm/vendor-cmd.c
-@@ -61,6 +61,8 @@
-  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-  *
-  *****************************************************************************/
-+#if CFG80211_VERSION > KERNEL_VERSION(3, 14, 0)
-+
- #include <linux/etherdevice.h>
- #include <net/mac80211.h>
- #include <net/netlink.h>
-@@ -1603,3 +1605,10 @@ void iwl_mvm_rx_csi_chunk(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
- 	if (num == idx)
- 		iwl_mvm_csi_complete(mvm);
- }
-+
-+#else /* CFG80211_VERSION > KERNEL_VERSION(3, 14, 0) */
-+#include "mvm.h"
-+
-+void iwl_mvm_send_tcm_event(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
-+{}
-+#endif /* CFG80211_VERSION > KERNEL_VERSION(3, 14, 0) */
 diff --git a/drivers/net/wireless/intel/iwlwifi/pcie/drv.c b/drivers/net/wireless/intel/iwlwifi/pcie/drv.c
-index 342a2d233b65..99d9e57fa632 100644
+index 79caefcc2..437ad0fe1 100644
 --- a/drivers/net/wireless/intel/iwlwifi/pcie/drv.c
 +++ b/drivers/net/wireless/intel/iwlwifi/pcie/drv.c
-@@ -62,6 +62,7 @@
-  *
-  *****************************************************************************/
- 
+@@ -60,6 +60,7 @@
+  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+  * Copyright (C) 2016-2017 Intel Deutschland GmbH
+  */
 +#undef pr_fmt
  #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
  

@@ -1,0 +1,102 @@
+@ftm_responder_stats@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+	.get_ftm_responder_stats = fn,
++#endif
+...
+};
+
+@@
+identifier ftm_responder_stats.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+identifier bd, fn;
+identifier m =~ "ftm_responder|lci|civicloc";
+statement s;
+@@
+fn(..., struct cfg80211_beacon_data *bd, ...)
+{
+<+...
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+if (bd->m) s
++#endif
+...+>
+}
+
+@@
+identifier bd, fn;
+statement s;
+@@
+fn(..., struct cfg80211_beacon_data *bd, ...)
+{
+<+...
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+if (bd->ftm_responder != -1) s
++#endif
+...+>
+}
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+ieee80211_set_ftm_responder_params(...)
+{...}
++#endif
+
+@@
+identifier beacon, fn;
+identifier m =~ "lci_len|civicloc_len";
+@@
+fn(..., struct cfg80211_beacon_data *beacon, ...)
+{
+<+...
+-beacon->m
++beacon_ftm_len(beacon, m)
+...+>
+}
+
+@@
+expression e;
+struct cfg80211_beacon_data *beacon;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,20,0)
+beacon->ftm_responder = e;
++#endif
+
+@@
+struct cfg80211_pmsr_request_peer *peer;
+@@
+-peer->ftm.trigger_based
++ftm_trigger_based(peer)
+@@
+struct cfg80211_pmsr_request_peer *peer;
+@@
+-peer->ftm.non_trigger_based
++ftm_non_trigger_based(peer)
+
+@@
+identifier capa;
+expression e, f;
+@@
+struct cfg80211_pmsr_capabilities capa = {
+...,
+.ftm = {
++#if CFG80211_VERSION >= KERNEL_VERSION(9,9,9)
+.trigger_based = e,
+.non_trigger_based = f,
++#endif
+},
+...,
+}
+;

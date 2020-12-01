@@ -31,26 +31,8 @@ struct lockdep_map { };
 #endif /* CONFIG_LOCKDEP */
 #endif /* LINUX_VERSION_IS_LESS(4,15,0) */
 
-/* also this... */
-#if LINUX_VERSION_IS_LESS(3,12,0)
-#ifdef CONFIG_PROVE_LOCKING
- #define lock_acquire_exclusive(l, s, t, n, i)         lock_acquire(l, s, t, 0, 2, n, i)
- #define lock_acquire_shared(l, s, t, n, i)            lock_acquire(l, s, t, 1, 2, n, i)
- #define lock_acquire_shared_recursive(l, s, t, n, i)  lock_acquire(l, s, t, 2, 2, n, i)
-#else
-# define spin_acquire(l, s, t, i)              do { } while (0)
-# define spin_release(l, n, i)                 do { } while (0)
- #define lock_acquire_exclusive(l, s, t, n, i)         lock_acquire(l, s, t, 0, 1, n, i)
- #define lock_acquire_shared(l, s, t, n, i)            lock_acquire(l, s, t, 1, 1, n, i)
- #define lock_acquire_shared_recursive(l, s, t, n, i)  lock_acquire(l, s, t, 2, 1, n, i)
-#endif
-#endif
-
 /* include rhashtable this way to get our copy if another exists */
 #include <linux/list_nulls.h>
-#ifndef NULLS_MARKER
-#define NULLS_MARKER(value) (1UL | (((long)value) << 1))
-#endif
 #include "linux/rhashtable.h"
 
 #include <net/genetlink.h>
@@ -109,6 +91,7 @@ static inline u64 ktime_get_real_ns(void)
 #define genl_info_snd_portid(__genl_info) (__genl_info->snd_portid)
 #define NETLINK_CB_PORTID(__skb) NETLINK_CB(cb->skb).portid
 #define netlink_notify_portid(__notify) __notify->portid
+#define __genl_const const
 
 static inline struct netlink_ext_ack *genl_info_extack(struct genl_info *info)
 {
@@ -118,138 +101,6 @@ static inline struct netlink_ext_ack *genl_info_extack(struct genl_info *info)
 	return NULL;
 #endif
 }
-
-/* things that may or may not be upstream depending on the version */
-#ifndef ETH_P_802_3_MIN
-#define ETH_P_802_3_MIN 0x0600
-#endif
-
-#ifndef U32_MAX
-#define U32_MAX		((u32)~0U)
-#endif
-
-#ifndef U8_MAX
-#define U8_MAX		((u8)~0U)
-#endif
-
-#ifndef S8_MAX
-#define S8_MAX		((s8)(U8_MAX>>1))
-#endif
-
-#ifndef S8_MIN
-#define S8_MIN		((s8)(-S8_MAX - 1))
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0)
-/* backport IDR APIs */
-static inline void iwl7000_idr_destroy(struct idr *idp)
-{
-	idr_remove_all(idp);
-	idr_destroy(idp);
-}
-#define idr_destroy(idp) iwl7000_idr_destroy(idp)
-
-static inline int idr_alloc(struct idr *idr, void *ptr, int start, int end,
-			    gfp_t gfp_mask)
-{
-	int id, ret;
-
-	do {
-		if (!idr_pre_get(idr, gfp_mask))
-			return -ENOMEM;
-		ret = idr_get_new_above(idr, ptr, start, &id);
-		if (!ret && id > end) {
-			idr_remove(idr, id);
-			ret = -ENOSPC;
-		}
-	} while (ret == -EAGAIN);
-
-	return ret ? ret : id;
-}
-
-static inline void idr_preload(gfp_t gfp_mask)
-{
-}
-
-static inline void idr_preload_end(void)
-{
-}
-
-#ifdef CONFIG_PM
-static inline bool pm_runtime_active(struct device *dev)
-{
-	return dev->power.runtime_status == RPM_ACTIVE ||
-		dev->power.disable_depth;
-}
-#else
-static inline bool pm_runtime_active(struct device *dev) { return true; }
-#endif /* CONFIG_PM */
-
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0) */
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0)
-#define netdev_notifier_info_to_dev(ndev)	ndev
-
-size_t sg_pcopy_from_buffer(struct scatterlist *sgl, unsigned int nents,
-			    const void *buf, size_t buflen, off_t skip);
-size_t sg_pcopy_to_buffer(struct scatterlist *sgl, unsigned int nents,
-			  void *buf, size_t buflen, off_t skip);
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0) */
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0)
-/* PCIe device capabilities flags have been renamed in (upstream)
- * commit d2ab1fa68c61f01b28ab0859a972c892d81f5d32 (PCI: Rename PCIe
- * capability definitions to follow convention).  This was just a
- * clean rename, without any functional changes.  We use one of the
- * renamed flags, so define it to the old one.
- */
-#define PCI_EXP_DEVCTL2_LTR_EN PCI_EXP_LTR_EN
-
-#define PTR_ERR_OR_ZERO(p) PTR_RET(p)
-
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) */
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-#if !defined(CONFIG_PROVE_LOCKING)
-static inline bool lockdep_rtnl_is_held(void)
-{
-	return true;
-}
-#endif /* !defined(CONFIG_PROVE_LOCKING) */
-
-#define __genl_const
-static inline int
-_genl_register_family_with_ops_grps(struct genl_family *family,
-				    struct genl_ops *ops, size_t n_ops,
-				    struct genl_multicast_group *mcgrps,
-				    size_t n_mcgrps)
-{
-	int ret, i;
-
-	ret = genl_register_family_with_ops(family, ops, n_ops);
-	if (ret)
-		return ret;
-	for (i = 0; i < n_mcgrps; i++) {
-		ret = genl_register_mc_group(family, &mcgrps[i]);
-		if (ret) {
-			genl_unregister_family(family);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-#else
-#define __genl_const const
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0)
-#define ether_addr_equal_unaligned __iwl7000_ether_addr_equal_unaligned
-static inline bool ether_addr_equal_unaligned(const u8 *addr1, const u8 *addr2)
-{
-	return memcmp(addr1, addr2, ETH_ALEN) == 0;
-}
-#endif
 
 #if LINUX_VERSION_IS_LESS(5,3,0)
 #define ktime_get_boottime_ns ktime_get_boot_ns
@@ -413,11 +264,6 @@ static inline void kernel_param_unlock(struct module *mod)
 }
 #endif /* !3.14 && <4.2 */
 
-#ifndef list_first_entry_or_null
-#define list_first_entry_or_null(ptr, type, member) \
-	(!list_empty(ptr) ? list_first_entry(ptr, type, member) : NULL)
-#endif
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 #ifdef CONFIG_DEBUG_FS
 struct dentry *iwl_debugfs_create_bool(const char *name, umode_t mode,
@@ -524,6 +370,26 @@ void dev_coredumpsg(struct device *dev, struct scatterlist *table,
 #endif /* < 4.7 */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
+static inline bool backport_napi_complete_done(struct napi_struct *n, int work_done)
+{
+	if (unlikely(test_bit(NAPI_STATE_NPSVC, &n->state)))
+		return false;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,19,0)
+	napi_complete(n);
+#else
+	napi_complete_done(n, work_done);
+#endif /* < 3.19 */
+	return true;
+}
+
+static inline bool backport_napi_complete(struct napi_struct *n)
+{
+	return backport_napi_complete_done(n, 0);
+}
+#define napi_complete_done LINUX_BACKPORT(napi_complete_done)
+#define napi_complete LINUX_BACKPORT(napi_complete)
+
 /* on earlier kernels, genl_unregister_family() modifies the struct */
 #define __genl_ro_after_init
 #else
@@ -532,17 +398,6 @@ void dev_coredumpsg(struct device *dev, struct scatterlist *table,
 
 #ifndef __BUILD_BUG_ON_NOT_POWER_OF_2
 #define __BUILD_BUG_ON_NOT_POWER_OF_2(...)
-#endif
-
-#if LINUX_VERSION_IS_LESS(3,11,0)
-#ifndef DEVICE_ATTR_RO
-#define DEVICE_ATTR_RO(_name) \
-struct device_attribute dev_attr_ ## _name = __ATTR_RO(_name);
-#endif
-#ifndef DEVICE_ATTR_RW
-#define DEVICE_ATTR_RW(_name) \
-struct device_attribute dev_attr_ ## _name = __ATTR_RW(_name)
-#endif
 #endif
 
 #define ATTRIBUTE_GROUPS_BACKPORT(_name) \
@@ -573,59 +428,15 @@ static const struct attribute_group _name##_group = {		\
 static inline void init_##_name##_attrs(void) {}		\
 __ATTRIBUTE_GROUPS(_name)
 
-#ifndef ETH_P_80221
-#define ETH_P_80221	0x8917	/* IEEE 802.21 Media Independent Handover Protocol */
-#endif
-
-#ifndef skb_vlan_tag_present
-#define skb_vlan_tag_present(__skb)	((__skb)->vlan_tci & VLAN_TAG_PRESENT)
-#endif
-
-#ifndef skb_vlan_tag_get
-#define skb_vlan_tag_get(__skb)		((__skb)->vlan_tci & ~VLAN_TAG_PRESENT)
-#endif
-
-#if LINUX_VERSION_IS_LESS(3,11,0)
-/* power efficient workqueues were added in commit 0668106ca386. */
-#define system_power_efficient_wq system_wq
-#define system_freezable_power_efficient_wq system_freezable_wq
-#endif
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
 #define __print_array(array, count, el_size) ""
 #endif
-
-#ifndef S32_MAX
-#define S32_MAX		((s32)(U32_MAX>>1))
-#endif
-
-#ifndef S32_MIN
-#define S32_MIN		((s32)(-S32_MAX - 1))
-#endif
-
-/* ChromeOS backported this to 3.14, 3.18, etc. - upstream only since 4.1 */
-#if LINUX_VERSION_IS_LESS(3,14,0)
-static inline int nla_put_in_addr(struct sk_buff *skb, int attrtype,
-				  __be32 addr)
-{
-	return nla_put_be32(skb, attrtype, addr);
-}
-
-static inline __be32 nla_get_in_addr(const struct nlattr *nla)
-{
-	return *(__be32 *) nla_data(nla);
-}
-#endif /* < 4.1 */
 
 #if LINUX_VERSION_IS_LESS(4,10,0)
 static inline void *nla_memdup(const struct nlattr *src, gfp_t gfp)
 {
 	return kmemdup(nla_data(src), nla_len(src), gfp);
 }
-#endif
-
-#ifndef GENLMSG_DEFAULT_SIZE
-#define GENLMSG_DEFAULT_SIZE (NLMSG_DEFAULT_SIZE - GENL_HDRLEN)
 #endif
 
 #if LINUX_VERSION_IS_LESS(4,15,0)
@@ -642,127 +453,12 @@ void backport_genl_dump_check_consistent(struct netlink_callback *cb,
 #define genl_dump_check_consistent LINUX_BACKPORT(genl_dump_check_consistent)
 #endif /* LINUX_VERSION_IS_LESS(4,15,0) */
 
-#if LINUX_VERSION_IS_LESS(3,13,0)
-static inline int __real_genl_register_family(struct genl_family *family)
-{
-	return genl_register_family(family);
-}
-
-/* Needed for the mcgrps pointer */
-struct backport_genl_family {
-	struct genl_family family;
-
-	unsigned int id, hdrsize, version, maxattr;
-	char name[GENL_NAMSIZ];
-	bool netnsok;
-	bool parallel_ops;
-
-	struct nlattr **attrbuf;
-
-	int (*pre_doit)(struct genl_ops *ops, struct sk_buff *skb,
-			struct genl_info *info);
-
-	void (*post_doit)(struct genl_ops *ops, struct sk_buff *skb,
-			  struct genl_info *info);
-
-	struct genl_multicast_group *mcgrps;
-	struct genl_ops *ops;
-	unsigned int n_mcgrps, n_ops;
-
-	struct module *module;
-};
-#define genl_family LINUX_BACKPORT(genl_family)
-
-int __backport_genl_register_family(struct genl_family *family);
-
-#define genl_register_family LINUX_BACKPORT(genl_register_family)
-static inline int
-genl_register_family(struct genl_family *family)
-{
-	family->module = THIS_MODULE;
-	return __backport_genl_register_family(family);
-}
-
-#define _genl_register_family_with_ops_grps \
-	_backport_genl_register_family_with_ops_grps
-static inline int
-_genl_register_family_with_ops_grps(struct genl_family *family,
-				    struct genl_ops *ops, size_t n_ops,
-				    struct genl_multicast_group *mcgrps,
-				    size_t n_mcgrps)
-{
-	family->ops = ops;
-	family->n_ops = n_ops;
-	family->mcgrps = mcgrps;
-	family->n_mcgrps = n_mcgrps;
-	return genl_register_family(family);
-}
-
-#define genl_register_family_with_ops(family, ops)			\
-	_genl_register_family_with_ops_grps((family),			\
-					    (ops), ARRAY_SIZE(ops),	\
-					    NULL, 0)
-
-#define genl_unregister_family backport_genl_unregister_family
-int genl_unregister_family(struct genl_family *family);
-
-#define genl_notify(_fam, _skb, _info, _group, _flags)			\
-	genl_notify(_skb, genl_info_net(_info),				\
-		    genl_info_snd_portid(_info),			\
-		    (_fam)->mcgrps[_group].id, _info->nlhdr, _flags)
-#define genlmsg_put(_skb, _pid, _seq, _fam, _flags, _cmd)		\
-	genlmsg_put(_skb, _pid, _seq, &(_fam)->family, _flags, _cmd)
-#ifndef genlmsg_put_reply /* might already be there from _info override above */
-#define genlmsg_put_reply(_skb, _info, _fam, _flags, _cmd)		\
-	genlmsg_put_reply(_skb, _info, &(_fam)->family, _flags, _cmd)
-#endif
-#define genlmsg_multicast_netns LINUX_BACKPORT(genlmsg_multicast_netns)
-static inline int genlmsg_multicast_netns(struct genl_family *family,
-					  struct net *net, struct sk_buff *skb,
-					  u32 portid, unsigned int group,
-					  gfp_t flags)
-{
-	if (WARN_ON_ONCE(group >= family->n_mcgrps))
-		return -EINVAL;
-	group = family->mcgrps[group].id;
-	return nlmsg_multicast(
-		net->genl_sock,
-		skb, portid, group, flags);
-}
-#define genlmsg_multicast LINUX_BACKPORT(genlmsg_multicast)
-static inline int genlmsg_multicast(struct genl_family *family,
-				    struct sk_buff *skb, u32 portid,
-				    unsigned int group, gfp_t flags)
-{
-	if (WARN_ON_ONCE(group >= family->n_mcgrps))
-		return -EINVAL;
-	group = family->mcgrps[group].id;
-	return nlmsg_multicast(
-		init_net.genl_sock,
-		skb, portid, group, flags);
-}
-static inline int
-backport_genlmsg_multicast_allns(struct genl_family *family,
-				 struct sk_buff *skb, u32 portid,
-				 unsigned int group, gfp_t flags)
-{
-	if (WARN_ON_ONCE(group >= family->n_mcgrps))
-		return -EINVAL;
-	group = family->mcgrps[group].id;
-	return genlmsg_multicast_allns(skb, portid, group, flags);
-}
-#define genlmsg_multicast_allns LINUX_BACKPORT(genlmsg_multicast_allns)
-
-#define __genl_const
-#else /* < 3.13 */
-#define __genl_const const
 #if LINUX_VERSION_IS_LESS(4,4,0)
 #define genl_notify(_fam, _skb, _info, _group, _flags)			\
 	genl_notify(_fam, _skb, genl_info_net(_info),			\
 		    genl_info_snd_portid(_info),			\
 		    _group, _info->nlhdr, _flags)
 #endif /* < 4.4 */
-#endif /* < 3.13 */
 
 #if LINUX_VERSION_IS_LESS(4,10,0)
 /**
@@ -950,61 +646,6 @@ int __alloc_bucket_spinlocks(spinlock_t **locks, unsigned int *lock_mask,
 	})
 void free_bucket_spinlocks(spinlock_t *locks);
 
-#ifndef READ_ONCE
-#include <linux/types.h>
-
-#define __READ_ONCE_SIZE						\
-({									\
-	switch (size) {							\
-	case 1: *(__u8 *)res = *(volatile __u8 *)p; break;		\
-	case 2: *(__u16 *)res = *(volatile __u16 *)p; break;		\
-	case 4: *(__u32 *)res = *(volatile __u32 *)p; break;		\
-	case 8: *(__u64 *)res = *(volatile __u64 *)p; break;		\
-	default:							\
-		barrier();						\
-		__builtin_memcpy((void *)res, (const void *)p, size);	\
-		barrier();						\
-	}								\
-})
-
-static __always_inline
-void __read_once_size(const volatile void *p, void *res, int size)
-{
-	__READ_ONCE_SIZE;
-}
-
-#define __READ_ONCE(x, check)						\
-({									\
-	union { typeof(x) __val; char __c[1]; } __u;			\
-	__read_once_size(&(x), __u.__c, sizeof(x));			\
-	__u.__val;							\
-})
-
-#define READ_ONCE(x) __READ_ONCE(x, 1)
-
-static __always_inline void __write_once_size(volatile void *p, void *res, int size)
-{
-	switch (size) {
-	case 1: *(volatile __u8 *)p = *(__u8 *)res; break;
-	case 2: *(volatile __u16 *)p = *(__u16 *)res; break;
-	case 4: *(volatile __u32 *)p = *(__u32 *)res; break;
-	case 8: *(volatile __u64 *)p = *(__u64 *)res; break;
-	default:
-		barrier();
-		__builtin_memcpy((void *)p, (const void *)res, size);
-		barrier();
-	}
-}
-
-#define WRITE_ONCE(x, val) \
-({							\
-	union { typeof(x) __val; char __c[1]; } __u =	\
-		{ .__val = (__force typeof(x)) (val) }; \
-	__write_once_size(&(x), __u.__c, sizeof(x));	\
-	__u.__val;					\
-})
-#endif
-
 #if LINUX_VERSION_IS_LESS(4,12,0)
 #define GENL_SET_ERR_MSG(info, msg) do { } while (0)
 
@@ -1115,6 +756,8 @@ LINUX_BACKPORT(acpi_evaluate_dsm)(acpi_handle handle, const guid_t *guid,
 #define firmware_request_nowarn(fw, name, device) request_firmware(fw, name, device)
 #endif
 
+#endif /* __IWL_CHROME */
+
 #if LINUX_VERSION_IS_LESS(5,4,0)
 
 /**
@@ -1134,5 +777,3 @@ LINUX_BACKPORT(acpi_evaluate_dsm)(acpi_handle handle, const guid_t *guid,
 		&pos->member != (head); \
 		pos = list_entry_rcu(pos->member.next, typeof(*pos), member))
 #endif /* < 5.4 */
-
-#endif /* __IWL_CHROME */

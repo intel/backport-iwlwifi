@@ -778,7 +778,7 @@ ieee80211_ibss_process_chanswitch(struct ieee80211_sub_if_data *sdata,
 	case NL80211_CHAN_WIDTH_10:
 	case NL80211_CHAN_WIDTH_20_NOHT:
 		sta_flags |= IEEE80211_STA_DISABLE_HT;
-		/* fall through */
+		fallthrough;
 	case NL80211_CHAN_WIDTH_20:
 		sta_flags |= IEEE80211_STA_DISABLE_40MHZ;
 		break;
@@ -1365,7 +1365,7 @@ ieee80211_ibss_setup_scan_channels(struct wiphy *wiphy,
 		break;
 	case NL80211_CHAN_WIDTH_80P80:
 		cf2 = chandef->center_freq2;
-		/* fall through */
+		fallthrough;
 	case NL80211_CHAN_WIDTH_80:
 		width = 80;
 		break;
@@ -1712,6 +1712,11 @@ int ieee80211_ibss_join(struct ieee80211_sub_if_data *sdata,
 	int radar_detect_width = 0;
 	int i;
 	int ret;
+
+	if (params->chandef.chan->freq_offset) {
+		/* this may work, but is untested */
+		return -EOPNOTSUPP;
+	}
 
 	ret = cfg80211_chandef_dfs_required(local->hw.wiphy,
 					    &params->chandef,

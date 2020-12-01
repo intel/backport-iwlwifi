@@ -1,66 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2010 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2010 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
+/*
+ * Copyright (C) 2010-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2015-2017 Intel Deutschland GmbH
+ */
 #ifndef __iwl_tm_infc__
 #define __iwl_tm_infc__
 
@@ -144,6 +87,7 @@ enum {
 	IWL_TM_USER_CMD_NOTIF_CCA_EVENT,
 	IWL_TM_USER_CMD_NOTIF_RUN_TIME_CALIB_DONE,
 	IWL_TM_USER_CMD_NOTIF_MPAPD_EXEC_DONE,
+	IWL_TM_USER_CMD_NOTIF_DTS_MEASUREMENTS_XVT,
 };
 
 /*
@@ -168,6 +112,11 @@ enum {
 	IWL_XVT_CMD_MOD_TX_STOP,
 	IWL_XVT_CMD_TX_QUEUE_CFG,
 	IWL_XVT_CMD_DRIVER_CMD,
+	IWL_XVT_CMD_SET_INDICATION_CHANNEL,
+	IWL_XVT_CMD_MOD_TX_GET_COUNTERS,
+	IWL_XVT_CMD_TRIGGER_NMI,
+	IWL_XVT_CMD_FW_TLV_GET_LEN,
+	IWL_XVT_CMD_FW_TLV_GET_DATA,
 
 	/* Driver notifications */
 	IWL_XVT_CMD_SEND_REPLY_ALIVE = XVT_CMD_NOTIF_BASE,
@@ -831,6 +780,56 @@ struct iwl_xvt_get_rx_agg_stats_resp {
 struct iwl_xvt_config_rx_mpdu_req {
 	u8 enable;
 	u8 reserved[3];
+} __packed __aligned(4);
+
+/**
+ * enum for FW image type
+ * @IWL_XVT_FW_IMG_TYPE_LMAC_D0: LMAC D0
+ * @IWL_XVT_FW_IMG_TYPE_UMAC: UMAC
+*/
+enum iwl_xvt_fw_img_type {
+	IWL_XVT_FW_IMG_TYPE_LMAC_D0 = 0,
+	IWL_XVT_FW_IMG_TYPE_UMAC
+};
+
+/**
+ * struct iwl_xvt_get_fw_tlv_len_request - fw TLV len request
+ * @fw_img_type: fw image type - &enum iwl_xvt_fw_img_type
+ * @tlv_type_id: fw TLV type ID
+*/
+struct iwl_xvt_get_fw_tlv_len_request {
+	u32 fw_img_type;
+	u32 tlv_type_id;
+} __packed __aligned(4);
+
+/**
+ * struct iwl_xvt_fw_tlv_len_response - fw TLV len response
+ * @bytes_len: TLV bytes length
+*/
+struct iwl_xvt_fw_tlv_len_response {
+	u32 bytes_len;
+} __packed __aligned(4);
+
+/**
+ * struct iwl_xvt_get_fw_tlv_data_request - fw TLV data response
+ * @fw_img_type: fw image type - &enum iwl_xvt_fw_img_type
+ * @tlv_type_id: fw TLV type ID
+ * @resp_max_bytes_len: max buffer size
+*/
+struct iwl_xvt_get_fw_tlv_data_request {
+	u32 fw_img_type;
+	u32 tlv_type_id;
+	u32 resp_max_bytes_len;
+} __packed __aligned(4);
+
+/**
+ * struct iwl_xvt_fw_tlv_data_response - fw TLV data response
+ * @bytes_len: TLV bytes length
+ * @data: TLV data
+*/
+struct iwl_xvt_fw_tlv_data_response {
+	u32 bytes_len;
+	u8 data[0];
 } __packed __aligned(4);
 
 #endif

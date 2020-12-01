@@ -2,6 +2,8 @@
 #define __BACKPORT_LINUX_COMPILER_H
 #include_next <linux/compiler.h>
 
+#include <linux/compiler_attributes.h>
+
 #ifndef __rcu
 #define __rcu
 #endif

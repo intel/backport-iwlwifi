@@ -1,0 +1,91 @@
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(5,9,0)
+case NL80211_BAND_S1GHZ:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression band;
+@@
+-band == NL80211_BAND_S1GHZ
++nl80211_is_s1ghz(band)
+
+@@
+expression band;
+@@
+-band != NL80211_BAND_S1GHZ
++ !nl80211_is_s1ghz(band)
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(5,9,0)
+case NL80211_CHAN_WIDTH_1:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(5,9,0)
+case NL80211_CHAN_WIDTH_2:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(5,9,0)
+case NL80211_CHAN_WIDTH_4:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(5,9,0)
+case NL80211_CHAN_WIDTH_8:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(5,9,0)
+case NL80211_CHAN_WIDTH_16:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression width;
+@@
+(
+-width == NL80211_CHAN_WIDTH_1
++nl80211_is_s1ghz_width(width, NL80211_CHAN_WIDTH_1)
+|
+-width == NL80211_CHAN_WIDTH_2
++nl80211_is_s1ghz_width(width, NL80211_CHAN_WIDTH_2)
+|
+-width == NL80211_CHAN_WIDTH_4
++nl80211_is_s1ghz_width(width, NL80211_CHAN_WIDTH_4)
+|
+-width == NL80211_CHAN_WIDTH_8
++nl80211_is_s1ghz_width(width, NL80211_CHAN_WIDTH_8)
+|
+-width == NL80211_CHAN_WIDTH_16
++nl80211_is_s1ghz_width(width, NL80211_CHAN_WIDTH_16)
+)
