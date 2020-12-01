@@ -111,7 +111,7 @@ def _filter_message(msg):
     nlines = []
     prev = None
     for line in lines:
-        meta = ['type', 'fixes', 'cc', 'bug', 'jira', 'ticket', 'hw']
+        meta = ['type', 'fixes', 'cc', 'bug', 'jira', 'ticket', 'hw', 'origin']
         ismeta = False
         for mkey in meta:
             if line.lower().startswith(mkey + '='):

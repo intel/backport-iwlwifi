@@ -1,0 +1,292 @@
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(4,4,0)
+case NL80211_IFTYPE_NAN:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression E;
+@@
+-E == NL80211_IFTYPE_NAN
++ieee80211_viftype_nan(E)
+
+@@
+expression E;
+@@
+-E != NL80211_IFTYPE_NAN
++ !ieee80211_viftype_nan(E)
+
+@@
+expression E;
+@@
+-E & BIT(NL80211_IFTYPE_NAN)
++ ieee80211_has_nan_iftype(E)
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_find_nan_func(...)
+{
+...
+}
++#endif
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_find_nan_func_by_cookie(...)
+{
+...
+}
++#endif
+
+@@
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,9,0)
++void ieee80211_nan_func_terminated(struct ieee80211_vif *vif,
++				   u8 inst_id,
++				   enum nl80211_nan_func_term_reason reason,
++				   gfp_t gfp)
++{
++}
++#endif
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_nan_func_terminated(...)
+{
+...
+}
++#endif
+
+@@
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,9,0)
++static int ieee80211_reconfig_nan(struct ieee80211_sub_if_data *sdata)
++{
++	return 0;
++}
++#endif
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_reconfig_nan(...)
+{
+...
+}
++#endif
+
+@@
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,9,0)
++void ieee80211_nan_func_match(struct ieee80211_vif *vif,
++			      struct cfg80211_nan_match_params *match,
++			      gfp_t gfp)
++{
++}
++#endif
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+ieee80211_nan_func_match(...)
+{
+...
+}
++#endif
+
+@@
+expression E;
+@@
+-E |= BIT(NL80211_IFTYPE_NAN)
++ E |= 0
+
+@@
+@@
+enum iwl_fw_dbg_trigger_vif_type {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+IWL_FW_DBG_CONF_VIF_NAN = NL80211_IFTYPE_NAN,
++#endif
+...
+};
+
+@@
+identifier wdev;
+@@
+-wdev->nan_started
++cfg80211_nan_started(wdev)
+
+@@
+identifier limits;
+@@
+struct ieee80211_iface_limit limits[] = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
+	{
+		...,
+		.types = BIT(NL80211_IFTYPE_NAN),
+	},
++#endif
+...
+};
+
+@@
+expression E;
+@@
+-fw_has_capa(E, IWL_UCODE_TLV_CAPA_NAN_SUPPORT)
++false
+
+@@
+struct station_parameters *params;
+@@
+-params->support_p2p_ps
++cfg80211_sta_support_p2p_ps(params, sdata->vif.p2p)
+
+@scan_req@
+identifier req;
+@@
+struct cfg80211_scan_request *req;
+
+
+@@
+identifier scan_req.req;
+expression E;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,7,0)
+ether_addr_copy(E, req->bssid);
++#endif
+
+@@
+expression E;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,7,0)
+eth_broadcast_addr(E->req.bssid);
++#endif
+
+@@
+identifier req;
+@@
+struct cfg80211_scan_request *req;
+<...
+-req->bssid
++cfg80211_scan_req_bssid(req)
+...>
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(4,8,0)
+local->hw_scan_req->req.duration = E;
++#endif
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(4,8,0)
+local->hw_scan_req->req.duration_mandatory = E;
++#endif
+
+@@
+identifier bss_meta;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(4,8,0)
+bss_meta.parent_tsf = E;
++#endif
+
+@@
+identifier bss_meta, fn;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(4,8,0)
+fn(bss_meta.parent_bssid, E);
++#else
++E = E;
++#endif
+
+@@
+struct cfg80211_assoc_request *req;
+@@
+<...
+(
+-req->fils_kek
++iwl7000_get_fils_kek(req)
+|
+-req->fils_kek_len
++iwl7000_get_fils_kek_len(req)
+|
+-req->fils_nonces
++iwl7000_get_fils_nonces(req)
+)
+...>
+
+@@
+struct cfg80211_auth_request *req;
+@@
+<...
+(
+-req->auth_data_len
++iwl7000_get_auth_data_len(req)
+|
+-req->auth_data
++iwl7000_get_auth_data(req)
+)
+...>
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(4,10,0)
+case
+(
+NL80211_AUTHTYPE_FILS_SK
+|
+NL80211_AUTHTYPE_FILS_SK_PFS
+|
+NL80211_AUTHTYPE_FILS_PK
+):
+... when != break;
+break;
++#endif
+}
+
+@@
+identifier hw;
+expression E;
+assignment operator op = {=,|=};
+@@
+
++#if CFG80211_VERSION >= KERNEL_VERSION(4,11,0)
+hw->wiphy->nan_supported_bands op E;
++#endif
+
+@@
+struct cfg80211_nan_conf *conf;
+expression E;
+@@
+-conf->bands & BIT(E)
++ieee80211_nan_has_band(conf, E)
+
+@@
+struct cfg80211_nan_conf *conf;
+expression E;
+@@
+-conf->bands |= BIT(E);
++ieee80211_nan_set_band(conf, E);
+
+@@
+struct cfg80211_nan_conf new_conf;
+struct cfg80211_nan_conf *conf;
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,9,0) || CFG80211_VERSION >= KERNEL_VERSION(4,11,0)
+new_conf.bands = conf->bands;
++#else
++new_conf.dual = conf->dual;
++#endif
+
+@@
+struct cfg80211_nan_conf *conf;
+@@
+-conf->bands
++ieee80211_nan_bands(conf)

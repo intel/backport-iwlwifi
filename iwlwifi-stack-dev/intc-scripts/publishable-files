@@ -114,6 +114,8 @@ drivers/net/wireless/intel/iwlwifi/iwl-nvm-parse.h
 drivers/net/wireless/intel/iwlwifi/iwl-op-mode.h
 drivers/net/wireless/intel/iwlwifi/iwl-phy-db.c
 drivers/net/wireless/intel/iwlwifi/iwl-phy-db.h
+drivers/net/wireless/intel/iwlwifi/fw/pnvm.c
+drivers/net/wireless/intel/iwlwifi/fw/pnvm.h
 drivers/net/wireless/intel/iwlwifi/iwl-prph.h
 drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c
 drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.h
@@ -180,6 +182,9 @@ drivers/net/wireless/intel/iwlwifi/pcie/ctxt-info.c
 drivers/net/wireless/intel/iwlwifi/pcie/ctxt-info-gen3.c
 drivers/net/wireless/intel/iwlwifi/pcie/trans-gen2.c
 drivers/net/wireless/intel/iwlwifi/pcie/tx-gen2.c
+drivers/net/wireless/intel/iwlwifi/queue
+drivers/net/wireless/intel/iwlwifi/queue/tx.c
+drivers/net/wireless/intel/iwlwifi/queue/tx.h
 drivers/net/wireless/intel/iwlwifi/xvt
 drivers/net/wireless/intel/iwlwifi/xvt/nvm.c
 drivers/net/wireless/intel/iwlwifi/xvt/xvt.c
@@ -216,3 +221,4 @@ intc-scripts
 intc-scripts/mv-compat-mod.py
 intc-scripts/ren-compat-deps.py
 intc-scripts/ren-compat-aliases.py
+LICENSES/*

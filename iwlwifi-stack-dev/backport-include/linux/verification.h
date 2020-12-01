@@ -1,7 +1,8 @@
 #ifndef __BP_VERIFICATION_H
 #define __BP_VERIFICATION_H
 #include <linux/version.h>
-#if LINUX_VERSION_IS_GEQ(4,7,0) && !defined(CPTCFG_BPAUTO_BUILD_SYSTEM_DATA_VERIFICATION)
+#if (LINUX_VERSION_IS_GEQ(4,7,0) && !defined(CPTCFG_BPAUTO_BUILD_SYSTEM_DATA_VERIFICATION)) && \
+	defined(CONFIG_CRYPTO_HASH_INFO)
 #include_next <linux/verification.h>
 #else
 #include <linux/key.h>

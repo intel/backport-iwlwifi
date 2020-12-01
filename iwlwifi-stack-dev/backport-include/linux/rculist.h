@@ -1,6 +1,7 @@
 #ifndef __BACKPORT_RCULIST_H
 #define __BACKPORT_RCULIST_H
 #include_next <linux/rculist.h>
+#include <linux/version.h>
 
 #if LINUX_VERSION_IS_LESS(3,9,0)
 #include <backport/magic.h>
@@ -53,6 +54,7 @@
 	likely(__ptr != __next) ? list_entry_rcu(__next, type, member) : NULL; \
 })
 #endif /* list_first_or_null_rcu */
+
 
 #if LINUX_VERSION_IS_LESS(5,4,0)
 

@@ -3,6 +3,10 @@
 #include_next <linux/lockdep.h>
 #include <linux/version.h>
 
+#if LINUX_VERSION_IS_LESS(3,14,0)
+#define lock_acquire_exclusive(l, s, t, n, i)          lock_acquire(l, s, t, 0, 1, n, i)
+#endif
+
 #if LINUX_VERSION_IS_LESS(3,9,0)
 #undef lockdep_assert_held
 #ifdef CONFIG_LOCKDEP
