@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
  ############################################################################
  #
  # This file is provided under a dual BSD/GPLv2 license.  When using or
@@ -16,11 +16,6 @@
  # WITHOUT ANY WARRANTY; without even the implied warranty of
  # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  # General Public License for more details.
- #
- # You should have received a copy of the GNU General Public License
- # along with this program; if not, write to the Free Software
- # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110,
- # USA
  #
  # The full GNU General Public License is included in this distribution
  # in the file called COPYING.
@@ -88,7 +83,7 @@ def ren_compat_aliases(filename, modname):
 	fd.write(res_data)
 	fd.close()
 
-	print "compat aliases successfully resolved in %s!" % filename
+	print("compat aliases successfully resolved in %s!" % filename)
 
 if __name__ == "__main__":
 	if len(sys.argv) < 3:

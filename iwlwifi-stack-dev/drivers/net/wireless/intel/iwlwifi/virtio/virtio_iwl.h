@@ -37,6 +37,10 @@
 
 /* TODO: not sure we need at all features */
 #define VIRTIO_IWL_F_ID BIT(0)
+/* this is used to indicate fw moved to a new API
+ * after move is completed FW can remove the bit
+ */
+#define VIRTIO_IWL_F_NEW_API BIT(1)
 
 enum virtio_iwl_device_op_mode {
 	VRIRTIO_IWL_MVM,
@@ -96,6 +100,7 @@ enum virtio_iwl_queus {
  * Host and the Guest for control
  */
 struct virtio_iwl_control_hdr {
+	__le32 seq;	/* seq id inc every messages sent */
 	__le32 event;	/* The kind of control event (see below) */
 	__le32 flags;	/* direction of the message r/w */
 	__le32 value;	/* used for address of r/w memory */

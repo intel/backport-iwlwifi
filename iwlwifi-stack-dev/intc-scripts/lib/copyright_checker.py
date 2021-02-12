@@ -1,7 +1,7 @@
 #
 # INTEL CONFIDENTIAL
 #
-# Copyright (C) 2018 - 2019 Intel Corporation
+# Copyright (C) 2018 - 2020 Intel Corporation
 #
 # This software and the related documents are Intel copyrighted materials, and
 # your use of them is governed by the express license under which they were
@@ -29,7 +29,7 @@ def check_copyright(file_types, missing_fn=None):
     curyear = time.gmtime().tm_year
 
     p = subprocess.Popen(["git", "show", "-U100000", "-M", "HEAD"],
-                         stdout=subprocess.PIPE)
+                         stdout=subprocess.PIPE, universal_newlines=True)
     c = p.communicate()[0]
     p.wait()
 
@@ -51,7 +51,7 @@ def check_copyright(file_types, missing_fn=None):
         filename = lines[0][2:]
         if not filename.split('.')[-1] in file_types:
             continue
-        lines = filter(lambda x: len(x) and x[0] in ' +-', lines)
+        lines = [x for x in lines if len(x) and x[0] in ' +-']
         done = False
         lines_iter = iter(lines)
         next_section = ""

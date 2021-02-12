@@ -21,8 +21,9 @@ import os
 import re
 import shutil
 from collections import OrderedDict
-import tempdir
-import git
+from . import tempdir
+from . import git
+
 
 class Abort(Exception):
     """
@@ -356,7 +357,7 @@ class GitMirror(object):
         # get a fresh work tree (local clone)
         self._checkout(commit.tree_id, input_work_dir)
         if submodules:
-            for submodule, submodule_commit in submodules.iteritems():
+            for submodule, submodule_commit in submodules.items():
                 self._checkout(submodule_commit.tree_id, os.path.join(input_work_dir, submodule))
 
         if self.clean_output:

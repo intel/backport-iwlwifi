@@ -383,4 +383,66 @@ static inline int backport_dev_open(struct net_device *dev, struct netlink_ext_a
 #define dev_open LINUX_BACKPORT(dev_open)
 #endif
 
+#if LINUX_VERSION_IS_LESS(4,4,0)
+#define netif_is_bridge_port LINUX_BACKPORT(netif_is_bridge_port)
+static inline bool netif_is_bridge_port(const struct net_device *dev)
+{
+	return dev->priv_flags & IFF_BRIDGE_PORT;
+}
+#endif
+
+#if LINUX_VERSION_IS_LESS(4,19,0)
+static inline void netif_receive_skb_list(struct list_head *head)
+{
+	struct sk_buff *skb;
+	struct list_head *l, *next;
+
+	if (list_empty(head))
+		return;
+
+	list_for_each_safe(l, next, head) {
+		skb = (void *)l;
+
+		skb_list_del_init(skb);
+		netif_receive_skb(skb);
+	}
+}
+#endif
+
+#if LINUX_VERSION_IS_LESS(5,10,0)
+/**
+ *      dev_fetch_sw_netstats - get per-cpu network device statistics
+ *      @s: place to store stats
+ *      @netstats: per-cpu network stats to read from
+ *
+ *      Read per-cpu network statistics and populate the related fields in @s.
+ */
+static inline
+void dev_fetch_sw_netstats(struct rtnl_link_stats64 *s,
+                           const struct pcpu_sw_netstats __percpu *netstats)
+{
+        int cpu;
+
+        for_each_possible_cpu(cpu) {
+                const struct pcpu_sw_netstats *stats;
+                struct pcpu_sw_netstats tmp;
+                unsigned int start;
+
+                stats = per_cpu_ptr(netstats, cpu);
+                do {
+                        start = u64_stats_fetch_begin_irq(&stats->syncp);
+                        tmp.rx_packets = stats->rx_packets;
+                        tmp.rx_bytes   = stats->rx_bytes;
+                        tmp.tx_packets = stats->tx_packets;
+                        tmp.tx_bytes   = stats->tx_bytes;
+                } while (u64_stats_fetch_retry_irq(&stats->syncp, start));
+
+                s->rx_packets += tmp.rx_packets;
+                s->rx_bytes   += tmp.rx_bytes;
+                s->tx_packets += tmp.tx_packets;
+                s->tx_bytes   += tmp.tx_bytes;
+        }
+}
+#endif /* < 5.10 */
+
 #endif /* __BACKPORT_NETDEVICE_H */

@@ -1,64 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2012 - 2014, 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ */
 #include "api/commands.h"
 #include "debugfs.h"
 #include "dbg.h"
@@ -203,6 +148,34 @@ static int iwl_fw_send_timestamp_marker_cmd(struct iwl_fw_runtime *fwrt)
 
 	return iwl_trans_send_cmd(fwrt->trans, &hcmd);
 }
+
+static int iwl_dbgfs_enabled_severities_write(struct iwl_fw_runtime *fwrt,
+					      char *buf, size_t count)
+{
+	struct iwl_dbg_host_event_cfg_cmd event_cfg;
+	struct iwl_host_cmd hcmd = {
+		.id = iwl_cmd_id(HOST_EVENT_CFG, DEBUG_GROUP, 0),
+		.flags = CMD_ASYNC,
+		.data[0] = &event_cfg,
+		.len[0] = sizeof(event_cfg),
+	};
+	u32 enabled_severities;
+	int ret = kstrtou32(buf, 10, &enabled_severities);
+
+	if (ret < 0)
+		return ret;
+
+	event_cfg.enabled_severities = cpu_to_le32(enabled_severities);
+
+	ret = iwl_trans_send_cmd(fwrt->trans, &hcmd);
+	IWL_INFO(fwrt,
+		 "sent host event cfg with enabled_severities: %u, ret: %d\n",
+		 enabled_severities, ret);
+
+	return ret ?: count;
+}
+
+FWRT_DEBUGFS_WRITE_FILE_OPS(enabled_severities, 16);
 
 static void iwl_fw_timestamp_marker_wk(struct work_struct *work)
 {
@@ -480,7 +453,7 @@ static ssize_t iwl_dbgfs_tpc_stats_read(struct iwl_fw_runtime *fwrt,
 	if (iwl_rx_packet_payload_len(hcmd.resp_pkt) !=
 	    sizeof(*resp) + sizeof(*stats)) {
 		IWL_ERR(fwrt,
-			"Invalid size for TPC stats request response (%u instead of %lu)\n",
+			"Invalid size for TPC stats request response (%u instead of %zd)\n",
 			iwl_rx_packet_payload_len(hcmd.resp_pkt),
 			sizeof(*resp) + sizeof(*stats));
 		ret = -EINVAL;
@@ -531,34 +504,10 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 		.len = { sizeof(cmd), sizeof(cmd_data) },
 	};
 	struct iwl_dhc_cmd_resp *resp;
+	struct iwl_ps_report *ps_report;
 	int ret = 0;
 
-	static const char * const entries[] = {
-		"total_sleep_counter",
-		"total_sleep_duration",
-		"report_duration",
-		"total_missed_beacon_counter",
-		"missed_3_consecutive_beacon_count",
-		"ps_flags",
-		"phy_inactive_duration",
-		"mac_ctdp_sum",
-		"ppm_offset_vs_ap_sum",
-		"deep_sleep_duration",
-		"received_beacon_counter",
-		"bcon_in_lprx_counter",
-		"bcon_abort_counter",
-		"multicast_indication_tim_counter",
-		"missed_multicast_counter",
-		"misbehave_counter",
-		"reserved1",
-		"reserved2",
-		"reserved3",
-		"reserved4"
-	};
-
 	u32 report_size;
-	u32 total_size_written;
-	u32 i;
 
 	ret = iwl_trans_send_cmd(fwrt->trans, &hcmd);
 	if (ret) {
@@ -581,21 +530,56 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 		goto err;
 	}
 
-	report_size = (iwl_rx_packet_payload_len(hcmd.resp_pkt) -
-		offsetof(struct iwl_dhc_cmd_resp, data)) / sizeof(*resp->data);
-	total_size_written = scnprintf(buf, size,
-				       "power-save report (expected: %lu received: %d):\n",
-				       ARRAY_SIZE(entries), report_size);
+	report_size = iwl_rx_packet_payload_len(hcmd.resp_pkt) -
+		offsetof(struct iwl_dhc_cmd_resp, data);
 
-	for (i = 0; i < report_size; i++)
-		total_size_written += scnprintf(buf + total_size_written,
-						size - total_size_written,
-						"%s %u\n",
-						i < ARRAY_SIZE(entries) ?
-						entries[i] : "Unknown",
-						le32_to_cpu(resp->data[i]));
+	if (report_size > sizeof(*ps_report)) {
+		IWL_ERR(fwrt,
+			"ps report size is wrong! expected at most %zd, received %d\n",
+			sizeof(*ps_report), report_size);
+		goto err;
+	}
 
-	return total_size_written;
+	ret = offsetof(struct iwl_ps_report, ps_flags);
+	ret = scnprintf(buf, size, "power-save report\n");
+
+	ps_report = (void *)resp->data;
+
+#define PRINT_PS_REPORT_32(_f) \
+	({ BUILD_BUG_ON(sizeof(ps_report->_f) != 4); \
+	   offsetof(typeof(*ps_report), _f) < report_size ? \
+		    scnprintf(buf + ret, size - ret, #_f " %u\n", \
+			      le32_to_cpu(ps_report->_f)) : \
+		    0; })
+#define PRINT_PS_REPORT_16(_f) \
+	({ BUILD_BUG_ON(sizeof(ps_report->_f) != 2); \
+	   offsetof(typeof(*ps_report), _f) < report_size ? \
+		    scnprintf(buf + ret, size - ret, #_f " %u\n", \
+			      le16_to_cpu(ps_report->_f)) : \
+		    0; })
+
+	ret += PRINT_PS_REPORT_32(total_sleep_counter);
+	ret += PRINT_PS_REPORT_32(total_sleep_duration);
+	ret += PRINT_PS_REPORT_32(report_duration);
+	ret += PRINT_PS_REPORT_32(total_missed_beacon_counter);
+	ret += PRINT_PS_REPORT_32(missed_3_consecutive_beacon_count);
+	ret += PRINT_PS_REPORT_32(ps_flags);
+	ret += PRINT_PS_REPORT_32(phy_inactive_duration);
+	ret += PRINT_PS_REPORT_32(mac_ctdp_sum);
+	ret += PRINT_PS_REPORT_32(ppm_offset_vs_ap_sum);
+	ret += PRINT_PS_REPORT_32(deep_sleep_duration);
+	ret += PRINT_PS_REPORT_32(received_beacon_counter);
+	ret += PRINT_PS_REPORT_16(bcon_in_lprx_counter);
+	ret += PRINT_PS_REPORT_16(bcon_abort_counter);
+	ret += PRINT_PS_REPORT_16(multicast_indication_tim_counter);
+	ret += PRINT_PS_REPORT_16(missed_multicast_counter);
+	ret += PRINT_PS_REPORT_32(misbehave_counter);
+	ret += PRINT_PS_REPORT_32(max_sleep_duration);
+	ret += PRINT_PS_REPORT_32(total_page_faults);
+	ret += PRINT_PS_REPORT_32(sleep_abort_count);
+	ret += PRINT_PS_REPORT_32(max_active_duration);
+
+	return ret;
 
 err:
 	return ret ?: -EIO;
@@ -609,7 +593,7 @@ static ssize_t iwl_dbgfs_ps_report_umac_read
 	return iwl_dbgfs_ps_report_read(fwrt, size, buf, DHC_TARGET_UMAC);
 }
 
-FWRT_DEBUGFS_READ_FILE_OPS(ps_report_umac, 721);
+FWRT_DEBUGFS_READ_FILE_OPS(ps_report_umac, 842);
 
 static ssize_t iwl_dbgfs_ps_report_lmac_read
 				(struct iwl_fw_runtime *fwrt,
@@ -736,6 +720,7 @@ void iwl_fwrt_dbgfs_register(struct iwl_fw_runtime *fwrt,
 	FWRT_DEBUGFS_ADD_FILE(timestamp_marker, dbgfs_dir, 0200);
 	FWRT_DEBUGFS_ADD_FILE(fw_info, dbgfs_dir, 0200);
 	FWRT_DEBUGFS_ADD_FILE(send_hcmd, dbgfs_dir, 0200);
+	FWRT_DEBUGFS_ADD_FILE(enabled_severities, dbgfs_dir, 0200);
 	FWRT_DEBUGFS_ADD_FILE(fw_dbg_domain, dbgfs_dir, 0400);
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 	if (fw_has_capa(&fwrt->fw->ucode_capa,

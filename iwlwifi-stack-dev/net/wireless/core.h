@@ -4,7 +4,7 @@
  *
  * Copyright 2006-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2015-2016	Intel Deutschland GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2020 Intel Corporation
  */
 #ifndef __NET_WIRELESS_CORE_H
 #define __NET_WIRELESS_CORE_H
@@ -61,10 +61,6 @@ struct cfg80211_registered_device {
 	struct list_head beacon_registrations;
 	spinlock_t beacon_registrations_lock;
 
-	struct list_head mlme_unreg;
-	spinlock_t mlme_unreg_lock;
-	struct work_struct mlme_unreg_wk;
-
 	/* protected by RTNL only */
 	int num_running_ifaces;
 	int num_running_monitor_ifaces;
@@ -104,6 +100,8 @@ struct cfg80211_registered_device {
 
 	struct cfg80211_chan_def cac_done_chandef;
 	struct work_struct propagate_cac_done_wk;
+
+	struct work_struct mgmt_registrations_update_wk;
 
 	/* must be last because of the way we do wiphy_priv(),
 	 * and it should at least be aligned to NETDEV_ALIGN */
@@ -212,8 +210,9 @@ struct wiphy *wiphy_idx_to_wiphy(int wiphy_idx);
 int cfg80211_switch_netns(struct cfg80211_registered_device *rdev,
 			  struct net *net);
 
-void cfg80211_init_wdev(struct cfg80211_registered_device *rdev,
-			struct wireless_dev *wdev);
+void cfg80211_init_wdev(struct wireless_dev *wdev);
+void cfg80211_register_wdev(struct cfg80211_registered_device *rdev,
+			    struct wireless_dev *wdev);
 
 static inline void wdev_lock(struct wireless_dev *wdev)
 	__acquires(wdev)
@@ -292,7 +291,7 @@ struct cfg80211_cqm_config {
 	u32 rssi_hyst;
 	s32 last_rssi_event_value;
 	int n_rssi_thresholds;
-	s32 rssi_thresholds[0];
+	s32 rssi_thresholds[];
 };
 
 void cfg80211_destroy_ifaces(struct cfg80211_registered_device *rdev);
@@ -387,8 +386,9 @@ void cfg80211_mlme_down(struct cfg80211_registered_device *rdev,
 			struct net_device *dev);
 int cfg80211_mlme_register_mgmt(struct wireless_dev *wdev, u32 snd_pid,
 				u16 frame_type, const u8 *match_data,
-				int match_len, struct netlink_ext_ack *extack);
-void cfg80211_mlme_unreg_wk(struct work_struct *wk);
+				int match_len, bool multicast_rx,
+				struct netlink_ext_ack *extack);
+void cfg80211_mgmt_registrations_update_wk(struct work_struct *wk);
 void cfg80211_mlme_unregister_socket(struct wireless_dev *wdev, u32 nlpid);
 void cfg80211_mlme_purge_registrations(struct wireless_dev *wdev);
 int cfg80211_mlme_mgmt_tx(struct cfg80211_registered_device *rdev,
@@ -471,8 +471,8 @@ extern struct work_struct cfg80211_disconnect_work;
  *
  * Checks if chandef is usable and we can/need start CAC on such channel.
  *
- * Return: Return true if all channels available and at least
- *	   one channel require CAC (NL80211_DFS_USABLE)
+ * Return: true if all channels available and at least
+ *	   one channel requires CAC (NL80211_DFS_USABLE)
  */
 bool cfg80211_chandef_dfs_usable(struct wiphy *wiphy,
 				 const struct cfg80211_chan_def *chandef);

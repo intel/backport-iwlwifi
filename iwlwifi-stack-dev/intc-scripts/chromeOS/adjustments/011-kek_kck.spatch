@@ -1,0 +1,36 @@
+@@
+struct cfg80211_gtk_rekey_data *data;
+@@
+<...
+(
+-data->kek_len
++cfg80211_rekey_get_kek_len(data)
+|
+-data->kck_len
++cfg80211_rekey_get_kck_len(data)
+|
+-data->akm
++cfg80211_rekey_akm(data)
+)
+...>
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,8,0)
+if (iwl_fw_lookup_cmd_ver(mvm->fw, IWL_ALWAYS_LONG_GROUP,
+			  WOWLAN_KEK_KCK_MATERIAL,
+			  IWL_FW_CMD_VER_UNKNOWN) == 3)
+		hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_EXT_KEK_KCK;
++#endif
+
+@@
+@@
+struct{...
++#if CFG80211_VERSION >= KERNEL_VERSION(5,8,0)
+u8 kck[NL80211_KCK_EXT_LEN];
+u8 kek[NL80211_KEK_EXT_LEN];
++#else
++u8 kck[NL80211_KCK_LEN];
++u8 kek[NL80211_KEK_LEN];
++#endif
+...}
