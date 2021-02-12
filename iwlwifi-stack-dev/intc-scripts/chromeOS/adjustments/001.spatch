@@ -1,0 +1,204 @@
+@tso_header@
+@@
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
+#include <net/tso.h>
++#endif
+
+@@
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
+ieee80211_msrment_cookie(...)
+{
+...
+}
++#endif
+
+@@
+identifier s;
+identifier fn;
+@@
+fn(..., struct cfg80211_csa_settings *s, ...)
+{
+<...
+(
+- s->n_counter_offsets_beacon
++ csa_n_counter_offsets_beacon(s)
+|
+- s->n_counter_offsets_presp
++ csa_n_counter_offsets_presp(s)
+|
+- s->counter_offsets_beacon
++ csa_counter_offsets_beacon(s)
+|
+- s->counter_offsets_presp
++ csa_counter_offsets_presp(s)
+)
+...>
+}
+
+@@
+identifier r;
+expression e;
+@@
+<+...
+if (e) {
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 f = 0;
++u32 *flags = &f;
++#endif
+...
+r = ieee80211_if_add(...);
+...
+}
+...+>
+
+@@
+identifier fn, p;
+@@
+fn(..., struct vif_params *p, ...)
+{
+<...
+-p->vht_mumimo_groups
++vif_params_vht_mumimo_groups(p)
+...>
+}
+
+@@
+identifier fn, p;
+@@
+fn(..., struct vif_params *p, ...)
+{
+<...
+-p->vht_mumimo_follow_addr
++vif_params_vht_mumimo_follow_addr(p)
+...>
+}
+
+@@
+expression E;
+struct ieee80211_supported_band *sband;
+@@
+-sband->n_iftype_data = E
++ieee80211_sband_set_num_iftypes_data(sband, E)
+
+@@
+struct ieee80211_supported_band *sband;
+@@
+-sband->n_iftype_data
++ieee80211_sband_get_num_iftypes_data(sband)
+
+@@
+expression E;
+struct ieee80211_supported_band *sband;
+@@
+-sband->iftype_data = E
++ieee80211_sband_set_iftypes_data(sband, E)
+
+@@
+expression E;
+struct ieee80211_supported_band *sband;
+@@
+-&sband->iftype_data[E]
++ieee80211_sband_get_iftypes_data_entry(sband, E)
+
+@@
+struct ieee80211_supported_band *sband;
+@@
+-sband->iftype_data
++ieee80211_sband_get_iftypes_data(sband)
+
+@@
+identifier hw;
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_SCHED_SCAN;
++#else
+hw->wiphy->max_sched_scan_reqs = 1;
++#endif
+
+@@
+struct rate_info *rinfo;
+expression E, F;
+@@
+{
+...
+-rinfo->bw = E;
++set_rate_info_bw(rinfo, E);
+<...
+-rinfo->flags = F;
++rinfo->flags |= F;
+...>
+}
+
+@@
+struct rate_info rinfo;
+expression E, F;
+@@
+{
+...
+-rinfo.bw = E;
++set_rate_info_bw(&rinfo, E);
+<...
+-rinfo.flags = F;
++rinfo.flags |= F;
+...>
+}
+
+@@
+struct ieee80211_tx_status *status;
+@@
+-status->rate->bw
++get_rate_info_bw(status->rate)
+
+@@
+identifier params;
+@@
+struct cfg80211_ap_settings *params;
+<...
+-params->he_cap
++cfg_he_cap(params)
+...>
+
+@@
+identifier params;
+identifier fn;
+@@
+fn(..., struct cfg80211_ap_settings *params, ...)
+{
+<...
+-params->he_cap
++cfg_he_cap(params)
+...>
+}
+
+@@
+identifier params;
+@@
+struct cfg80211_ap_settings *params;
+<...
+-params->he_oper
++cfg_he_oper(params)
+...>
+
+@@
+identifier params;
+identifier fn;
+@@
+fn(..., struct cfg80211_ap_settings *params, ...)
+{
+<...
+-params->he_oper
++cfg_he_oper(params)
+...>
+}
+
+@@
+expression dev, addr, cookie, acked, gfp;
+expression is_valid_ack_signal, ack_signal;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,17,0)
+cfg80211_probe_status(dev, addr, cookie, acked, ack_signal,
+		      is_valid_ack_signal, gfp);
++#else
++cfg80211_probe_status(dev, addr, cookie, acked, gfp);
++#endif

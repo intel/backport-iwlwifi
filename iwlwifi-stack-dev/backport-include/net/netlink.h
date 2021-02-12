@@ -264,6 +264,8 @@ nla_validate_nested_deprecated(const struct nlattr *start, int maxtype,
 	return __nla_validate_nested(start, maxtype, policy,
 				     NL_VALIDATE_LIBERAL, extack);
 }
+
+#define NLA_POLICY_MIN_LEN(_len)	{ .type = NLA_MIN_LEN, .len = _len }
 #endif /* < 5.2 */
 
 #if LINUX_VERSION_IS_LESS(5,6,0)
@@ -721,5 +723,34 @@ static inline void *nla_memdup(const struct nlattr *src, gfp_t gfp)
 	return kmemdup(nla_data(src), nla_len(src), gfp);
 }
 #endif /* < 4.9 */
+
+#if LINUX_VERSION_IS_LESS(5,10,0)
+// pre-declare all the minimum lengths in use
+#define MIN_LEN_VALIDATION(n)						\
+static inline								\
+int nla_validate_min_len_##n(const struct nlattr *attr,			\
+			     struct netlink_ext_ack *extack)		\
+{									\
+	if (nla_len(attr) < n)						\
+		return -EINVAL;						\
+	return 0;							\
+}
+
+MIN_LEN_VALIDATION(2)
+MIN_LEN_VALIDATION(16)
+MIN_LEN_VALIDATION(42)
+
+// double-expansion to expand _min to the actual value
+#define NLA_POLICY_BINARY_RANGE(_min, _max) _NLA_POLICY_BINARY_RANGE(_min, _max)
+#define _NLA_POLICY_BINARY_RANGE(_min, _max)		\
+{							\
+	.type = NLA_BINARY,				\
+	.len = _max,					\
+	.validation_type = NLA_VALIDATE_FUNCTION,	\
+	.validate = nla_validate_min_len_ ## _min,	\
+}
+#else
+#define NLA_POLICY_BINARY_RANGE(_min, _max) NLA_POLICY_RANGE(NLA_BINARY, _min, _max)
+#endif /* < 5.10 */
 
 #endif /* __BACKPORT_NET_NETLINK_H */

@@ -1,65 +1,8 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2018 - 2019 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
-
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ */
 #include "iwl-trans.h"
 #include "iwl-tm-infc.h"
 #include "iwl-drv.h"
@@ -155,7 +98,6 @@ static int iwl_tm_reg_ops(struct iwl_testmode *testmode,
 	u32 result_size;
 	u32 idx, read_idx;
 	bool is_grab_nic_access_required = true;
-	unsigned long flags;
 
 	/* Calculate result size (result is returned only for read ops) */
 	for (idx = 0, read_idx = 0; idx < request->num; idx++) {
@@ -176,12 +118,12 @@ static int iwl_tm_reg_ops(struct iwl_testmode *testmode,
 		return -ENOMEM;
 	result->num = read_idx;
 	if (is_grab_nic_access_required) {
-		if (!iwl_trans_grab_nic_access(testmode->trans, &flags)) {
+		if (!iwl_trans_grab_nic_access(testmode->trans)) {
 			kfree(result);
 			return -EBUSY;
 		}
 		iwl_tm_execute_reg_ops(testmode, request, result);
-		iwl_trans_release_nic_access(testmode->trans, &flags);
+		iwl_trans_release_nic_access(testmode->trans);
 	} else {
 		iwl_tm_execute_reg_ops(testmode, request, result);
 	}
@@ -228,7 +170,6 @@ static int iwl_tm_indirect_read(struct iwl_testmode *testmode,
 	u32 addr = cmd_in->offset;
 	u32 size = cmd_in->length;
 	u32 *buf32, size32, i;
-	unsigned long flags;
 
 	if (size & (sizeof(u32) - 1))
 		return -EINVAL;
@@ -247,14 +188,14 @@ static int iwl_tm_indirect_read(struct iwl_testmode *testmode,
 	/* Hard-coded periphery absolute address */
 	if (addr >= IWL_ABS_PRPH_START &&
 	    addr < IWL_ABS_PRPH_START + PRPH_END) {
-		if (!iwl_trans_grab_nic_access(trans, &flags)) {
+		if (!iwl_trans_grab_nic_access(trans)) {
 			mutex_unlock(testmode->mutex);
 			return -EBUSY;
 		}
 		for (i = 0; i < size32; i++)
 			buf32[i] = iwl_trans_read_prph(trans,
 						       addr + i * sizeof(u32));
-		iwl_trans_release_nic_access(trans, &flags);
+		iwl_trans_release_nic_access(trans);
 	} else {
 		/* target memory (SRAM) */
 		iwl_trans_read_mem(trans, addr, buf32, size32);
@@ -273,7 +214,6 @@ static int iwl_tm_indirect_write(struct iwl_testmode *testmode,
 	u32 size = cmd_in->len;
 	u8 *buf = cmd_in->buffer;
 	u32 *buf32 = (u32 *)buf, size32 = size / sizeof(u32);
-	unsigned long flags;
 	u32 val, i;
 
 	mutex_lock(testmode->mutex);
@@ -282,14 +222,14 @@ static int iwl_tm_indirect_write(struct iwl_testmode *testmode,
 		/* Periphery writes can be 1-3 bytes long, or DWORDs */
 		if (size < 4) {
 			memcpy(&val, buf, size);
-			if (!iwl_trans_grab_nic_access(trans, &flags)) {
+			if (!iwl_trans_grab_nic_access(trans)) {
 				mutex_unlock(testmode->mutex);
 				return -EBUSY;
 			}
 			iwl_write32(trans, HBUS_TARG_PRPH_WADDR,
 				    (addr & 0x000FFFFF) | ((size - 1) << 24));
 			iwl_write32(trans, HBUS_TARG_PRPH_WDAT, val);
-			iwl_trans_release_nic_access(trans, &flags);
+			iwl_trans_release_nic_access(trans);
 		} else {
 			if (size % sizeof(u32)) {
 				mutex_unlock(testmode->mutex);

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 '''
 Removes unnecessary code to create a "pruned" version
 for projects. Additionally, it can rename all symbols
@@ -101,7 +101,7 @@ def unifdef(f, dis):
     p = subprocess.Popen(['unifdef', '-B'] +
                          ['-UCPTCFG_%s' % s for s in dis] +
                          ['-UCPTCFG_%s_MODULE' % s for s in dis],
-                         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, universal_newlines=True)
     out = p.communicate(input=''.join(lines))[0]
 
     # if there's a trailing empty line remove it
@@ -178,7 +178,7 @@ def prune(defconfig, verify, basedir):
             if verify:
                 assert False, '%s state not known!' % sym
             else:
-                print('%s state not known, assuming allowed!' % sym)
+                print(('%s state not known, assuming allowed!' % sym))
 
     drv_dis = [s for s in dis if s in syms]
     ct.remove_symbols(drv_dis)
@@ -192,7 +192,7 @@ def prune(defconfig, verify, basedir):
             if verify:
                 assert False, '%s state not known!' % sym
             else:
-                print('%s state not known, assuming allowed!' % sym)
+                print(('%s state not known, assuming allowed!' % sym))
     mac_dis = [s for s in dis if s in syms]
     ct.remove_symbols(mac_dis)
 

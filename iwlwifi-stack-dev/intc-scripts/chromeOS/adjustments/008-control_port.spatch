@@ -1,0 +1,45 @@
+@@
+identifier params;
+identifier type =~ "cfg80211_crypto_settings|mesh_setup|cfg80211_ibss_params";
+@@
+struct type *params;
+<...
+-params->control_port_over_nl80211
++cfg_control_port_over_nl80211(params)
+...>
+
+@@
+identifier params;
+identifier fn;
+identifier type =~ "cfg80211_crypto_settings|mesh_setup|cfg80211_ibss_params";
+@@
+fn(..., struct type *params, ...)
+{
+<...
+-params->control_port_over_nl80211
++cfg_control_port_over_nl80211(params)
+...>
+}
+
+@@
+identifier p;
+identifier type =~ "cfg80211_ap_settings|cfg80211_assoc_request";
+@@
+struct type *p;
+<...
+-p->crypto.control_port_over_nl80211
++cfg_control_port_over_nl80211(&p->crypto)
+...>
+
+
+@@
+identifier p, fn;
+identifier type =~ "cfg80211_ap_settings|cfg80211_assoc_request";
+@@
+fn(..., struct type *p, ...)
+{
+<...
+-p->crypto.control_port_over_nl80211
++cfg_control_port_over_nl80211(&p->crypto)
+...>
+}

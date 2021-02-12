@@ -1,63 +1,8 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018, 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018, 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
-
+/* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
+/*
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ * Copyright (C) 2018, 2020 Intel Corporation
+ */
 #ifndef __iwl_fw_api_fmac_h__
 #define __iwl_fw_api_fmac_h__
 
@@ -547,8 +492,8 @@ struct iwl_fmac_add_vif_resp {
  * @IWL_FMAC_FREQ_IN_USE: use only the specified frequency.
  * @IWL_FMAC_FREQ_HINT: use as an hint to optimize connection time.
  * @IWL_FMAC_CONNECT_FLAGS_BSSID_WHITELIST: If this is set, the BSSIDs list is
- *	a whitelist, i.e. a list of the acceptable BSSIDs for connection.
- *	Otherwise, the BSSIDs list is a blacklist specifying disallowed BSSIDs.
+ *	a passlist, i.e. a list of the acceptable BSSIDs for connection.
+ *	Otherwise, the BSSIDs list is a blocklist specifying disallowed BSSIDs.
  * @IWL_FMAC_CONNECT_FLAGS_REASSOCIATE: use to specify whether to send assoc
  *	or reassoc frame.
  * @IWL_FMAC_CONNECT_FLAGS_BSS_TRANSITION: use for indicate that STA supports
@@ -743,8 +688,8 @@ struct iwl_fmac_dh_param {
  * @crypto: the connection security configuration as specified in
  *	%iwl_fmac_crypto.
  * @bssids: array of @n_bssids. Depending on the @flags field, this is either
- *	a blacklist (i.e. specifies disallowed BSSIDs, and all other BSSIDs are
- *	allowed) or a whitelist (i.e. speficies a list of acceptable BSSIDs, and
+ *	a blocklist (i.e. specifies disallowed BSSIDs, and all other BSSIDs are
+ *	allowed) or a passlist (i.e. speficies a list of acceptable BSSIDs, and
  *	all other BSSIDs are disallowed). If this array is empty, all BSSIDs are
  *	allowed.
  * @n_bssids: number of BSSIDs in the @bssids array.

@@ -1,0 +1,64 @@
+@@
+identifier p;
+typedef u32;
+@@
+ieee80211_set_mon_options(...,
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 flags,
++#endif
+                                     struct vif_params *p, ...)
+{
+<...
+-p->flags
++mon_opts_flags(p)
+...>
+}
+
+@@
+identifier fn;
+expression e1, e2, e3;
+@@
+fn(...)
+{
+<...
+-e3 = ieee80211_set_mon_options(e1, e2);
++e3 = ieee80211_set_mon_options(e1, mon_opts_params(e2));
+...>
+}
+
+@@
+identifier p;
+@@
+ieee80211_if_add(...,
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 flags,
++#endif
+struct vif_params *p)
+{
+<...
+-p->flags
++mon_opts_flags(p)
+...>
+}
+
+@@
+@@
+int ieee80211_if_add(struct ieee80211_local *local, const char *name,
+		     unsigned char name_assign_type,
+		     struct wireless_dev **new_wdev, enum nl80211_iftype type,
++#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
++u32 flags,
++#endif
+		     struct vif_params *params);
+
+@@
+identifier fn;
+expression e1, e2, e3, e4, e5, e6, r;
+@@
+fn(...)
+{
+<...
+-r = ieee80211_if_add(e1, e2, e3, e4, e5, e6);
++r = ieee80211_if_add(e1, e2, e3, e4, e5, mon_opts_params(e6));
+...>
+}

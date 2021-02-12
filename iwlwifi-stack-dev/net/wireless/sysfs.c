@@ -5,7 +5,6 @@
  *
  * Copyright 2005-2006	Jiri Benc <jbenc@suse.cz>
  * Copyright 2006	Johannes Berg <johannes@sipsolutions.net>
- * Copyright (C) 2020 Intel Corporation
  */
 
 #include <linux/device.h>
@@ -114,7 +113,6 @@ static int wiphy_suspend(struct device *dev)
 	if (rdev->wiphy.registered) {
 		if (!rdev->wiphy.wowlan_config) {
 			cfg80211_leave_all(rdev);
-			cfg80211_bss_flush(&rdev->wiphy);
 			cfg80211_process_rdev_events(rdev);
 		}
 		if (rdev->ops->suspend)

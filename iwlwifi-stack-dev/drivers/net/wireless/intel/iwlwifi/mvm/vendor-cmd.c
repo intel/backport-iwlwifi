@@ -1,66 +1,9 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
- * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ */
 #include <linux/etherdevice.h>
 #include <net/netlink.h>
 #include <net/mac80211.h>
@@ -142,6 +85,10 @@ iwl_mvm_vendor_attr_policy[NUM_IWL_MVM_VENDOR_ATTR] = {
 	[IWL_MVM_VENDOR_ATTR_STA_CIPHER] = { .type = NLA_U32 },
 	[IWL_MVM_VENDOR_ATTR_STA_HLTK] = { .type = NLA_BINARY },
 	[IWL_MVM_VENDOR_ATTR_STA_TK] = { .type = NLA_BINARY },
+	[IWL_MVM_VENDOR_ATTR_RFIM_INFO]		    = { .type = NLA_NESTED },
+	[IWL_MVM_VENDOR_ATTR_RFIM_FREQ]		    = { .type = NLA_U32 },
+	[IWL_MVM_VENDOR_ATTR_RFIM_CHANNELS]	    = { .type = NLA_U32 },
+	[IWL_MVM_VENDOR_ATTR_RFIM_BANDS]	    = { .type = NLA_U32 },
 };
 
 static struct nlattr **iwl_mvm_parse_vendor_data(const void *data, int data_len)
@@ -264,29 +211,6 @@ unlock:
 free:
 	kfree(tb);
 	return retval;
-}
-
-static int iwl_vendor_frame_filter_cmd(struct wiphy *wiphy,
-				       struct wireless_dev *wdev,
-				       const void *data, int data_len)
-{
-	struct nlattr **tb;
-	struct ieee80211_vif *vif = wdev_to_ieee80211_vif(wdev);
-
-	if (!vif)
-		return -EINVAL;
-
-	tb = iwl_mvm_parse_vendor_data(data, data_len);
-	if (IS_ERR(tb))
-		return PTR_ERR(tb);
-
-	vif->filter_grat_arp_unsol_na =
-		tb[IWL_MVM_VENDOR_ATTR_FILTER_ARP_NA];
-	vif->filter_gtk = tb[IWL_MVM_VENDOR_ATTR_FILTER_GTK];
-
-	kfree(tb);
-
-	return 0;
 }
 
 #ifdef CPTCFG_IWLMVM_TDLS_PEER_CACHE
@@ -458,6 +382,123 @@ static int iwl_vendor_tdls_peer_cache_query(struct wiphy *wiphy,
 }
 #endif /* CPTCFG_IWLMVM_TDLS_PEER_CACHE */
 
+static int iwl_vendor_rfim_get_table(struct wiphy *wiphy,
+				     struct wireless_dev *wdev,
+				     const void *data, int data_len)
+{
+	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
+	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
+	struct iwl_rfi_freq_table_resp_cmd *resp;
+	struct sk_buff *skb = NULL;
+	struct nlattr *rfim_info;
+	int i, ret;
+
+	resp = iwl_rfi_get_freq_table(mvm);
+
+	if (IS_ERR(resp))
+		return PTR_ERR(resp);
+
+	if (resp->status != RFI_FREQ_TABLE_OK) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	skb = cfg80211_vendor_cmd_alloc_reply_skb(wiphy, sizeof(rfim_info));
+	if (!skb) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	rfim_info = nla_nest_start(skb, IWL_MVM_VENDOR_ATTR_RFIM_INFO |
+					NLA_F_NESTED);
+	if (!rfim_info) {
+		ret = -ENOBUFS;
+		goto out;
+	}
+
+	for (i = 0; i < 4; i++) {
+		if (nla_put_u16(skb, IWL_MVM_VENDOR_ATTR_RFIM_FREQ,
+				le16_to_cpu(resp->table[i].freq)) ||
+		    nla_put(skb, IWL_MVM_VENDOR_ATTR_RFIM_CHANNELS,
+			    sizeof(resp->table[i].channels),
+			    resp->table[i].channels) ||
+		    nla_put(skb, IWL_MVM_VENDOR_ATTR_RFIM_BANDS,
+			    sizeof(resp->table[i].bands),
+			    resp->table[i].bands)) {
+			ret = -ENOBUFS;
+			goto out;
+		}
+	}
+
+	nla_nest_end(skb, rfim_info);
+
+	ret = cfg80211_vendor_cmd_reply(skb);
+out:
+	kfree_skb(skb);
+	kfree(resp);
+	return ret;
+}
+
+static int iwl_vendor_rfim_set_table(struct wiphy *wiphy,
+				     struct wireless_dev *wdev,
+				     const void *data, int data_len)
+{
+	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
+	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
+	struct iwl_rfi_lut_entry rfim_table[IWL_RFI_LUT_SIZE] = {};
+	struct nlattr **tb;
+	struct nlattr *attr;
+	int rem, err = 0;
+	int row_idx = -1; /* the row is updated only at frequency attr */
+
+	tb = iwl_mvm_parse_vendor_data(data, data_len);
+	if (IS_ERR(tb))
+		return PTR_ERR(tb);
+
+	if (!tb[IWL_MVM_VENDOR_ATTR_RFIM_INFO]) {
+		err = -EINVAL;
+		goto out;
+	}
+
+	nla_for_each_nested(attr, tb[IWL_MVM_VENDOR_ATTR_RFIM_INFO], rem) {
+		switch (nla_type(attr)) {
+		case IWL_MVM_VENDOR_ATTR_RFIM_FREQ:
+			row_idx++;
+			rfim_table[row_idx].freq =
+				cpu_to_le16(nla_get_u16(attr));
+			break;
+		case IWL_MVM_VENDOR_ATTR_RFIM_CHANNELS:
+			if (row_idx < 0) {
+				err = -EINVAL;
+				goto out;
+			}
+			memcpy(rfim_table[row_idx].channels, nla_data(attr),
+			       ARRAY_SIZE(rfim_table[row_idx].channels));
+			break;
+		case IWL_MVM_VENDOR_ATTR_RFIM_BANDS:
+			if (row_idx < 0) {
+				err = -EINVAL;
+				goto out;
+			}
+			memcpy(rfim_table[row_idx].bands, nla_data(attr),
+			       ARRAY_SIZE(rfim_table[row_idx].bands));
+			break;
+		default:
+			IWL_ERR(mvm, "Invalid attribute %d\n", nla_type(attr));
+			err = -EINVAL;
+			goto out;
+		}
+	}
+
+	err = iwl_rfi_send_config_cmd(mvm, rfim_table);
+	if (err)
+		IWL_ERR(mvm, "Failed to send rfi table to FW, error %d\n", err);
+
+out:
+	kfree(tb);
+	return err;
+}
+
 static int iwl_vendor_set_nic_txpower_limit(struct wiphy *wiphy,
 					    struct wireless_dev *wdev,
 					    const void *data, int data_len)
@@ -474,7 +515,8 @@ static int iwl_vendor_set_nic_txpower_limit(struct wiphy *wiphy,
 	int len;
 	int err;
 	u8 cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
-					   REDUCE_TX_POWER_CMD);
+					   REDUCE_TX_POWER_CMD,
+					   IWL_FW_CMD_VER_UNKNOWN);
 
 	tb = iwl_mvm_parse_vendor_data(data, data_len);
 	if (IS_ERR(tb))
@@ -530,6 +572,8 @@ static int iwl_vendor_set_nic_txpower_limit(struct wiphy *wiphy,
 
 	if (err)
 		IWL_ERR(mvm, "failed to update device TX power: %d\n", err);
+	else
+		mvm->txp_cmd = cmd;
 	err = 0;
 free:
 	kfree(tb);
@@ -866,6 +910,16 @@ static int iwl_mvm_vendor_set_dynamic_txp_profile(struct wiphy *wiphy,
 	mutex_unlock(&mvm->mutex);
 free:
 	kfree(tb);
+	if (err > 0)
+		/*
+		 * For SAR validation purpose we need to track the exact return
+		 * value of iwl_mvm_sar_select_profile, mostly to differentiate
+		 * between general SAR failure and the case of WRDS disable
+		 * (it is illegal if WRDS doesn't exist but WGDS does).
+		 * Since nl80211 forbids a positive number as a return value,
+		 * in case SAR is disabled overwrite it with -ENOENT.
+		 */
+		err = -ENOENT;
 	return err;
 }
 
@@ -1207,9 +1261,10 @@ static int iwl_mvm_vendor_add_pasn_sta(struct wiphy *wiphy,
 	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 	struct ieee80211_vif *vif = wdev_to_ieee80211_vif(wdev);
-	u8 *addr, *tk, *hltk;
-	u32 tk_len, hltk_len, cipher;
-	int ret;
+	u8 *addr, *tk = NULL, *hltk;
+	u32 tk_len = 0, hltk_len, cipher;
+	int ret = 0;
+	struct ieee80211_sta *sta;
 
 	if (!vif)
 		return -ENODEV;
@@ -1219,21 +1274,37 @@ static int iwl_mvm_vendor_add_pasn_sta(struct wiphy *wiphy,
 		return PTR_ERR(tb);
 
 	if (!tb[IWL_MVM_VENDOR_ATTR_ADDR] ||
-	    !tb[IWL_MVM_VENDOR_ATTR_STA_TK] ||
 	    !tb[IWL_MVM_VENDOR_ATTR_STA_HLTK] ||
 	    !tb[IWL_MVM_VENDOR_ATTR_STA_CIPHER])
 		return -EINVAL;
 
 	addr = nla_data(tb[IWL_MVM_VENDOR_ATTR_ADDR]);
 	cipher = nla_get_u32(tb[IWL_MVM_VENDOR_ATTR_STA_CIPHER]);
-	tk = nla_data(tb[IWL_MVM_VENDOR_ATTR_STA_TK]);
-	tk_len = nla_len(tb[IWL_MVM_VENDOR_ATTR_STA_TK]);
 	hltk = nla_data(tb[IWL_MVM_VENDOR_ATTR_STA_HLTK]);
 	hltk_len = nla_len(tb[IWL_MVM_VENDOR_ATTR_STA_HLTK]);
 
+	rcu_read_lock();
+	sta = ieee80211_find_sta(vif, addr);
+	if ((!tb[IWL_MVM_VENDOR_ATTR_STA_TK] && (!sta || !sta->mfp)) ||
+	    (tb[IWL_MVM_VENDOR_ATTR_STA_TK] && sta && sta->mfp))
+		ret = -EINVAL;
+	rcu_read_unlock();
+	if (ret)
+		return ret;
+
+	if (tb[IWL_MVM_VENDOR_ATTR_STA_TK]) {
+		tk = nla_data(tb[IWL_MVM_VENDOR_ATTR_STA_TK]);
+		tk_len = nla_len(tb[IWL_MVM_VENDOR_ATTR_STA_TK]);
+	}
+
 	mutex_lock(&mvm->mutex);
-	ret = iwl_mvm_ftm_respoder_add_pasn_sta(mvm, vif, addr, cipher, tk,
-						tk_len, hltk, hltk_len);
+	if (vif->bss_conf.ftm_responder)
+		ret = iwl_mvm_ftm_respoder_add_pasn_sta(mvm, vif, addr, cipher,
+							tk, tk_len, hltk,
+							hltk_len);
+	else
+		iwl_mvm_ftm_add_pasn_sta(mvm, vif, addr, cipher, tk, tk_len,
+					 hltk, hltk_len);
 	mutex_unlock(&mvm->mutex);
 	return ret;
 }
@@ -1298,17 +1369,6 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
 			 WIPHY_VENDOR_CMD_NEED_RUNNING,
 		.doit = iwl_mvm_set_country,
-		.policy = iwl_mvm_vendor_attr_policy,
-		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
-	},
-	{
-		.info = {
-			.vendor_id = INTEL_OUI,
-			.subcmd = IWL_MVM_VENDOR_CMD_PROXY_FRAME_FILTERING,
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_NETDEV |
-			 WIPHY_VENDOR_CMD_NEED_RUNNING,
-		.doit = iwl_vendor_frame_filter_cmd,
 		.policy = iwl_mvm_vendor_attr_policy,
 		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
@@ -1480,7 +1540,27 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.policy = iwl_mvm_vendor_attr_policy,
 		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
-
+	{
+		.info = {
+			.vendor_id = INTEL_OUI,
+			.subcmd = IWL_MVM_VENDOR_CMD_RFIM_SET_TABLE,
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
+			 WIPHY_VENDOR_CMD_NEED_RUNNING,
+		.doit = iwl_vendor_rfim_set_table,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
+	},
+	{
+		.info = {
+			.vendor_id = INTEL_OUI,
+			.subcmd = IWL_MVM_VENDOR_CMD_RFIM_GET_TABLE,
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV,
+		.doit = iwl_vendor_rfim_get_table,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
+	},
 };
 
 enum iwl_mvm_vendor_events_idx {

@@ -105,6 +105,54 @@
 
 /* extension, added by 802.11ad */
 #define IEEE80211_STYPE_DMG_BEACON		0x0000
+#define IEEE80211_STYPE_S1G_BEACON		0x0010
+
+/* bits unique to S1G beacon */
+#define IEEE80211_S1G_BCN_NEXT_TBTT	0x100
+
+/* see 802.11ah-2016 9.9 NDP CMAC frames */
+#define IEEE80211_S1G_1MHZ_NDP_BITS	25
+#define IEEE80211_S1G_1MHZ_NDP_BYTES	4
+#define IEEE80211_S1G_2MHZ_NDP_BITS	37
+#define IEEE80211_S1G_2MHZ_NDP_BYTES	5
+
+#define IEEE80211_NDP_FTYPE_CTS			0
+#define IEEE80211_NDP_FTYPE_CF_END		0
+#define IEEE80211_NDP_FTYPE_PS_POLL		1
+#define IEEE80211_NDP_FTYPE_ACK			2
+#define IEEE80211_NDP_FTYPE_PS_POLL_ACK		3
+#define IEEE80211_NDP_FTYPE_BA			4
+#define IEEE80211_NDP_FTYPE_BF_REPORT_POLL	5
+#define IEEE80211_NDP_FTYPE_PAGING		6
+#define IEEE80211_NDP_FTYPE_PREQ		7
+
+#define SM64(f, v)	((((u64)v) << f##_S) & f)
+
+/* NDP CMAC frame fields */
+#define IEEE80211_NDP_FTYPE                    0x0000000000000007
+#define IEEE80211_NDP_FTYPE_S                  0x0000000000000000
+
+/* 1M Probe Request 11ah 9.9.3.1.1 */
+#define IEEE80211_NDP_1M_PREQ_ANO      0x0000000000000008
+#define IEEE80211_NDP_1M_PREQ_ANO_S                     3
+#define IEEE80211_NDP_1M_PREQ_CSSID    0x00000000000FFFF0
+#define IEEE80211_NDP_1M_PREQ_CSSID_S                   4
+#define IEEE80211_NDP_1M_PREQ_RTYPE    0x0000000000100000
+#define IEEE80211_NDP_1M_PREQ_RTYPE_S                  20
+#define IEEE80211_NDP_1M_PREQ_RSV      0x0000000001E00000
+#define IEEE80211_NDP_1M_PREQ_RSV      0x0000000001E00000
+/* 2M Probe Request 11ah 9.9.3.1.2 */
+#define IEEE80211_NDP_2M_PREQ_ANO      0x0000000000000008
+#define IEEE80211_NDP_2M_PREQ_ANO_S                     3
+#define IEEE80211_NDP_2M_PREQ_CSSID    0x0000000FFFFFFFF0
+#define IEEE80211_NDP_2M_PREQ_CSSID_S                   4
+#define IEEE80211_NDP_2M_PREQ_RTYPE    0x0000001000000000
+#define IEEE80211_NDP_2M_PREQ_RTYPE_S                  36
+
+#define IEEE80211_ANO_NETTYPE_WILD              15
+
+/* bits unique to S1G beacon */
+#define IEEE80211_S1G_BCN_NEXT_TBTT    0x100
 
 /* control extension - for IEEE80211_FTYPE_CTL | IEEE80211_STYPE_CTL_EXT */
 #define IEEE80211_CTL_EXT_POLL		0x2000
@@ -120,6 +168,21 @@
 #define IEEE80211_SN_MASK		((IEEE80211_SCTL_SEQ) >> 4)
 #define IEEE80211_MAX_SN		IEEE80211_SN_MASK
 #define IEEE80211_SN_MODULO		(IEEE80211_MAX_SN + 1)
+
+
+/* PV1 Layout 11ah 9.8.3.1 */
+#define IEEE80211_PV1_FCTL_VERS		0x0003
+#define IEEE80211_PV1_FCTL_FTYPE	0x001c
+#define IEEE80211_PV1_FCTL_STYPE	0x00e0
+#define IEEE80211_PV1_FCTL_TODS		0x0100
+#define IEEE80211_PV1_FCTL_MOREFRAGS	0x0200
+#define IEEE80211_PV1_FCTL_PM		0x0400
+#define IEEE80211_PV1_FCTL_MOREDATA	0x0800
+#define IEEE80211_PV1_FCTL_PROTECTED	0x1000
+#define IEEE80211_PV1_FCTL_END_SP       0x2000
+#define IEEE80211_PV1_FCTL_RELAYED      0x4000
+#define IEEE80211_PV1_FCTL_ACK_POLICY   0x8000
+#define IEEE80211_PV1_FCTL_CTL_EXT	0x0f00
 
 static inline bool ieee80211_sn_less(u16 sn1, u16 sn2)
 {
@@ -148,6 +211,7 @@ static inline u16 ieee80211_sn_sub(u16 sn1, u16 sn2)
 #define IEEE80211_MAX_FRAG_THRESHOLD	2352
 #define IEEE80211_MAX_RTS_THRESHOLD	2353
 #define IEEE80211_MAX_AID		2007
+#define IEEE80211_MAX_AID_S1G		8191
 #define IEEE80211_MAX_TIM_LEN		251
 #define IEEE80211_MAX_MESH_PEERINGS	63
 /* Maximum size for the MA-UNITDATA primitive, 802.11 standard section
@@ -372,6 +436,17 @@ static inline bool ieee80211_is_data(__le16 fc)
 }
 
 /**
+ * ieee80211_is_ext - check if type is IEEE80211_FTYPE_EXT
+ * @fc: frame control bytes in little-endian byteorder
+ */
+static inline bool ieee80211_is_ext(__le16 fc)
+{
+	return (fc & cpu_to_le16(IEEE80211_FCTL_FTYPE)) ==
+	       cpu_to_le16(IEEE80211_FTYPE_EXT);
+}
+
+
+/**
  * ieee80211_is_data_qos - check if type is IEEE80211_FTYPE_DATA and IEEE80211_STYPE_QOS_DATA is set
  * @fc: frame control bytes in little-endian byteorder
  */
@@ -467,6 +542,40 @@ static inline bool ieee80211_is_beacon(__le16 fc)
 {
 	return (fc & cpu_to_le16(IEEE80211_FCTL_FTYPE | IEEE80211_FCTL_STYPE)) ==
 	       cpu_to_le16(IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON);
+}
+
+/**
+ * ieee80211_is_s1g_beacon - check if IEEE80211_FTYPE_EXT &&
+ * IEEE80211_STYPE_S1G_BEACON
+ * @fc: frame control bytes in little-endian byteorder
+ */
+static inline bool ieee80211_is_s1g_beacon(__le16 fc)
+{
+	return (fc & cpu_to_le16(IEEE80211_FCTL_FTYPE |
+				 IEEE80211_FCTL_STYPE)) ==
+	       cpu_to_le16(IEEE80211_FTYPE_EXT | IEEE80211_STYPE_S1G_BEACON);
+}
+
+/**
+ * ieee80211_next_tbtt_present - check if IEEE80211_FTYPE_EXT &&
+ * IEEE80211_STYPE_S1G_BEACON && IEEE80211_S1G_BCN_NEXT_TBTT
+ * @fc: frame control bytes in little-endian byteorder
+ */
+static inline bool ieee80211_next_tbtt_present(__le16 fc)
+{
+	return (fc & cpu_to_le16(IEEE80211_FCTL_FTYPE | IEEE80211_FCTL_STYPE)) ==
+	       cpu_to_le16(IEEE80211_FTYPE_EXT | IEEE80211_STYPE_S1G_BEACON) &&
+	       fc & cpu_to_le16(IEEE80211_S1G_BCN_NEXT_TBTT);
+}
+
+/**
+ * ieee80211_is_s1g_short_beacon - check if next tbtt present bit is set. Only
+ * true for S1G beacons when they're short.
+ * @fc: frame control bytes in little-endian byteorder
+ */
+static inline bool ieee80211_is_s1g_short_beacon(__le16 fc)
+{
+	return ieee80211_is_s1g_beacon(fc) && ieee80211_next_tbtt_present(fc);
 }
 
 /**
@@ -620,6 +729,15 @@ static inline bool ieee80211_is_qos_nullfunc(__le16 fc)
 }
 
 /**
+ * ieee80211_is_any_nullfunc - check if frame is regular or QoS nullfunc frame
+ * @fc: frame control bytes in little-endian byteorder
+ */
+static inline bool ieee80211_is_any_nullfunc(__le16 fc)
+{
+	return (ieee80211_is_nullfunc(fc) || ieee80211_is_qos_nullfunc(fc));
+}
+
+/**
  * ieee80211_is_bufferable_mmpdu - check if frame is bufferable MMPDU
  * @fc: frame control field in little-endian byteorder
  */
@@ -707,7 +825,7 @@ struct ieee80211_msrment_ie {
 	u8 token;
 	u8 mode;
 	u8 type;
-	u8 request[0];
+	u8 request[];
 } __packed;
 
 /**
@@ -869,6 +987,25 @@ enum ieee80211_vht_opmode_bits {
 	IEEE80211_OPMODE_NOTIF_RX_NSS_TYPE_BF	= 0x80,
 };
 
+/**
+ * enum ieee80211_s1g_chanwidth
+ * These are defined in IEEE802.11-2016ah Table 10-20
+ * as BSS Channel Width
+ *
+ * @IEEE80211_S1G_CHANWIDTH_1MHZ: 1MHz operating channel
+ * @IEEE80211_S1G_CHANWIDTH_2MHZ: 2MHz operating channel
+ * @IEEE80211_S1G_CHANWIDTH_4MHZ: 4MHz operating channel
+ * @IEEE80211_S1G_CHANWIDTH_8MHZ: 8MHz operating channel
+ * @IEEE80211_S1G_CHANWIDTH_16MHZ: 16MHz operating channel
+ */
+enum ieee80211_s1g_chanwidth {
+	IEEE80211_S1G_CHANWIDTH_1MHZ = 0,
+	IEEE80211_S1G_CHANWIDTH_2MHZ = 1,
+	IEEE80211_S1G_CHANWIDTH_4MHZ = 3,
+	IEEE80211_S1G_CHANWIDTH_8MHZ = 7,
+	IEEE80211_S1G_CHANWIDTH_16MHZ = 15,
+};
+
 #define WLAN_SA_QUERY_TR_ID_LEN 2
 #define WLAN_MEMBERSHIP_LEN 8
 #define WLAN_USER_POSITION_LEN 16
@@ -890,6 +1027,66 @@ struct ieee80211_tpc_report_ie {
 struct ieee80211_addba_ext_ie {
 	u8 data;
 } __packed;
+
+/**
+ * struct ieee80211_s1g_bcn_compat_ie
+ *
+ * S1G Beacon Compatibility element
+ */
+struct ieee80211_s1g_bcn_compat_ie {
+	__le16 compat_info;
+	__le16 beacon_int;
+	__le32 tsf_completion;
+} __packed;
+
+/**
+ * struct ieee80211_s1g_oper_ie
+ *
+ * S1G Operation element
+ */
+struct ieee80211_s1g_oper_ie {
+	u8 ch_width;
+	u8 oper_class;
+	u8 primary_ch;
+	u8 oper_ch;
+	__le16 basic_mcs_nss;
+} __packed;
+
+/**
+ * struct ieee80211_aid_response_ie
+ *
+ * AID Response element
+ */
+struct ieee80211_aid_response_ie {
+	__le16 aid;
+	u8 switch_count;
+	__le16 response_int;
+} __packed;
+
+struct ieee80211_s1g_cap {
+	u8 capab_info[10];
+	u8 supp_mcs_nss[5];
+} __packed;
+
+struct ieee80211_ext {
+	__le16 frame_control;
+	__le16 duration;
+	union {
+		struct {
+			u8 sa[ETH_ALEN];
+			__le32 timestamp;
+			u8 change_seq;
+			u8 variable[0];
+		} __packed s1g_beacon;
+		struct {
+			u8 sa[ETH_ALEN];
+			__le32 timestamp;
+			u8 change_seq;
+			u8 next_tbtt[3];
+			u8 variable[0];
+		} __packed s1g_short_beacon;
+	} u;
+} __packed __aligned(2);
 
 struct ieee80211_mgmt {
 	__le16 frame_control;
@@ -922,6 +1119,11 @@ struct ieee80211_mgmt {
 			/* followed by Supported rates */
 			u8 variable[0];
 		} __packed assoc_resp, reassoc_resp;
+		struct {
+			__le16 capab_info;
+			__le16 status_code;
+			u8 variable[0];
+		} __packed s1g_assoc_resp, s1g_reassoc_resp;
 		struct {
 			__le16 capab_info;
 			__le16 listen_interval;
@@ -1059,6 +1261,8 @@ struct ieee80211_mgmt {
 #define BSS_MEMBERSHIP_SELECTOR_HT_PHY	127
 #define BSS_MEMBERSHIP_SELECTOR_VHT_PHY	126
 #define BSS_MEMBERSHIP_SELECTOR_HE_PHY	122
+#define BSS_MEMBERSHIP_SELECTOR_SAE_H2E 123
+
 
 /* mgmt header + 1 byte category code */
 #define IEEE80211_MIN_ACTION_SIZE offsetof(struct ieee80211_mgmt, u.action.u)
@@ -1445,35 +1649,6 @@ struct ieee80211_ht_operation {
 #define IEEE80211_DELBA_PARAM_INITIATOR_MASK 0x0800
 
 /*
- * reduced neighbor report, based on Draft P802.11ax_D5.0,
- * section 9.4.2.170
- */
-#define IEEE80211_AP_INFO_TBTT_HDR_TYPE		0x3
-#define IEEE80211_AP_INFO_TBTT_HDR_FILTERED	0x4
-#define IEEE80211_AP_INFO_TBTT_HDR_COLOC	0x8
-#define IEEE80211_AP_INFO_TBTT_HDR_COUNT	0xF0
-#define IEEE80211_TBTT_INFO_OFFSET_BSSID_BSS_PARAM		8
-#define IEEE80211_TBTT_INFO_OFFSET_BSSID_SSSID_BSS_PARAM	12
-
-#define IEEE80211_RNR_TBTT_PARAMS_OCT_RECOMMENDED	0x1
-#define IEEE80211_RNR_TBTT_PARAMS_SAME_SSID		0x2
-#define IEEE80211_RNR_TBTT_PARAMS_MULTI_BSSID		0x4
-#define IEEE80211_RNR_TBTT_PARAMS_TRANSMITTED_BSSID	0x8
-#define IEEE80211_RNR_TBTT_PARAMS_COLOC_ESS		0x10
-#define IEEE80211_RNR_TBTT_PARAMS_PROBE_ACTIVE		0x20
-#define IEEE80211_RNR_TBTT_PARAMS_COLOC_AP		0x40
-
-struct cfg80211_neighbor_ap_info {
-	u8 tbtt_info_hdr;
-	u8 tbtt_info_len;
-	u8 op_class;
-	u8 channel;
-} __packed;
-
-#define IEEE80211_MIN_AP_NEIGHBOR_INFO_SIZE \
-	sizeof(struct cfg80211_neighbor_ap_info)
-
-/*
  * A-MPDU buffer sizes
  * According to HT size varies from 8 to 64 frames
  * HE adds the ability to have up to 256 frames.
@@ -1664,7 +1839,7 @@ struct ieee80211_he_operation {
 	__le32 he_oper_params;
 	__le16 he_mcs_nss_set;
 	/* Optional 0,1,3,4,5,7 or 8 bytes: depends on @he_oper_params */
-	u8 optional[0];
+	u8 optional[];
 } __packed;
 
 /**
@@ -1676,7 +1851,7 @@ struct ieee80211_he_operation {
 struct ieee80211_he_spr {
 	u8 he_sr_control;
 	/* Optional 0 to 19 bytes: depends on @he_sr_control */
-	u8 optional[0];
+	u8 optional[];
 } __packed;
 
 /**
@@ -1832,10 +2007,10 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
  * A-MDPU Length Exponent field in the HT capabilities, VHT capabilities and the
  * same field in the HE capabilities.
  */
-#define IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_USE_VHT	0x00
-#define IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_VHT_1		0x08
-#define IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_VHT_2		0x10
-#define IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_RESERVED	0x18
+#define IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_0		0x00
+#define IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_1		0x08
+#define IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_2		0x10
+#define IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3		0x18
 #define IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_MASK		0x18
 #define IEEE80211_HE_MAC_CAP3_AMSDU_FRAG			0x20
 #define IEEE80211_HE_MAC_CAP3_FLEX_TWT_SCHED			0x40
@@ -1844,7 +2019,7 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 #define IEEE80211_HE_MAC_CAP4_BSRP_BQRP_A_MPDU_AGG		0x01
 #define IEEE80211_HE_MAC_CAP4_QTP				0x02
 #define IEEE80211_HE_MAC_CAP4_BQR				0x04
-#define IEEE80211_HE_MAC_CAP4_SRP_RESP				0x08
+#define IEEE80211_HE_MAC_CAP4_PSR_RESP				0x08
 #define IEEE80211_HE_MAC_CAP4_NDP_FB_REP			0x10
 #define IEEE80211_HE_MAC_CAP4_OPS				0x20
 #define IEEE80211_HE_MAC_CAP4_AMDSU_IN_AMPDU			0x40
@@ -1855,12 +2030,15 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 
 #define IEEE80211_HE_MAC_CAP5_MULTI_TID_AGG_TX_QOS_B40		0x01
 #define IEEE80211_HE_MAC_CAP5_MULTI_TID_AGG_TX_QOS_B41		0x02
-#define IEEE80211_HE_MAC_CAP5_SUBCHAN_SELECVITE_TRANSMISSION	0x04
+#define IEEE80211_HE_MAC_CAP5_SUBCHAN_SELECTIVE_TRANSMISSION	0x04
 #define IEEE80211_HE_MAC_CAP5_UL_2x996_TONE_RU			0x08
 #define IEEE80211_HE_MAC_CAP5_OM_CTRL_UL_MU_DATA_DIS_RX		0x10
 #define IEEE80211_HE_MAC_CAP5_HE_DYNAMIC_SM_PS			0x20
 #define IEEE80211_HE_MAC_CAP5_PUNCTURED_SOUNDING		0x40
 #define IEEE80211_HE_MAC_CAP5_HT_VHT_TRIG_FRAME_RX		0x80
+
+#define IEEE80211_HE_VHT_MAX_AMPDU_FACTOR	20
+#define IEEE80211_HE_HT_MAX_AMPDU_FACTOR	16
 
 /* 802.11ax HE PHY capabilities */
 #define IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_IN_2G		0x02
@@ -1910,7 +2088,7 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 #define IEEE80211_HE_PHY_CAP3_DCM_MAX_CONST_RX_MASK			0x18
 #define IEEE80211_HE_PHY_CAP3_DCM_MAX_RX_NSS_1				0x00
 #define IEEE80211_HE_PHY_CAP3_DCM_MAX_RX_NSS_2				0x20
-#define IEEE80211_HE_PHY_CAP3_RX_HE_MU_PPDU_FROM_NON_AP_STA		0x40
+#define IEEE80211_HE_PHY_CAP3_RX_PARTIAL_BW_SU_IN_20MHZ_MU		0x40
 #define IEEE80211_HE_PHY_CAP3_SU_BEAMFORMER				0x80
 
 #define IEEE80211_HE_PHY_CAP4_SU_BEAMFORMEE				0x01
@@ -1957,15 +2135,15 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 
 #define IEEE80211_HE_PHY_CAP6_CODEBOOK_SIZE_42_SU			0x01
 #define IEEE80211_HE_PHY_CAP6_CODEBOOK_SIZE_75_MU			0x02
-#define IEEE80211_HE_PHY_CAP6_TRIG_SU_BEAMFORMER_FB			0x04
-#define IEEE80211_HE_PHY_CAP6_TRIG_MU_BEAMFORMER_FB			0x08
+#define IEEE80211_HE_PHY_CAP6_TRIG_SU_BEAMFORMING_FB			0x04
+#define IEEE80211_HE_PHY_CAP6_TRIG_MU_BEAMFORMING_PARTIAL_BW_FB		0x08
 #define IEEE80211_HE_PHY_CAP6_TRIG_CQI_FB				0x10
 #define IEEE80211_HE_PHY_CAP6_PARTIAL_BW_EXT_RANGE			0x20
 #define IEEE80211_HE_PHY_CAP6_PARTIAL_BANDWIDTH_DL_MUMIMO		0x40
 #define IEEE80211_HE_PHY_CAP6_PPE_THRESHOLD_PRESENT			0x80
 
-#define IEEE80211_HE_PHY_CAP7_SRP_BASED_SR				0x01
-#define IEEE80211_HE_PHY_CAP7_POWER_BOOST_FACTOR_AR			0x02
+#define IEEE80211_HE_PHY_CAP7_PSR_BASED_SR				0x01
+#define IEEE80211_HE_PHY_CAP7_POWER_BOOST_FACTOR_SUPP			0x02
 #define IEEE80211_HE_PHY_CAP7_HE_SU_MU_PPDU_4XLTF_AND_08_US_GI		0x04
 #define IEEE80211_HE_PHY_CAP7_MAX_NC_1					0x08
 #define IEEE80211_HE_PHY_CAP7_MAX_NC_2					0x10
@@ -2074,7 +2252,7 @@ ieee80211_he_ppe_size(u8 ppe_thres_hdr, const u8 *phy_cap_info)
 }
 
 /* HE Operation defines */
-#define IEEE80211_HE_OPERATION_DFLT_PE_DURATION_MASK		0x00000003
+#define IEEE80211_HE_OPERATION_DFLT_PE_DURATION_MASK		0x00000007
 #define IEEE80211_HE_OPERATION_TWT_REQUIRED			0x00000008
 #define IEEE80211_HE_OPERATION_RTS_THRESHOLD_MASK		0x00003ff0
 #define IEEE80211_HE_OPERATION_RTS_THRESHOLD_OFFSET		4
@@ -2083,7 +2261,7 @@ ieee80211_he_ppe_size(u8 ppe_thres_hdr, const u8 *phy_cap_info)
 #define IEEE80211_HE_OPERATION_ER_SU_DISABLE			0x00010000
 #define IEEE80211_HE_OPERATION_6GHZ_OP_INFO			0x00020000
 #define IEEE80211_HE_OPERATION_BSS_COLOR_MASK			0x3f000000
-#define IEEE80211_HE_OPERATION_BSS_COLOR_OFFSET		24
+#define IEEE80211_HE_OPERATION_BSS_COLOR_OFFSET			24
 #define IEEE80211_HE_OPERATION_PARTIAL_BSS_COLOR		0x40000000
 #define IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED		0x80000000
 
@@ -2111,7 +2289,7 @@ struct ieee80211_he_6ghz_oper {
 
 /*
  * ieee80211_he_oper_size - calculate 802.11ax HE Operations IE size
- * @he_oper_ie: byte data of the He Operations IE, stating from the the byte
+ * @he_oper_ie: byte data of the He Operations IE, stating from the byte
  *	after the ext ID byte. It is assumed that he_oper_ie has at least
  *	sizeof(struct ieee80211_he_operation) bytes, the caller must have
  *	validated this.
@@ -2172,12 +2350,15 @@ ieee80211_he_6ghz_oper(const struct ieee80211_he_operation *he_oper)
 }
 
 /* HE Spatial Reuse defines */
-#define IEEE80211_HE_SPR_NON_SRG_OFFSET_PRESENT			0x4
-#define IEEE80211_HE_SPR_SRG_INFORMATION_PRESENT		0x8
+#define IEEE80211_HE_SPR_PSR_DISALLOWED				BIT(0)
+#define IEEE80211_HE_SPR_NON_SRG_OBSS_PD_SR_DISALLOWED		BIT(1)
+#define IEEE80211_HE_SPR_NON_SRG_OFFSET_PRESENT			BIT(2)
+#define IEEE80211_HE_SPR_SRG_INFORMATION_PRESENT		BIT(3)
+#define IEEE80211_HE_SPR_HESIGA_SR_VAL15_ALLOWED		BIT(4)
 
 /*
  * ieee80211_he_spr_size - calculate 802.11ax HE Spatial Reuse IE size
- * @he_spr_ie: byte data of the He Spatial Reuse IE, stating from the the byte
+ * @he_spr_ie: byte data of the He Spatial Reuse IE, stating from the byte
  *	after the ext ID byte. It is assumed that he_spr_ie has at least
  *	sizeof(struct ieee80211_he_spr) bytes, the caller must have validated
  *	this
@@ -2206,6 +2387,95 @@ ieee80211_he_spr_size(const u8 *he_spr_ie)
 
 	return spr_len;
 }
+
+/* S1G Capabilities Information field */
+#define IEEE80211_S1G_CAPABILITY_LEN	15
+
+#define S1G_CAP0_S1G_LONG	BIT(0)
+#define S1G_CAP0_SGI_1MHZ	BIT(1)
+#define S1G_CAP0_SGI_2MHZ	BIT(2)
+#define S1G_CAP0_SGI_4MHZ	BIT(3)
+#define S1G_CAP0_SGI_8MHZ	BIT(4)
+#define S1G_CAP0_SGI_16MHZ	BIT(5)
+#define S1G_CAP0_SUPP_CH_WIDTH	GENMASK(7, 6)
+
+#define S1G_SUPP_CH_WIDTH_2	0
+#define S1G_SUPP_CH_WIDTH_4	1
+#define S1G_SUPP_CH_WIDTH_8	2
+#define S1G_SUPP_CH_WIDTH_16	3
+#define S1G_SUPP_CH_WIDTH_MAX(cap) ((1 << FIELD_GET(S1G_CAP0_SUPP_CH_WIDTH, \
+						    cap[0])) << 1)
+
+#define S1G_CAP1_RX_LDPC	BIT(0)
+#define S1G_CAP1_TX_STBC	BIT(1)
+#define S1G_CAP1_RX_STBC	BIT(2)
+#define S1G_CAP1_SU_BFER	BIT(3)
+#define S1G_CAP1_SU_BFEE	BIT(4)
+#define S1G_CAP1_BFEE_STS	GENMASK(7, 5)
+
+#define S1G_CAP2_SOUNDING_DIMENSIONS	GENMASK(2, 0)
+#define S1G_CAP2_MU_BFER		BIT(3)
+#define S1G_CAP2_MU_BFEE		BIT(4)
+#define S1G_CAP2_PLUS_HTC_VHT		BIT(5)
+#define S1G_CAP2_TRAVELING_PILOT	GENMASK(7, 6)
+
+#define S1G_CAP3_RD_RESPONDER		BIT(0)
+#define S1G_CAP3_HT_DELAYED_BA		BIT(1)
+#define S1G_CAP3_MAX_MPDU_LEN		BIT(2)
+#define S1G_CAP3_MAX_AMPDU_LEN_EXP	GENMASK(4, 3)
+#define S1G_CAP3_MIN_MPDU_START		GENMASK(7, 5)
+
+#define S1G_CAP4_UPLINK_SYNC	BIT(0)
+#define S1G_CAP4_DYNAMIC_AID	BIT(1)
+#define S1G_CAP4_BAT		BIT(2)
+#define S1G_CAP4_TIME_ADE	BIT(3)
+#define S1G_CAP4_NON_TIM	BIT(4)
+#define S1G_CAP4_GROUP_AID	BIT(5)
+#define S1G_CAP4_STA_TYPE	GENMASK(7, 6)
+
+#define S1G_CAP5_CENT_AUTH_CONTROL	BIT(0)
+#define S1G_CAP5_DIST_AUTH_CONTROL	BIT(1)
+#define S1G_CAP5_AMSDU			BIT(2)
+#define S1G_CAP5_AMPDU			BIT(3)
+#define S1G_CAP5_ASYMMETRIC_BA		BIT(4)
+#define S1G_CAP5_FLOW_CONTROL		BIT(5)
+#define S1G_CAP5_SECTORIZED_BEAM	GENMASK(7, 6)
+
+#define S1G_CAP6_OBSS_MITIGATION	BIT(0)
+#define S1G_CAP6_FRAGMENT_BA		BIT(1)
+#define S1G_CAP6_NDP_PS_POLL		BIT(2)
+#define S1G_CAP6_RAW_OPERATION		BIT(3)
+#define S1G_CAP6_PAGE_SLICING		BIT(4)
+#define S1G_CAP6_TXOP_SHARING_IMP_ACK	BIT(5)
+#define S1G_CAP6_VHT_LINK_ADAPT		GENMASK(7, 6)
+
+#define S1G_CAP7_TACK_AS_PS_POLL		BIT(0)
+#define S1G_CAP7_DUP_1MHZ			BIT(1)
+#define S1G_CAP7_MCS_NEGOTIATION		BIT(2)
+#define S1G_CAP7_1MHZ_CTL_RESPONSE_PREAMBLE	BIT(3)
+#define S1G_CAP7_NDP_BFING_REPORT_POLL		BIT(4)
+#define S1G_CAP7_UNSOLICITED_DYN_AID		BIT(5)
+#define S1G_CAP7_SECTOR_TRAINING_OPERATION	BIT(6)
+#define S1G_CAP7_TEMP_PS_MODE_SWITCH		BIT(7)
+
+#define S1G_CAP8_TWT_GROUPING	BIT(0)
+#define S1G_CAP8_BDT		BIT(1)
+#define S1G_CAP8_COLOR		GENMASK(4, 2)
+#define S1G_CAP8_TWT_REQUEST	BIT(5)
+#define S1G_CAP8_TWT_RESPOND	BIT(6)
+#define S1G_CAP8_PV1_FRAME	BIT(7)
+
+#define S1G_CAP9_LINK_ADAPT_PER_CONTROL_RESPONSE BIT(0)
+
+#define S1G_OPER_CH_WIDTH_PRIMARY_1MHZ	BIT(0)
+#define S1G_OPER_CH_WIDTH_OPER		GENMASK(4, 1)
+
+
+#define LISTEN_INT_USF	GENMASK(15, 14)
+#define LISTEN_INT_UI	GENMASK(13, 0)
+
+#define IEEE80211_MAX_USF	FIELD_MAX(LISTEN_INT_USF)
+#define IEEE80211_MAX_UI	FIELD_MAX(LISTEN_INT_UI)
 
 /* Authentication algorithms */
 #define WLAN_AUTH_OPEN 0
@@ -2359,6 +2629,8 @@ enum ieee80211_statuscode {
 	/* 802.11ai */
 	WLAN_STATUS_FILS_AUTHENTICATION_FAILURE = 108,
 	WLAN_STATUS_UNKNOWN_AUTHENTICATION_SERVER = 109,
+	WLAN_STATUS_SAE_HASH_TO_ELEMENT = 126,
+	WLAN_STATUS_SAE_PK = 127,
 };
 
 
@@ -2604,8 +2876,14 @@ enum ieee80211_eid {
 
 	WLAN_EID_REDUCED_NEIGHBOR_REPORT = 201,
 
+	WLAN_EID_AID_REQUEST = 210,
+	WLAN_EID_AID_RESPONSE = 211,
+	WLAN_EID_S1G_BCN_COMPAT = 213,
+	WLAN_EID_S1G_SHORT_BCN_INTERVAL = 214,
+	WLAN_EID_S1G_CAPABILITIES = 217,
 	WLAN_EID_VENDOR_SPECIFIC = 221,
 	WLAN_EID_QOS_PARAMETER = 222,
+	WLAN_EID_S1G_OPERATION = 232,
 	WLAN_EID_CAG_NUMBER = 237,
 	WLAN_EID_AP_CSN = 239,
 	WLAN_EID_FILS_INDICATION = 240,
@@ -2833,7 +3111,7 @@ enum ieee80211_tdls_actioncode {
  */
 #define WLAN_EXT_CAPA3_MULTI_BSSID_SUPPORT	BIT(6)
 
-/* TDLS capabilities in the the 4th byte of @WLAN_EID_EXT_CAPABILITY */
+/* TDLS capabilities in the 4th byte of @WLAN_EID_EXT_CAPABILITY */
 #define WLAN_EXT_CAPA4_TDLS_BUFFER_STA		BIT(4)
 #define WLAN_EXT_CAPA4_TDLS_PEER_PSM		BIT(5)
 #define WLAN_EXT_CAPA4_TDLS_CHAN_SWITCH		BIT(6)
@@ -3127,12 +3405,17 @@ struct ieee80211_multiple_bssid_configuration {
 #define WLAN_AKM_SUITE_TDLS			SUITE(0x000FAC, 7)
 #define WLAN_AKM_SUITE_SAE			SUITE(0x000FAC, 8)
 #define WLAN_AKM_SUITE_FT_OVER_SAE		SUITE(0x000FAC, 9)
+#define WLAN_AKM_SUITE_AP_PEER_KEY		SUITE(0x000FAC, 10)
 #define WLAN_AKM_SUITE_8021X_SUITE_B		SUITE(0x000FAC, 11)
 #define WLAN_AKM_SUITE_8021X_SUITE_B_192	SUITE(0x000FAC, 12)
+#define WLAN_AKM_SUITE_FT_8021X_SHA384		SUITE(0x000FAC, 13)
 #define WLAN_AKM_SUITE_FILS_SHA256		SUITE(0x000FAC, 14)
 #define WLAN_AKM_SUITE_FILS_SHA384		SUITE(0x000FAC, 15)
 #define WLAN_AKM_SUITE_FT_FILS_SHA256		SUITE(0x000FAC, 16)
 #define WLAN_AKM_SUITE_FT_FILS_SHA384		SUITE(0x000FAC, 17)
+#define WLAN_AKM_SUITE_OWE			SUITE(0x000FAC, 18)
+#define WLAN_AKM_SUITE_FT_PSK_SHA384		SUITE(0x000FAC, 19)
+#define WLAN_AKM_SUITE_PSK_SHA384		SUITE(0x000FAC, 20)
 
 #define WLAN_MAX_KEY_LEN		32
 
@@ -3430,6 +3713,18 @@ static inline int ieee80211_get_tdls_action(struct sk_buff *skb, u32 hdr_size)
 #define TU_TO_JIFFIES(x)	(usecs_to_jiffies((x) * 1024))
 #define TU_TO_EXP_TIME(x)	(jiffies + TU_TO_JIFFIES(x))
 
+/* convert frequencies */
+#define MHZ_TO_KHZ(freq) ((freq) * 1000)
+#define KHZ_TO_MHZ(freq) ((freq) / 1000)
+#define PR_KHZ(f) KHZ_TO_MHZ(f), f % 1000
+#define KHZ_F "%d.%03d"
+
+/* convert powers */
+#define DBI_TO_MBI(gain) ((gain) * 100)
+#define MBI_TO_DBI(gain) ((gain) / 100)
+#define DBM_TO_MBM(gain) ((gain) * 100)
+#define MBM_TO_DBM(gain) ((gain) / 100)
+
 /**
  * ieee80211_action_contains_tpc - checks if the frame contains TPC element
  * @skb: the skb containing the frame, length will be checked
@@ -3536,5 +3831,34 @@ static inline bool for_each_element_completed(const struct element *element,
  */
 #define WLAN_RSNX_CAPA_PROTECTED_TWT BIT(4)
 #define WLAN_RSNX_CAPA_SAE_H2E BIT(5)
+
+/*
+ * reduced neighbor report, based on Draft P802.11ax_D5.0,
+ * section 9.4.2.170
+ */
+#define IEEE80211_AP_INFO_TBTT_HDR_TYPE				0x03
+#define IEEE80211_AP_INFO_TBTT_HDR_FILTERED			0x04
+#define IEEE80211_AP_INFO_TBTT_HDR_COLOC			0x08
+#define IEEE80211_AP_INFO_TBTT_HDR_COUNT			0xF0
+#define IEEE80211_TBTT_INFO_OFFSET_BSSID_BSS_PARAM		9
+#define IEEE80211_TBTT_INFO_OFFSET_BSSID_SSSID_BSS_PARAM	13
+
+#define IEEE80211_RNR_TBTT_PARAMS_OCT_RECOMMENDED		0x01
+#define IEEE80211_RNR_TBTT_PARAMS_SAME_SSID			0x02
+#define IEEE80211_RNR_TBTT_PARAMS_MULTI_BSSID			0x04
+#define IEEE80211_RNR_TBTT_PARAMS_TRANSMITTED_BSSID		0x08
+#define IEEE80211_RNR_TBTT_PARAMS_COLOC_ESS			0x10
+#define IEEE80211_RNR_TBTT_PARAMS_PROBE_ACTIVE			0x20
+#define IEEE80211_RNR_TBTT_PARAMS_COLOC_AP			0x40
+
+struct ieee80211_neighbor_ap_info {
+	u8 tbtt_info_hdr;
+	u8 tbtt_info_len;
+	u8 op_class;
+	u8 channel;
+} __packed;
+
+#define IEEE80211_MIN_AP_NEIGHBOR_INFO_SIZE \
+	sizeof(struct ieee80211_neighbor_ap_info)
 
 #endif /* LINUX_IEEE80211_H */

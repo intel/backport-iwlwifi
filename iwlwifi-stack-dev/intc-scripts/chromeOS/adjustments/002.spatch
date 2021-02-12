@@ -1,0 +1,403 @@
+@wiphy_ext_capa@
+identifier a, capa;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
+struct wiphy_iftype_ext_capab a[] = {
+...,
+{
+...,
+	.extended_capabilities = capa,
+...,
+},
+...,
+};
++#endif
+
+@@
+identifier wiphy_ext_capa.capa;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
+const u8 capa[] = {
+...,
+};
++#endif
+
+@@
+identifier wiphy_ext_capa.a;
+expression e;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
+if (e) {
+...
+hw->wiphy->iftype_ext_capab = a;
+...
+}
++#endif
+
+@start_pmsr@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+	.start_pmsr = fn,
++#endif
+...
+};
+
+@@
+identifier start_pmsr.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+fn(...)
+{
+...
+}
++#endif
+
+@abort_pmsr@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+	.abort_pmsr = fn,
++#endif
+...
+};
+
+@@
+identifier abort_pmsr.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,21,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+expression dev, bss, mgmt, len;
+expression uapsd_queues, ies, ies_len;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,1,0)
+cfg80211_rx_assoc_resp(dev, bss, mgmt, len, uapsd_queues, ies, ies_len);
++#else
++cfg80211_rx_assoc_resp(dev, bss, mgmt, len, uapsd_queues);
++#endif
+
+@probe_mesh_link@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,2,0)
+	.probe_mesh_link = fn,
++#endif
+...
+};
+
+@@
+identifier probe_mesh_link.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,2,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(5,4,0)
+case NL80211_BAND_6GHZ:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+expression band;
+@@
+-band == NL80211_BAND_6GHZ
++nl80211_is_6ghz(band)
+
+@@
+expression band;
+@@
+-band != NL80211_BAND_6GHZ
++ !nl80211_is_6ghz(band)
+
+@@
+@@
+-BIT(NL80211_PREAMBLE_HE)
++ieee80211_preamble_he()
+
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(9,9,9)
+local->hw_scan_req->req.scan_6ghz_params = E;
++#endif
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(9,9,9)
+local->hw_scan_req->req.scan_6ghz = E;
++#endif
+
+@@
+identifier local;
+expression E;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(9,9,9)
+local->hw_scan_req->req.n_6ghz_params = E;
++#endif
+
+@@
+identifier vendor;
+expression e;
+@@
+struct wiphy_vendor_command vendor[] = {
+...,
+	{
+		...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,3,0)
+		.policy = e,
++#endif
+	},
+...
+};
+
+@@
+identifier vendor;
+expression e;
+@@
+struct wiphy_vendor_command vendor[] = {
+...,
+	{
+		...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,3,0)
+		.maxattr = e,
++#endif
+	},
+...
+};
+
+@end_cac@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,5,0)
+	.end_cac = fn,
++#endif
+...
+};
+
+@@
+identifier end_cac.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,5,0)
+fn(...)
+{
+...
+}
++#endif
+
+@default_beacon_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
+	.set_default_beacon_key = fn,
++#endif
+...
+};
+
+@@
+identifier default_beacon_key.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
+fn(...)
+{
+...
+}
++#endif
+
+@set_tid_config@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
+	.set_tid_config = fn,
++#endif
+...
+};
+
+@@
+identifier set_tid_config.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
+fn(...)
+{
+...
+}
++#endif
+
+@reset_tid_config@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
+	.reset_tid_config = fn,
++#endif
+...
+};
+
+@mgmt_frame_reg@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,8,0)
+	.update_mgmt_frame_registrations = fn,
++#else
++	.mgmt_frame_register = ieee80211_mgmt_frame_register,
++#endif
+...
+};
+
+@@
+identifier mgmt_frame_reg.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,8,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+identifier reset_tid_config.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+@@
+-local->hw.wiphy->tx_queue_len
++cfg80211_wiphy_tx_queue_len(local->hw.wiphy)
+
+@@
+struct ieee80211_channel *chan;
+@@
+-chan->freq_offset
++cfg80211_chan_freq_offset(chan)
+
+@@
+identifier chandef;
+@@
+-chandef->chan->freq_offset
++cfg80211_chan_freq_offset(chandef->chan)
+
+@@
+struct cfg80211_chan_def *chandef;
+expression E;
+@@
+<...
+(
+-chandef->freq1_offset = E;
++cfg80211_chandef_freq1_offset_set(chandef, E);
+|
+-chandef->freq1_offset
++cfg80211_chandef_freq1_offset(chandef)
+)
+...>
+
+@@
+struct cfg80211_chan_def chandef;
+expression E;
+@@
+<...
+(
+-chandef.freq1_offset = E;
++cfg80211_chandef_freq1_offset_set(&chandef, E);
+)
+...>
+
+@@
+struct cfg80211_chan_def chandef;
+@@
+-chandef.freq1_offset
++cfg80211_chandef_freq1_offset(&chandef)
+
+
+@@
+struct cfg80211_chan_def chandef;
+@@
+-chandef.chan->freq_offset
++cfg80211_chan_freq_offset(chandef.chan)
+
+@@
+identifier params;
+identifier fn;
+identifier type =~ "cfg80211_ibss_params|cfg80211_csa_settings";
+@@
+fn(..., struct type *params, ...)
+{
+<...
+-params->chandef.chan->freq_offset
++cfg80211_chan_freq_offset(params->chandef.chan)
+...>
+}
+
+@@
+struct ieee80211_sband_iftype_data *iftd;
+expression E;
+@@
+-iftd->he_6ghz_capa.capa = E
++cfg80211_iftd_set_he_6ghz_capa(iftd, E)
+
+@@
+struct ieee80211_sband_iftype_data *iftd;
+@@
+-iftd->he_6ghz_capa.capa
++cfg80211_iftd_he_6ghz_capa(iftd)
+
+@@
+typedef bool;
+@@
++#if CFG80211_VERSION < KERNEL_VERSION(5,8,0)
++bool ieee80211_chandef_he_6ghz_oper(struct ieee80211_sub_if_data *sdata,
++				    const struct ieee80211_he_operation *he_oper,
++				    struct cfg80211_chan_def *chandef)
++{
++return true;
++}
++#else
+ieee80211_chandef_he_6ghz_oper(...)
+{
+...
+}
++#endif

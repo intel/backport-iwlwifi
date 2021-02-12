@@ -1,0 +1,10 @@
+@@
+identifier params, sdata;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(5,10,0)
+ieee80211_set_unsol_bcast_probe_resp(struct ieee80211_sub_if_data *sdata,
+			     struct cfg80211_unsol_bcast_probe_resp *params)
+{
+...
+}
++#endif

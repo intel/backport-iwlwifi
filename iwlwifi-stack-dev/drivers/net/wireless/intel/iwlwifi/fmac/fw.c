@@ -1,62 +1,8 @@
-/******************************************************************************
- *
- * This file is provided under a dual BSD/GPLv2 license.  When using or
- * redistributing this file, you may do so under either license.
- *
- * GPL LICENSE SUMMARY
- *
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2020 Intel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- * General Public License for more details.
- *
- * The full GNU General Public License is included in this distribution
- * in the file called COPYING.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- * BSD LICENSE
- *
- * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright(c) 2018 - 2020 Intel Corporation
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the
- *    distribution.
- *  * Neither the name Intel Corporation nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+/*
+ * Copyright (C) 2016-2017 Intel Deutschland GmbH
+ * Copyright (C) 2018-2020 Intel Corporation
+ */
 #include <linux/module.h>
 #include <linux/rtnetlink.h>
 #include <net/cfg80211.h>
@@ -77,6 +23,7 @@
 #include "fmac.h"
 #include "fw/dbg.h"
 #include "fw/img.h"
+#include "fw/pnvm.h"
 
 void iwl_fmac_mfu_assert_dump_notif(struct iwl_fmac *fmac,
 				    struct iwl_rx_cmd_buffer *rxb)
@@ -116,22 +63,46 @@ static bool iwl_fmac_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	__le16 status;
 	u32 lmac_error_event_table, umac_error_event_table;
 
-	if (iwl_rx_packet_payload_len(pkt) == sizeof(struct mvm_alive_resp)) {
-		struct mvm_alive_resp *palive = (void *)pkt->data;
+	/*
+	 * For v5 and above, we can check the version, for older
+	 * versions we need to check the size.
+	 */
+	if (iwl_fw_lookup_notif_ver(fmac->fw, LEGACY_GROUP,
+				    UCODE_ALIVE_NTFY, 0) == 5) {
+		struct iwl_alive_ntf_v5 *palive;
+
+		palive = (void *)pkt->data;
+		umac = &palive->umac_data;
+		lmac1 = &palive->lmac_data[0];
+		lmac2 = &palive->lmac_data[1];
+		status = palive->status;
+
+		fmac->trans->sku_id[0] = le32_to_cpu(palive->sku_id.data[0]);
+		fmac->trans->sku_id[1] = le32_to_cpu(palive->sku_id.data[1]);
+		fmac->trans->sku_id[2] = le32_to_cpu(palive->sku_id.data[2]);
+
+		IWL_DEBUG_FW(fmac, "Got sku_id: 0x0%x 0x0%x 0x0%x\n",
+			     fmac->trans->sku_id[0],
+			     fmac->trans->sku_id[1],
+			     fmac->trans->sku_id[2]);
+	} else if (iwl_rx_packet_payload_len(pkt) ==
+		   sizeof(struct iwl_alive_ntf_v4)) {
+		struct iwl_alive_ntf_v4 *palive = (void *)pkt->data;
 
 		umac = &palive->umac_data;
 		lmac1 = &palive->lmac_data[0];
 		lmac2 = &palive->lmac_data[1];
 		status = palive->status;
 	} else if (iwl_rx_packet_payload_len(pkt) ==
-			sizeof(struct mvm_alive_resp_v3)) {
-		struct mvm_alive_resp_v3 *palive = (void *)pkt->data;
+		   sizeof(struct iwl_alive_ntf_v3)) {
+		struct iwl_alive_ntf_v3 *palive = (void *)pkt->data;
 
 		umac = &palive->umac_data;
 		lmac1 = &palive->lmac_data;
 		status = palive->status;
 	} else {
-		WARN(1, "unexpected size %d\n", iwl_rx_packet_payload_len(pkt));
+		WARN(1, "unsupported alive notification (size %d)\n",
+		     iwl_rx_packet_payload_len(pkt));
 		/* get timeout later */
 		return false;
 	}
@@ -173,13 +144,14 @@ static bool iwl_fmac_alive_fn(struct iwl_notif_wait_data *notif_wait,
 }
 
 #define FW_ALIVE_TIMEOUT	(HZ * CPTCFG_IWL_TIMEOUT_FACTOR)
+
 static int iwl_load_fw_wait_alive(struct iwl_fmac *fmac,
 				  enum iwl_ucode_type ucode_type)
 {
 	struct iwl_notification_wait alive_wait;
 	struct iwl_alive_data alive_data = {0};
 	const struct fw_img *fw;
-	static const u16 alive_cmd[] = { MVM_ALIVE };
+	static const u16 alive_cmd[] = { UCODE_ALIVE_NTFY };
 	int ret;
 
 	fw = iwl_get_ucode_image(fmac->fw, ucode_type);
@@ -228,6 +200,13 @@ static int iwl_load_fw_wait_alive(struct iwl_fmac *fmac,
 		IWL_ERR(fmac, "Loaded ucode is not valid!\n");
 		return -EIO;
 	}
+
+	ret = iwl_pnvm_load(fmac->trans, &fmac->notif_wait);
+	if (ret) {
+		IWL_ERR(fmac, "Timeout waiting for PNVM load!\n");
+		return ret;
+	}
+
 	iwl_fw_set_current_image(&fmac->fwrt, ucode_type);
 
 	iwl_trans_fw_alive(fmac->trans, alive_data.scd_base_addr);
@@ -349,7 +328,8 @@ static int iwl_fmac_send_phy_cfg_cmd(struct iwl_fmac *fmac)
 	}
 #endif
 	cmd_size = iwl_fw_lookup_cmd_ver(fmac->fw, IWL_ALWAYS_LONG_GROUP,
-					 PHY_CONFIGURATION_CMD) == 3 ?
+					 PHY_CONFIGURATION_CMD,
+					 IWL_FW_CMD_VER_UNKNOWN) == 3 ?
 					    sizeof(struct iwl_phy_cfg_cmd_v3) :
 					    sizeof(struct iwl_phy_cfg_cmd_v1);
 	IWL_DEBUG_INFO(fmac, "Sending Phy CFG command: 0x%x\n",
@@ -519,6 +499,8 @@ static int _iwl_fmac_run_init_fw(struct iwl_fmac *fmac, bool read_nvm)
 				   ARRAY_SIZE(init_complete),
 				   iwl_fmac_wait_phy_db_entry,
 				   fmac->phy_db);
+
+	iwl_dbg_tlv_time_point(&fmac->fwrt, IWL_FW_INI_TIME_POINT_EARLY, NULL);
 
 	ret = iwl_load_fw_wait_alive(fmac, IWL_UCODE_INIT);
 	if (ret) {
@@ -774,9 +756,6 @@ int iwl_fmac_run_rt_fw(struct iwl_fmac *fmac)
 		ret = iwl_trans_start_hw(fmac->trans);
 		if (ret)
 			goto error;
-
-		iwl_dbg_tlv_time_point(&fmac->fwrt,
-				       IWL_FW_INI_TIME_POINT_EARLY, NULL);
 
 		ret = iwl_load_fw_wait_alive(fmac, IWL_UCODE_REGULAR);
 		if (ret) {

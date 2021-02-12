@@ -191,7 +191,7 @@ def commit_env_vars(commitid, tree=None):
     data = stdout.split('\x00')[0]
     vals = data.split('\n')
     d = {}
-    for k, v in map(lambda x: x.split('=', 1), vals):
+    for k, v in [x.split('=', 1) for x in vals]:
         d[k] = v
     return d
 
@@ -285,23 +285,6 @@ def log_commits(from_commit, to_commit, tree=None, options=None):
     vals = stdout.split()
     vals.reverse()
     return vals
-
-def commit_env_vars(commitid, tree=None):
-    process = subprocess.Popen(['git', 'show', '--name-only',
-                                '--format=format:GIT_AUTHOR_NAME=%an%nGIT_AUTHOR_EMAIL=%ae%nGIT_AUTHOR_DATE=%aD%x00',
-                                commitid],
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               universal_newlines=True,
-                               cwd=tree)
-    stdout = process.communicate()[0]
-    process.wait()
-    _check(process)
-    data = stdout.split('\x00')[0]
-    vals = data.split('\n')
-    d = {}
-    for k, v in map(lambda x: x.split('=', 1), vals):
-        d[k] = v
-    return d
 
 def commit_date(commitid, tree=None):
     import datetime
@@ -451,7 +434,7 @@ def get_note(notes_ref, commit, tree=None):
 def set_note(notes_ref, commit, note, tree=None, env=None):
     process = subprocess.Popen(['git', 'notes', '--ref', notes_ref, 'add', '-f', '-F', '-', commit],
                                cwd=tree, env=env, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-    process.communicate(note)
+    process.communicate(note.encode('utf-8'))
     process.wait()
     _check(process)
 

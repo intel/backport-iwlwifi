@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
 This script reads stdin and
  * finds all EXPORT_SYMBOL[_GPL] statements

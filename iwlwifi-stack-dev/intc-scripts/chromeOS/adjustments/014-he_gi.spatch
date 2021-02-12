@@ -1,0 +1,11 @@
+@@
+expression E;
+identifier ri, fn;
+@@
+fn(..., struct rate_info *ri)
+{
+<...
+-E = ri->he_gi
++E = cfg80211_he_gi(ri)
+...>
+}

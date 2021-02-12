@@ -1,0 +1,10 @@
+@@
+identifier params, sdata;
+@@
++#if CFG80211_VERSION > KERNEL_VERSION(5,10,0)
+ieee80211_set_fils_discovery(struct ieee80211_sub_if_data *sdata,
+			     struct cfg80211_fils_discovery *params)
+{
+...
+}
++#endif

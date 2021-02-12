@@ -8,4 +8,8 @@
 			 _name##_show, _name##_store)
 #endif
 
+#if LINUX_VERSION_IS_LESS(5,10,0)
+#define sysfs_emit sprintf
+#endif /* < 5.10 */
+
 #endif /* __BACKPORT_LINUX_SYSFS_H */

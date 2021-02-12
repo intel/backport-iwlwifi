@@ -261,6 +261,6 @@ static inline int genlmsg_parse(const struct nlmsghdr *nlh,
 	return __nlmsg_parse(nlh, family->hdrsize + GENL_HDRLEN, tb, maxtype,
 			     policy, NL_VALIDATE_STRICT, extack);
 }
-#endif /* LINUX_VERSION_IS_LESS(5,2) */
+#endif /* LINUX_VERSION_IS_LESS(5,2,0) */
 
 #endif /* __BACKPORT_NET_GENETLINK_H */

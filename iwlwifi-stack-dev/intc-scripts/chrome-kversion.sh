@@ -23,16 +23,19 @@ PROD_FAIL=""
 
 # this is a complicated pipeline...
 # - git tag:	get all tags
-# - grep:	only use vX.Y.Z
+# - grep:	only use vX.Y.Z or vX.Y-rc
 # - sort:	sort reserve by version (v4.10 before v4.9.x etc.)
 # - grep:	get everything before (due to reserve sort) start version
+# - sed:        replace -rc by .rc for the next sort
 # - sort:	sort again, only on vX.Y (ignoring .Z and further fields
 #		separated by dots), and get (-u) only the first match
+# - sed:        put ".rc" back to "-rc"
 # as a result this identifies all the highest-numbered stable tags of kernel
 # versions higher than the starting version
-for tag in $(git tag | grep 'v[4-9]\.[0-9]\+\(\.[0-9]\+\)\?$' | \
+for tag in $(git tag | grep 'v[4-9]\.[0-9]\+\(\.[0-9]\+\)\?\(-rc[0-9]\+\)\?$' | \
 	     sort --version-sort -r | grep -B1000 "^v${START}$" | \
-	     sort --version-sort -u -t. -k1,2 ) ; do
+	     sed 's%-rc%.rc%' | sort --version-sort -u -t. -k1,2 | \
+	     sed 's%\.rc%-rc%' ) ; do
 	echo "******** generate and compile against $tag"
 	git reset --hard $tag
 	git clean -fdxq

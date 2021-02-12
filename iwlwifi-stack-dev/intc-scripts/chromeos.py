@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 '''
 Make a patch-by-patch mirror of the stack-dev tree into a ChromeOS tree
 '''
@@ -37,6 +37,7 @@ VERSIONS = [
     Version('chromeos-4.14'),
     Version('chromeos-4.19'),
     Version('chromeos-5.4', ['release/core49', 'release/core[5-9]*']),
+    Version('chromeos-5.10', ['release/core59', 'release/core[6-9][0-9]']),
 ]
 
 def _create_chrome_driver(config, version):
@@ -74,7 +75,7 @@ def _create_chrome_driver(config, version):
         null = open('/dev/null', 'r')
         copy = subprocess.Popen(['./copy-code.sh', config.input_tree, config.output_tree],
                                 cwd=scripts_dir, env=env, stdin=null,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         stdout = copy.communicate()[0]
         copy.wait()
         if copy.returncode != 0:
@@ -111,7 +112,7 @@ def _filter_message(msg):
     nlines = []
     prev = None
     for line in lines:
-        meta = ['type', 'fixes', 'cc', 'bug', 'jira', 'ticket', 'hw']
+        meta = ['type', 'fixes', 'cc', 'bug', 'jira', 'ticket', 'hw', 'origin']
         ismeta = False
         for mkey in meta:
             if line.lower().startswith(mkey + '='):
