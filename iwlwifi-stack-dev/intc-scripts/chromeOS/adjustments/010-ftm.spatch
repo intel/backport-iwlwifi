@@ -86,6 +86,12 @@ struct cfg80211_pmsr_request_peer *peer;
 +ftm_non_trigger_based(peer)
 
 @@
+struct cfg80211_pmsr_request_peer *peer;
+@@
+-peer->ftm.lmr_feedback
++ftm_lmr_feedback(peer)
+
+@@
 identifier capa;
 expression e, f;
 @@

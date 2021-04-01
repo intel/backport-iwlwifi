@@ -526,7 +526,6 @@ static ssize_t iwl_dbgfs_send_ps_config_dhc(struct iwl_mvm *mvm,
 	ret = iwl_mvm_send_cmd(mvm, &hcmd);
 	mutex_unlock(&mvm->mutex);
 
-	iwl_free_resp(&hcmd);
 	return ret;
 }
 
@@ -2389,14 +2388,12 @@ static ssize_t iwl_dbgfs_send_dhc(struct iwl_mvm *mvm, char *buf,
 	cmd_data = cpu_to_le32(user_val);
 
 	if (ret < 0)
-		goto out;
+		return ret;
 
 	mutex_lock(&mvm->mutex);
 	ret = iwl_mvm_send_cmd(mvm, &hcmd);
 	mutex_unlock(&mvm->mutex);
 
-out:
-	iwl_free_resp(&hcmd);
 	return ret;
 }
 

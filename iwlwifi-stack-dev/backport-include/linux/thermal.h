@@ -69,7 +69,6 @@ void old_thermal_zone_device_unregister(struct thermal_zone_device *dev)
 	thermal_zone_device_unregister(dev);
 }
 
-#ifndef CONFIG_BTNS_PMIC
 struct backport_thermal_zone_device_ops {
 	int (*bind) (struct thermal_zone_device *,
 		     struct thermal_cooling_device *);
@@ -93,35 +92,6 @@ struct backport_thermal_zone_device_ops {
 	int (*notify) (struct thermal_zone_device *, int,
 		       enum thermal_trip_type);
 };
-#else /* CONFIG_BTNS_PMIC */
-struct backport_thermal_zone_device_ops {
-	int (*bind) (struct thermal_zone_device *,
-		     struct thermal_cooling_device *);
-	int (*unbind) (struct thermal_zone_device *,
-		       struct thermal_cooling_device *);
-	int (*get_temp) (struct thermal_zone_device *, int *);
-	int (*get_mode) (struct thermal_zone_device *,
-			 enum thermal_device_mode *);
-	int (*set_mode) (struct thermal_zone_device *,
-		enum thermal_device_mode);
-	int (*get_trip_type) (struct thermal_zone_device *, int,
-		enum thermal_trip_type *);
-	int (*get_trip_temp) (struct thermal_zone_device *, int, int *);
-	int (*set_trip_temp) (struct thermal_zone_device *, int, int);
-	int (*get_trip_hyst) (struct thermal_zone_device *, int, int *);
-	int (*set_trip_hyst) (struct thermal_zone_device *, int, int);
-	int (*get_slope) (struct thermal_zone_device *, int *);
-	int (*set_slope) (struct thermal_zone_device *, int);
-	int (*get_intercept) (struct thermal_zone_device *, int *);
-	int (*set_intercept) (struct thermal_zone_device *, int);
-	int (*get_crit_temp) (struct thermal_zone_device *, int *);
-	int (*set_emul_temp) (struct thermal_zone_device *, int);
-	int (*get_trend) (struct thermal_zone_device *, int,
-			  enum thermal_trend *);
-	int (*notify) (struct thermal_zone_device *, int,
-		       enum thermal_trip_type);
-};
-#endif /* CONFIG_BTNS_PMIC */
 #define thermal_zone_device_ops LINUX_BACKPORT(thermal_zone_device_ops)
 
 #undef thermal_zone_device_register
@@ -152,5 +122,15 @@ static inline int thermal_zone_device_enable(struct thermal_zone_device *tz)
 { return -ENODEV; }
 #endif /* < 5.9.0 */
 #endif /* CONFIG_THERMAL */
+
+#if LINUX_VERSION_IS_LESS(5,9,0)
+#define thermal_zone_device_enable LINUX_BACKPORT(thermal_zone_device_enable)
+static inline int thermal_zone_device_enable(struct thermal_zone_device *tz)
+{ return 0; }
+
+#define thermal_zone_device_disable LINUX_BACKPORT(thermal_zone_device_disable)
+static inline int thermal_zone_device_disable(struct thermal_zone_device *tz)
+{ return 0; }
+#endif /* < 5.9 */
 
 #endif /* __BACKPORT_LINUX_THERMAL_H */

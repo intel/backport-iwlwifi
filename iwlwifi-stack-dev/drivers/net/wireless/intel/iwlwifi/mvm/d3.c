@@ -2028,6 +2028,10 @@ static int __iwl_mvm_resume(struct iwl_mvm *mvm, bool test)
 
 	mutex_lock(&mvm->mutex);
 
+#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
+	mvm->last_reset_or_resume_time_jiffies = jiffies;
+#endif /* CPTCFG_IWLWIFI_WIFI_6_SUPPORT */
+
 	/* get the BSS vif pointer again */
 	vif = iwl_mvm_get_bss_vif(mvm);
 	if (IS_ERR_OR_NULL(vif))

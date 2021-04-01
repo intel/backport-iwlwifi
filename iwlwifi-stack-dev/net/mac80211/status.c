@@ -50,7 +50,8 @@ static void ieee80211_handle_filtered_frame(struct ieee80211_local *local,
 	int ac;
 
 	if (info->flags & (IEEE80211_TX_CTL_NO_PS_BUFFER |
-			   IEEE80211_TX_CTL_AMPDU)) {
+			   IEEE80211_TX_CTL_AMPDU |
+			   IEEE80211_TX_CTL_HW_80211_ENCAP)) {
 		ieee80211_free_txskb(&local->hw, skb);
 		return;
 	}
@@ -918,15 +919,6 @@ static void __ieee80211_tx_status(struct ieee80211_hw *hw,
 			ieee80211_mpsp_trigger_process(
 				ieee80211_get_qos_ctl(hdr), sta, true, acked);
 
-		if (!acked && test_sta_flag(sta, WLAN_STA_PS_STA)) {
-			/*
-			 * The STA is in power save mode, so assume
-			 * that this TX packet failed because of that.
-			 */
-			ieee80211_handle_filtered_frame(local, sta, skb);
-			return;
-		}
-
 		if (ieee80211_hw_check(&local->hw, HAS_RATE_CONTROL) &&
 		    (ieee80211_is_data(hdr->frame_control)) &&
 		    (rates_idx != -1))
@@ -1044,8 +1036,11 @@ static void __ieee80211_tx_status(struct ieee80211_hw *hw,
 	 */
 	if (!local->monitors && (!send_to_cooked || !local->cooked_mntrs)) {
 		if (status->free_list)
-			list_add_tail((struct list_head *)&skb->next,
-				      status->free_list);
+#if LINUX_VERSION_IS_GEQ(4,19,0)
+			list_add_tail(&skb->list, status->free_list);
+#else
+			__skb_queue_tail(status->free_list, skb);
+#endif
 		else
 			dev_kfree_skb(skb);
 		return;
@@ -1154,6 +1149,12 @@ void ieee80211_tx_status_ext(struct ieee80211_hw *hw,
 							    -info->status.ack_signal);
 				}
 			} else if (test_sta_flag(sta, WLAN_STA_PS_STA)) {
+				/*
+				 * The STA is in power save mode, so assume
+				 * that this TX packet failed because of that.
+				 */
+				if (skb)
+					ieee80211_handle_filtered_frame(local, sta, skb);
 				return;
 			} else if (noack_success) {
 				/* nothing to do here, do not account as lost */
@@ -1189,8 +1190,11 @@ free:
 
 	ieee80211_report_used_skb(local, skb, false);
 	if (status->free_list)
-		list_add_tail((struct list_head *)&skb->next,
-			      status->free_list);
+#if LINUX_VERSION_IS_GEQ(4,19,0)
+		list_add_tail(&skb->list, status->free_list);
+#else
+		__skb_queue_tail(status->free_list, skb);
+#endif
 	else
 		dev_kfree_skb(skb);
 }

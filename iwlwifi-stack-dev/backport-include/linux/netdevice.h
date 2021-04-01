@@ -375,6 +375,18 @@ static inline int _bp_netdev_upper_dev_link(struct net_device *dev,
 	macro_dispatcher(netdev_upper_dev_link, __VA_ARGS__)(__VA_ARGS__)
 #endif
 
+#if LINUX_VERSION_IS_LESS(4,19,0)
+static inline void netif_receive_skb_list(struct sk_buff_head *head)
+{
+	struct sk_buff *skb, *next;
+
+	skb_queue_walk_safe(head, skb, next) {
+		__skb_unlink(skb, head);
+		netif_receive_skb(skb);
+	}
+}
+#endif
+
 #if LINUX_VERSION_IS_LESS(5,0,0)
 static inline int backport_dev_open(struct net_device *dev, struct netlink_ext_ack *extack)
 {
@@ -391,58 +403,13 @@ static inline bool netif_is_bridge_port(const struct net_device *dev)
 }
 #endif
 
-#if LINUX_VERSION_IS_LESS(4,19,0)
-static inline void netif_receive_skb_list(struct list_head *head)
-{
-	struct sk_buff *skb;
-	struct list_head *l, *next;
-
-	if (list_empty(head))
-		return;
-
-	list_for_each_safe(l, next, head) {
-		skb = (void *)l;
-
-		skb_list_del_init(skb);
-		netif_receive_skb(skb);
-	}
-}
-#endif
-
 #if LINUX_VERSION_IS_LESS(5,10,0)
-/**
- *      dev_fetch_sw_netstats - get per-cpu network device statistics
- *      @s: place to store stats
- *      @netstats: per-cpu network stats to read from
- *
- *      Read per-cpu network statistics and populate the related fields in @s.
- */
-static inline
+#define dev_fetch_sw_netstats LINUX_BACKPORT(dev_fetch_sw_netstats)
 void dev_fetch_sw_netstats(struct rtnl_link_stats64 *s,
-                           const struct pcpu_sw_netstats __percpu *netstats)
-{
-        int cpu;
+			   const struct pcpu_sw_netstats __percpu *netstats);
 
-        for_each_possible_cpu(cpu) {
-                const struct pcpu_sw_netstats *stats;
-                struct pcpu_sw_netstats tmp;
-                unsigned int start;
-
-                stats = per_cpu_ptr(netstats, cpu);
-                do {
-                        start = u64_stats_fetch_begin_irq(&stats->syncp);
-                        tmp.rx_packets = stats->rx_packets;
-                        tmp.rx_bytes   = stats->rx_bytes;
-                        tmp.tx_packets = stats->tx_packets;
-                        tmp.tx_bytes   = stats->tx_bytes;
-                } while (u64_stats_fetch_retry_irq(&stats->syncp, start));
-
-                s->rx_packets += tmp.rx_packets;
-                s->rx_bytes   += tmp.rx_bytes;
-                s->tx_packets += tmp.tx_packets;
-                s->tx_bytes   += tmp.tx_bytes;
-        }
-}
+#define netif_rx_any_context LINUX_BACKPORT(netif_rx_any_context)
+int netif_rx_any_context(struct sk_buff *skb);
 #endif /* < 5.10 */
 
 #endif /* __BACKPORT_NETDEVICE_H */

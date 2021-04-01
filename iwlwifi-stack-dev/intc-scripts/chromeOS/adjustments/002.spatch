@@ -1,39 +1,3 @@
-@wiphy_ext_capa@
-identifier a, capa;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
-struct wiphy_iftype_ext_capab a[] = {
-...,
-{
-...,
-	.extended_capabilities = capa,
-...,
-},
-...,
-};
-+#endif
-
-@@
-identifier wiphy_ext_capa.capa;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
-const u8 capa[] = {
-...,
-};
-+#endif
-
-@@
-identifier wiphy_ext_capa.a;
-expression e;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
-if (e) {
-...
-hw->wiphy->iftype_ext_capab = a;
-...
-}
-+#endif
-
 @start_pmsr@
 identifier ops;
 identifier fn;

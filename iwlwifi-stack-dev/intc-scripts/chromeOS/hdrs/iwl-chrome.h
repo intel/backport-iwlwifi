@@ -683,13 +683,15 @@ rcu_head_after_call_rcu(struct rcu_head *rhp, void *f)
 	WARN_ON_ONCE(READ_ONCE(rhp->func) != (void *)~0L);
 	return false;
 }
+#endif /* LINUX_VERSION_IS_LESS(4,20,0) */
 
+#if LINUX_VERSION_IS_LESS(4,14,0)
 #define skb_mark_not_on_list iwl7000_skb_mark_not_on_list
 static inline void skb_mark_not_on_list(struct sk_buff *skb)
 {
 	skb->next = NULL;
 }
-#endif /* LINUX_VERSION_IS_LESS(4,20,0) */
+#endif /* LINUX_VERSION_IS_LESS(4,14,0) */
 
 #if LINUX_VERSION_IS_LESS(5,4,0)
 #include <linux/pci-aspm.h>

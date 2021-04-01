@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #ifndef __iwl_fw_acpi__
 #define __iwl_fw_acpi__
@@ -53,8 +53,8 @@
 
 #define ACPI_WGDS_TABLE_SIZE		3
 
-#define ACPI_PPAG_WIFI_DATA_SIZE	((IWL_NUM_CHAIN_LIMITS * \
-					  IWL_NUM_SUB_BANDS) + 2)
+#define ACPI_PPAG_WIFI_DATA_SIZE_V1	((IWL_NUM_CHAIN_LIMITS * \
+					  IWL_NUM_SUB_BANDS_V1) + 2)
 #define ACPI_PPAG_WIFI_DATA_SIZE_V2	((IWL_NUM_CHAIN_LIMITS * \
 					  IWL_NUM_SUB_BANDS_V2) + 2)
 
@@ -77,6 +77,7 @@ enum iwl_dsm_funcs_rev_0 {
 	DSM_FUNC_QUERY = 0,
 	DSM_FUNC_DISABLE_SRD = 1,
 	DSM_FUNC_ENABLE_INDONESIA_5G2 = 2,
+	DSM_FUNC_11AX_ENABLEMENT = 6,
 };
 
 enum iwl_dsm_values_srd {
@@ -113,7 +114,10 @@ extern const guid_t iwl_rfi_guid;
 void *iwl_acpi_get_object(struct device *dev, acpi_string method);
 
 int iwl_acpi_get_dsm_u8(struct device *dev, int rev, int func,
-			const guid_t *guid);
+			const guid_t *guid, u8 *value);
+
+int iwl_acpi_get_dsm_u32(struct device *dev, int rev, int func,
+			 const guid_t *guid, u32 *value);
 
 union acpi_object *iwl_acpi_get_wifi_pkg(struct device *dev,
 					 union acpi_object *data,
@@ -160,6 +164,8 @@ int iwl_sar_geo_init(struct iwl_fw_runtime *fwrt,
 int iwl_acpi_get_tas(struct iwl_fw_runtime *fwrt, __le32 *block_list_array,
 		     int *block_list_size);
 
+__le32 iwl_acpi_get_lari_config_bitmap(struct iwl_fw_runtime *fwrt);
+
 #else /* CONFIG_ACPI */
 
 static inline void *iwl_acpi_get_object(struct device *dev, acpi_string method)
@@ -174,7 +180,13 @@ static inline void *iwl_acpi_get_dsm_object(struct device *dev, int rev,
 }
 
 static inline int iwl_acpi_get_dsm_u8(struct device *dev, int rev, int func,
-				      const guid_t *guid)
+					   const guid_t *guid, u8 *value)
+{
+	return -ENOENT;
+}
+
+static inline int iwl_acpi_get_dsm_u32(struct device *dev, int rev, int func,
+				       const guid_t *guid, u32 *value)
 {
 	return -ENOENT;
 }
@@ -235,5 +247,11 @@ static inline int iwl_acpi_get_tas(struct iwl_fw_runtime *fwrt,
 {
 	return -ENOENT;
 }
+
+static inline __le32 iwl_acpi_get_lari_config_bitmap(struct iwl_fw_runtime *fwrt)
+{
+	return 0;
+}
+
 #endif /* CONFIG_ACPI */
 #endif /* __iwl_fw_acpi__ */

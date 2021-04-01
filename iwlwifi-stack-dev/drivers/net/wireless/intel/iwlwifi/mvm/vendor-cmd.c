@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -9,6 +9,7 @@
 #include <net/mac80211.h>
 #include "mvm.h"
 #include "iwl-vendor-cmd.h"
+#include "fw/api/datapath.h"
 
 #include "iwl-io.h"
 #include "iwl-prph.h"
@@ -89,6 +90,17 @@ iwl_mvm_vendor_attr_policy[NUM_IWL_MVM_VENDOR_ATTR] = {
 	[IWL_MVM_VENDOR_ATTR_RFIM_FREQ]		    = { .type = NLA_U32 },
 	[IWL_MVM_VENDOR_ATTR_RFIM_CHANNELS]	    = { .type = NLA_U32 },
 	[IWL_MVM_VENDOR_ATTR_RFIM_BANDS]	    = { .type = NLA_U32 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE] = { .type = NLA_U32 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN] = { .type = NLA_U32 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1] = { .type = NLA_U64 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR] = { .type = NLA_U32 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4] = { .type = NLA_U64 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR] = { .type = NLA_U32 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN] = { .type = NLA_U32 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2] = { .type = NLA_U64 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR] = { .type = NLA_U32 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3] = { .type = NLA_U64 },
+	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR] = { .type = NLA_U32 },
 };
 
 static struct nlattr **iwl_mvm_parse_vendor_data(const void *data, int data_len)
@@ -630,6 +642,8 @@ static int iwl_mvm_oppps_wa(struct wiphy *wiphy,
 		bool enable = !!tb[IWL_MVM_VENDOR_ATTR_OPPPS_WA];
 
 		err = iwl_mvm_oppps_wa_update_quota(mvm, vif, enable);
+	} else {
+		err = -EOPNOTSUPP;
 	}
 	mutex_unlock(&mvm->mutex);
 
@@ -1338,6 +1352,64 @@ static int iwl_mvm_vendor_remove_pasn_sta(struct wiphy *wiphy,
 	return ret;
 }
 
+static int iwl_mvm_time_sync_measurement_config(struct wiphy *wiphy,
+						struct wireless_dev *wdev,
+						const void *data, int data_len)
+{
+	struct nlattr **tb;
+	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
+	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
+	struct iwl_time_sync_cfg_cmd cmd = {};
+	u32 protocol_types;
+	int err;
+
+	tb = iwl_mvm_parse_vendor_data(data, data_len);
+	if (IS_ERR(tb))
+		return PTR_ERR(tb);
+
+	if (!tb[IWL_MVM_VENDOR_ATTR_ADDR] ||
+	    !tb[IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE])
+		return -EINVAL;
+
+	ether_addr_copy(cmd.peer_addr, nla_data(tb[IWL_MVM_VENDOR_ATTR_ADDR]));
+
+	protocol_types = nla_get_u32(tb[IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE]);
+
+	/* Check if the requested configuration was already set earlier */
+	if (protocol_types == mvm->time_msmt_cfg)
+		return -EALREADY;
+
+	if (protocol_types <= (IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_TM |
+			      IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_FTM))
+		cmd.protocols = cpu_to_le32(protocol_types);
+	else
+		return -EINVAL;
+
+	mutex_lock(&mvm->mutex);
+	err = iwl_mvm_send_cmd_pdu(mvm,
+				   iwl_cmd_id(WNM_80211V_TIMING_MEASUREMENT_CONFIG_CMD,
+					      DATA_PATH_GROUP, 0),
+				   0, sizeof(cmd), &cmd);
+	mutex_unlock(&mvm->mutex);
+
+	if (err) {
+		IWL_ERR(mvm, "Failed to send TM/FTM Measurement cfg cmd: %d\n", err);
+		return err;
+	}
+
+	/* Save the changed time sync measurement configuration */
+	mvm->time_msmt_cfg = protocol_types;
+	ether_addr_copy(mvm->time_msmt_peer_addr, cmd.peer_addr);
+	mvm->time_sync_wdev = wdev;
+
+	return 0;
+}
+
+static inline u64 iwl_mvm_get_64_bit(u32 high, u32 low)
+{
+	return ((u64)high << 32) | low;
+}
+
 static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 	{
 		.info = {
@@ -1561,23 +1633,40 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 		.policy = iwl_mvm_vendor_attr_policy,
 		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
 	},
+	{
+		.info = {
+			.vendor_id = INTEL_OUI,
+			.subcmd = IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG,
+		},
+		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
+			 WIPHY_VENDOR_CMD_NEED_RUNNING,
+		.doit = iwl_mvm_time_sync_measurement_config,
+		.policy = iwl_mvm_vendor_attr_policy,
+		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
+	},
 };
 
 enum iwl_mvm_vendor_events_idx {
-	IWL_MVM_VENDOR_EVENT_IDX_TCM,
-	IWL_MVM_VENDOR_EVENT_IDX_CSI,
+	/* 0x0 is deprecated */
+	IWL_MVM_VENDOR_EVENT_IDX_CSI = 1,
+	IWL_MVM_VENDOR_EVENT_IDX_TSM_CFM,
+	IWL_MVM_VENDOR_EVENT_IDX_TSM_MSMT,
 	NUM_IWL_MVM_VENDOR_EVENT_IDX
 };
 
 static const struct nl80211_vendor_cmd_info
 iwl_mvm_vendor_events[NUM_IWL_MVM_VENDOR_EVENT_IDX] = {
-	[IWL_MVM_VENDOR_EVENT_IDX_TCM] = {
-		.vendor_id = INTEL_OUI,
-		.subcmd = IWL_MVM_VENDOR_CMD_TCM_EVENT,
-	},
 	[IWL_MVM_VENDOR_EVENT_IDX_CSI] = {
 		.vendor_id = INTEL_OUI,
 		.subcmd = IWL_MVM_VENDOR_CMD_CSI_EVENT,
+	},
+	[IWL_MVM_VENDOR_EVENT_IDX_TSM_CFM] = {
+		.vendor_id = INTEL_OUI,
+		.subcmd = IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT,
+	},
+	[IWL_MVM_VENDOR_EVENT_IDX_TSM_MSMT] = {
+		.vendor_id = INTEL_OUI,
+		.subcmd = IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT,
 	},
 };
 
@@ -1598,58 +1687,6 @@ void iwl_mvm_vendor_cmds_unregister(struct iwl_mvm *mvm)
 	spin_lock_bh(&device_list_lock);
 	list_del(&mvm->list);
 	spin_unlock_bh(&device_list_lock);
-}
-
-static enum iwl_mvm_vendor_load
-iwl_mvm_get_vendor_load(enum iwl_mvm_traffic_load load)
-{
-	switch (load) {
-	case IWL_MVM_TRAFFIC_HIGH:
-		return IWL_MVM_VENDOR_LOAD_HIGH;
-	case IWL_MVM_TRAFFIC_MEDIUM:
-		return IWL_MVM_VENDOR_LOAD_MEDIUM;
-	case IWL_MVM_TRAFFIC_LOW:
-		return IWL_MVM_VENDOR_LOAD_LOW;
-	default:
-		break;
-	}
-
-	return IWL_MVM_VENDOR_LOAD_LOW;
-}
-
-void iwl_mvm_send_tcm_event(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
-{
-	struct sk_buff *msg =
-		cfg80211_vendor_event_alloc(mvm->hw->wiphy,
-					    ieee80211_vif_to_wdev(vif),
-					    200, IWL_MVM_VENDOR_EVENT_IDX_TCM,
-					    GFP_ATOMIC);
-
-	if (!msg)
-		return;
-
-	if (vif) {
-		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-
-		if (nla_put(msg, IWL_MVM_VENDOR_ATTR_VIF_ADDR,
-			    ETH_ALEN, vif->addr) ||
-		    nla_put_u8(msg, IWL_MVM_VENDOR_ATTR_VIF_LL,
-			       iwl_mvm_vif_low_latency(mvmvif)) ||
-		    nla_put_u8(msg, IWL_MVM_VENDOR_ATTR_VIF_LOAD,
-			       mvm->tcm.result.load[mvmvif->id]))
-			goto nla_put_failure;
-	}
-
-	if (nla_put_u8(msg, IWL_MVM_VENDOR_ATTR_LL, iwl_mvm_low_latency(mvm)) ||
-	    nla_put_u8(msg, IWL_MVM_VENDOR_ATTR_LOAD,
-		       iwl_mvm_get_vendor_load(mvm->tcm.result.global_load)))
-		goto nla_put_failure;
-
-	cfg80211_vendor_event(msg, GFP_ATOMIC);
-	return;
-
- nla_put_failure:
-	kfree_skb(msg);
 }
 
 static void
@@ -1695,6 +1732,122 @@ iwl_mvm_send_csi_event(struct iwl_mvm *mvm,
 	return;
 
  nla_put_failure:
+	kfree_skb(msg);
+}
+
+void iwl_mvm_time_sync_msmt_confirm_event(struct iwl_mvm *mvm,
+					  struct iwl_rx_cmd_buffer *rxb)
+{
+	struct iwl_rx_packet *pkt = rxb_addr(rxb);
+	struct iwl_time_msmt_cfm_notify *cfm_notify = (void *)pkt->data;
+	u64 t1;
+	u64 t4;
+
+	struct sk_buff *msg =
+		cfg80211_vendor_event_alloc(mvm->hw->wiphy, mvm->time_sync_wdev,
+					    200,
+					    IWL_MVM_VENDOR_EVENT_IDX_TSM_CFM,
+					    GFP_ATOMIC);
+	if (!msg)
+		return;
+
+	t1 = iwl_mvm_get_64_bit(le32_to_cpu(cfm_notify->t1_hi),
+				le32_to_cpu(cfm_notify->t1_lo));
+	t4 = iwl_mvm_get_64_bit(le32_to_cpu(cfm_notify->t4_hi),
+				le32_to_cpu(cfm_notify->t4_lo));
+
+	if (!t1 || !t4)
+		IWL_WARN(mvm, "TSM CFM: Rx'ed zero timestamp(s), t1:%llu, t4:%llu\n",
+			 t1, t4);
+
+	if (nla_put(msg, IWL_MVM_VENDOR_ATTR_ADDR,
+		    ETH_ALEN, cfm_notify->peer_addr) ||
+		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN,
+			    le32_to_cpu(cfm_notify->dialog_token)) ||
+		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1, t1,
+				  IWL_MVM_VENDOR_ATTR_PAD) ||
+		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR,
+			    le32_to_cpu(cfm_notify->t1_max_err)) ||
+		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4, t4,
+				  IWL_MVM_VENDOR_ATTR_PAD) ||
+		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR,
+			    le32_to_cpu(cfm_notify->t4_max_err))) {
+		goto nla_put_failure;
+	}
+
+	cfg80211_vendor_event(msg, GFP_ATOMIC);
+	return;
+
+ nla_put_failure:
+	kfree_skb(msg);
+}
+
+void iwl_mvm_time_sync_msmt_event(struct iwl_mvm *mvm,
+				  struct iwl_rx_cmd_buffer *rxb)
+{
+	struct iwl_rx_packet *pkt = rxb_addr(rxb);
+	struct iwl_time_msmt_notify *msmt_notify = (void *)pkt->data;
+	u64 t1;
+	u64 t4;
+	u64 t2;
+	u64 t3;
+
+	struct sk_buff *msg =
+		cfg80211_vendor_event_alloc(mvm->hw->wiphy, mvm->time_sync_wdev,
+					    200 + PTP_CTX_MAX_DATA_SIZE,
+					    IWL_MVM_VENDOR_EVENT_IDX_TSM_MSMT,
+					    GFP_ATOMIC);
+	if (!msg)
+		return;
+
+	t1 = iwl_mvm_get_64_bit(le32_to_cpu(msmt_notify->t1_hi),
+				le32_to_cpu(msmt_notify->t1_lo));
+	t4 = iwl_mvm_get_64_bit(le32_to_cpu(msmt_notify->t4_hi),
+				le32_to_cpu(msmt_notify->t4_lo));
+	t2 = iwl_mvm_get_64_bit(le32_to_cpu(msmt_notify->t2_hi),
+				le32_to_cpu(msmt_notify->t2_lo));
+	t3 = iwl_mvm_get_64_bit(le32_to_cpu(msmt_notify->t3_hi),
+				le32_to_cpu(msmt_notify->t3_lo));
+
+	if (!t1 || !t4)
+		IWL_WARN(mvm, "TSM CFM: Rx'ed zero timestamps, t1:%llu, t4:%llu\n",
+			 t1, t4);
+
+	if (!t2 || !t3)
+		IWL_WARN(mvm, "TSM CFM: Rx'ed zero timestamps, t2:%llu, t3:%llu\n",
+			 t2, t3);
+
+	if (nla_put(msg, IWL_MVM_VENDOR_ATTR_ADDR,
+		    ETH_ALEN, msmt_notify->peer_addr) ||
+		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN,
+			    le32_to_cpu(msmt_notify->dialog_token)) ||
+		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN,
+			    le32_to_cpu(msmt_notify->followup_dialog_token)) ||
+		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1, t1,
+				  IWL_MVM_VENDOR_ATTR_PAD) ||
+		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR,
+			    le32_to_cpu(msmt_notify->t1_max_err)) ||
+		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4, t4,
+				  IWL_MVM_VENDOR_ATTR_PAD) ||
+		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR,
+			    le32_to_cpu(msmt_notify->t4_max_err)) ||
+		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2, t2,
+				  IWL_MVM_VENDOR_ATTR_PAD) ||
+		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR,
+			    le32_to_cpu(msmt_notify->t2_max_err)) ||
+		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3, t3,
+				  IWL_MVM_VENDOR_ATTR_PAD) ||
+		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR,
+			    le32_to_cpu(msmt_notify->t3_max_err)) ||
+		nla_put(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA,
+			msmt_notify->ptp.length, msmt_notify->ptp.data)) {
+		goto nla_put_failure;
+	}
+
+	cfg80211_vendor_event(msg, GFP_ATOMIC);
+	return;
+
+nla_put_failure:
 	kfree_skb(msg);
 }
 

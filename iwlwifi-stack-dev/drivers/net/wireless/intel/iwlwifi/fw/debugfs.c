@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -545,18 +545,18 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 
 	ps_report = (void *)resp->data;
 
-#define PRINT_PS_REPORT_32(_f) \
-	({ BUILD_BUG_ON(sizeof(ps_report->_f) != 4); \
-	   offsetof(typeof(*ps_report), _f) < report_size ? \
-		    scnprintf(buf + ret, size - ret, #_f " %u\n", \
-			      le32_to_cpu(ps_report->_f)) : \
-		    0; })
-#define PRINT_PS_REPORT_16(_f) \
-	({ BUILD_BUG_ON(sizeof(ps_report->_f) != 2); \
-	   offsetof(typeof(*ps_report), _f) < report_size ? \
-		    scnprintf(buf + ret, size - ret, #_f " %u\n", \
-			      le16_to_cpu(ps_report->_f)) : \
-		    0; })
+#define PRINT_PS_REPORT_32(_f)						\
+	({ BUILD_BUG_ON(sizeof(ps_report->_f) != 4);			\
+	   offsetofend(typeof(*ps_report), _f) <= report_size ?		\
+		       scnprintf(buf + ret, size - ret, #_f " %u\n",	\
+				 le32_to_cpu(ps_report->_f)) :		\
+		       0; })
+#define PRINT_PS_REPORT_16(_f)						\
+	({ BUILD_BUG_ON(sizeof(ps_report->_f) != 2);			\
+	   offsetofend(typeof(*ps_report), _f) <= report_size ?		\
+		       scnprintf(buf + ret, size - ret, #_f " %u\n",	\
+				 le16_to_cpu(ps_report->_f)) :		\
+		       0; })
 
 	ret += PRINT_PS_REPORT_32(total_sleep_counter);
 	ret += PRINT_PS_REPORT_32(total_sleep_duration);

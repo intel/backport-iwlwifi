@@ -418,6 +418,45 @@ static int iwl_fmac_config_prev_regdom(struct iwl_fmac *fmac)
 	return ret;
 }
 
+#ifdef CONFIG_ACPI
+
+static void iwl_fmac_lari_cfg(struct iwl_fmac *fmac)
+{
+	int cmd_ret;
+	struct iwl_lari_config_change_cmd_v2 cmd = {};
+
+	cmd.config_bitmap = iwl_acpi_get_lari_config_bitmap(&fmac->fwrt);
+
+	/* apply more config masks here */
+
+	if (cmd.config_bitmap) {
+		size_t cmd_size = iwl_fw_lookup_cmd_ver(fmac->fw,
+							REGULATORY_AND_NVM_GROUP,
+							LARI_CONFIG_CHANGE, 1) == 2 ?
+			sizeof(struct iwl_lari_config_change_cmd_v2) :
+			sizeof(struct iwl_lari_config_change_cmd_v1);
+		IWL_DEBUG_RADIO(fmac,
+				"sending LARI_CONFIG_CHANGE, config_bitmap=0x%x\n",
+				le32_to_cpu(cmd.config_bitmap));
+		cmd_ret = iwl_fmac_send_cmd_pdu(fmac,
+						WIDE_ID(REGULATORY_AND_NVM_GROUP,
+							LARI_CONFIG_CHANGE),
+						0, cmd_size, &cmd);
+		if (cmd_ret < 0)
+			IWL_DEBUG_RADIO(fmac,
+					"Failed to send LARI_CONFIG_CHANGE (%d)\n",
+					cmd_ret);
+	}
+}
+
+#else
+
+static void iwl_fmac_lari_cfg(struct iwl_fmac *fmac)
+{
+}
+
+#endif
+
 static int iwl_fmac_config_regulatory(struct iwl_fmac *fmac)
 {
 	char mcc[3] = "ZZ"; /* default regdom */
@@ -453,6 +492,8 @@ static int iwl_fmac_config_regulatory(struct iwl_fmac *fmac)
 		IWL_ERR(fmac, "Could not set regdom to cfg80211\n");
 		goto cleanup;
 	}
+
+	iwl_fmac_lari_cfg(fmac);
 
 cleanup:
 	if (!IS_ERR_OR_NULL(regd))
@@ -576,10 +617,6 @@ static int iwl_send_rss_cfg_cmd(struct iwl_fmac *fmac)
 		.data = { &cmd, },
 		.len = { sizeof(cmd), },
 	};
-
-	/* TODO - remove 22000 disablement when we have RXQ config API */
-	if (fmac->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000)
-		return 0;
 
 	if (fmac->trans->num_rx_queues == 1)
 		return 0;
@@ -783,6 +820,11 @@ int iwl_fmac_run_rt_fw(struct iwl_fmac *fmac)
 	iwl_fw_start_dbg_conf(&fmac->fwrt, FW_DBG_START_FROM_ALIVE);
 
 	ret = iwl_fmac_send_nvm_cmd(fmac);
+	if (ret)
+		goto error;
+
+	/* Init RSS configuration */
+	ret = iwl_configure_rxq(&fmac->fwrt);
 	if (ret)
 		goto error;
 

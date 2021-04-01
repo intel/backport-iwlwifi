@@ -25,7 +25,7 @@ static inline void *kmalloc_array(size_t n, size_t size, gfp_t flags)
 #endif
 
 #if LINUX_VERSION_IS_LESS(5,9,0)
-#define kfree_sensitive(p) kzfree(p)
+#define kfree_sensitive(x)	kzfree(x)
 #endif
 
 #endif /* __BACKPORT_SLAB_H */

@@ -1477,7 +1477,6 @@ ieee80211_rx_h_check(struct ieee80211_rx_data *rx)
 	if (unlikely((ieee80211_is_data(hdr->frame_control) ||
 		      ieee80211_is_pspoll(hdr->frame_control)) &&
 		     rx->sdata->vif.type != NL80211_IFTYPE_ADHOC &&
-		     rx->sdata->vif.type != NL80211_IFTYPE_WDS &&
 		     rx->sdata->vif.type != NL80211_IFTYPE_OCB &&
 		     (!rx->sta || !test_sta_flag(rx->sta, WLAN_STA_ASSOC)))) {
 		/*
@@ -2539,7 +2538,11 @@ static void ieee80211_deliver_skb_to_local_stack(struct sk_buff *skb,
 
 		/* deliver to local stack */
 		if (rx->list)
-			list_add_tail((struct list_head *)&skb->next, rx->list);
+#if LINUX_VERSION_IS_GEQ(4,19,0)
+			list_add_tail(&skb->list, rx->list);
+#else
+			__skb_queue_tail(rx->list, skb);
+#endif
 		else
 			netif_receive_skb(skb);
 	}
@@ -4080,10 +4083,6 @@ static bool ieee80211_accept_frame(struct ieee80211_rx_data *rx)
 			return false;
 
 		return true;
-	case NL80211_IFTYPE_WDS:
-		if (bssid || !ieee80211_is_data(hdr->frame_control))
-			return false;
-		return ether_addr_equal(sdata->u.wds.remote_addr, hdr->addr2);
 	case NL80211_IFTYPE_P2P_DEVICE:
 		return ieee80211_is_public_action(hdr, skb->len) ||
 		       ieee80211_is_probe_req(hdr->frame_control) ||
@@ -4459,7 +4458,11 @@ static bool ieee80211_invoke_fast_rx(struct ieee80211_rx_data *rx,
 	skb->protocol = eth_type_trans(skb, fast_rx->dev);
 	memset(skb->cb, 0, sizeof(skb->cb));
 	if (rx->list)
-		list_add_tail((struct list_head *)&skb->next, rx->list);
+#if LINUX_VERSION_IS_GEQ(4,19,0)
+		list_add_tail(&skb->list, rx->list);
+#else
+		__skb_queue_tail(rx->list, skb);
+#endif
 	else
 		netif_receive_skb(skb);
 
@@ -4526,7 +4529,11 @@ static bool ieee80211_prepare_and_rx_handle(struct ieee80211_rx_data *rx,
 static void __ieee80211_rx_handle_packet(struct ieee80211_hw *hw,
 					 struct ieee80211_sta *pubsta,
 					 struct sk_buff *skb,
+#if LINUX_VERSION_IS_GEQ(4,19,0)
 					 struct list_head *list)
+#else
+					 struct sk_buff_head *list)
+#endif
 {
 	struct ieee80211_local *local = hw_to_local(hw);
 	struct ieee80211_sub_if_data *sdata;
@@ -4651,7 +4658,11 @@ static void __ieee80211_rx_handle_packet(struct ieee80211_hw *hw,
  * 802.11 MPDU is received from the hardware.
  */
 void ieee80211_rx_list(struct ieee80211_hw *hw, struct ieee80211_sta *pubsta,
+#if LINUX_VERSION_IS_GEQ(4,19,0)
 		       struct sk_buff *skb, struct list_head *list)
+#else
+		       struct sk_buff *skb, struct sk_buff_head *list)
+#endif
 {
 	struct ieee80211_local *local = hw_to_local(hw);
 	struct ieee80211_rate *rate = NULL;
@@ -4767,12 +4778,14 @@ EXPORT_SYMBOL(ieee80211_rx_list);
 void ieee80211_rx_napi(struct ieee80211_hw *hw, struct ieee80211_sta *pubsta,
 		       struct sk_buff *skb, struct napi_struct *napi)
 {
-#if LINUX_VERSION_IS_LESS(5,9,0)
-	struct list_head *l, *tmp;
-#else
 	struct sk_buff *tmp;
-#endif
+#if LINUX_VERSION_IS_GEQ(4,19,0)
 	LIST_HEAD(list);
+#else
+	struct sk_buff_head list;
+
+	__skb_queue_head_init(&list);
+#endif
 
 	/*
 	 * key references and virtual interfaces are protected using RCU
@@ -4788,13 +4801,13 @@ void ieee80211_rx_napi(struct ieee80211_hw *hw, struct ieee80211_sta *pubsta,
 		return;
 	}
 
-#if LINUX_VERSION_IS_LESS(5,9,0)
-	list_for_each_safe(l, tmp, &list) {
-		skb = (void *)l;
-#else
+#if LINUX_VERSION_IS_GEQ(4,19,0)
 	list_for_each_entry_safe(skb, tmp, &list, list) {
-#endif
 		skb_list_del_init(skb);
+#else
+	skb_queue_walk_safe(&list, skb, tmp) {
+		__skb_unlink(skb, &list);
+#endif
 		napi_gro_receive(napi, skb);
 	}
 }

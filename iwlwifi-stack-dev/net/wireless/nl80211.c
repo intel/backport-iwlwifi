@@ -290,6 +290,7 @@ nl80211_pmsr_ftm_req_attr_policy[NL80211_PMSR_FTM_REQ_ATTR_MAX + 1] = {
 	[NL80211_PMSR_FTM_REQ_ATTR_REQUEST_CIVICLOC] = { .type = NLA_FLAG },
 	[NL80211_PMSR_FTM_REQ_ATTR_TRIGGER_BASED] = { .type = NLA_FLAG },
 	[NL80211_PMSR_FTM_REQ_ATTR_NON_TRIGGER_BASED] = { .type = NLA_FLAG },
+	[NL80211_PMSR_FTM_REQ_ATTR_LMR_FEEDBACK] = { .type = NLA_FLAG },
 };
 
 static const struct nla_policy
@@ -388,7 +389,9 @@ static const struct nla_policy
 nl80211_fils_discovery_policy[NL80211_FILS_DISCOVERY_ATTR_MAX + 1] = {
 	[NL80211_FILS_DISCOVERY_ATTR_INT_MIN] = NLA_POLICY_MAX(NLA_U32, 10000),
 	[NL80211_FILS_DISCOVERY_ATTR_INT_MAX] = NLA_POLICY_MAX(NLA_U32, 10000),
+#if LINUX_VERSION_IS_GEQ(5,10,0)
 	NLA_POLICY_BINARY_RANGE(NL80211_FILS_DISCOVERY_TMPL_MIN_LEN, IEEE80211_MAX_DATA_LEN),
+#endif
 };
 
 static const struct nla_policy
@@ -627,22 +630,32 @@ static const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
 	 * The value of the Length field of the Supported Operating
 	 * Classes element is between 2 and 253.
 	 */
+#if LINUX_VERSION_IS_GEQ(5,10,0)
 	[NL80211_ATTR_STA_SUPPORTED_OPER_CLASSES] =
 		NLA_POLICY_BINARY_RANGE(2, 253),
-		[NL80211_ATTR_HANDLE_DFS] = { .type = NLA_FLAG },
-		[NL80211_ATTR_OPMODE_NOTIF] = { .type = NLA_U8 },
-		[NL80211_ATTR_VENDOR_ID] = { .type = NLA_U32 },
-		[NL80211_ATTR_VENDOR_SUBCMD] = { .type = NLA_U32 },
-		[NL80211_ATTR_VENDOR_DATA] = { .type = NLA_BINARY },
-		[NL80211_ATTR_QOS_MAP] = NLA_POLICY_BINARY_RANGE(IEEE80211_QOS_MAP_LEN_MIN, IEEE80211_QOS_MAP_LEN_MAX),
-		[NL80211_ATTR_MAC_HINT] = NLA_POLICY_EXACT_LEN_WARN(ETH_ALEN),
-		[NL80211_ATTR_WIPHY_FREQ_HINT] = { .type = NLA_U32 },
-		[NL80211_ATTR_TDLS_PEER_CAPABILITY] = { .type = NLA_U32 },
-		[NL80211_ATTR_SOCKET_OWNER] = { .type = NLA_FLAG },
-		[NL80211_ATTR_CSA_C_OFFSETS_TX] = { .type = NLA_BINARY },
-		[NL80211_ATTR_USE_RRM] = { .type = NLA_FLAG },
-		[NL80211_ATTR_TSID] = NLA_POLICY_MAX(NLA_U8, IEEE80211_NUM_TIDS - 1),
-		[NL80211_ATTR_USER_PRIO] =
+#else
+	[NL80211_ATTR_STA_SUPPORTED_OPER_CLASSES] =
+		{ .type = NLA_BINARY },
+#endif
+	[NL80211_ATTR_HANDLE_DFS] = { .type = NLA_FLAG },
+	[NL80211_ATTR_OPMODE_NOTIF] = { .type = NLA_U8 },
+	[NL80211_ATTR_VENDOR_ID] = { .type = NLA_U32 },
+	[NL80211_ATTR_VENDOR_SUBCMD] = { .type = NLA_U32 },
+	[NL80211_ATTR_VENDOR_DATA] = { .type = NLA_BINARY },
+#if LINUX_VERSION_IS_GEQ(5,10,0)
+	[NL80211_ATTR_QOS_MAP] = NLA_POLICY_BINARY_RANGE(IEEE80211_QOS_MAP_LEN_MIN, IEEE80211_QOS_MAP_LEN_MAX),
+#else
+	[NL80211_ATTR_QOS_MAP] = { .type = NLA_BINARY,
+				   .len = IEEE80211_QOS_MAP_LEN_MAX },
+#endif
+	[NL80211_ATTR_MAC_HINT] = NLA_POLICY_EXACT_LEN_WARN(ETH_ALEN),
+	[NL80211_ATTR_WIPHY_FREQ_HINT] = { .type = NLA_U32 },
+	[NL80211_ATTR_TDLS_PEER_CAPABILITY] = { .type = NLA_U32 },
+	[NL80211_ATTR_SOCKET_OWNER] = { .type = NLA_FLAG },
+	[NL80211_ATTR_CSA_C_OFFSETS_TX] = { .type = NLA_BINARY },
+	[NL80211_ATTR_USE_RRM] = { .type = NLA_FLAG },
+	[NL80211_ATTR_TSID] = NLA_POLICY_MAX(NLA_U8, IEEE80211_NUM_TIDS - 1),
+	[NL80211_ATTR_USER_PRIO] =
 		NLA_POLICY_MAX(NLA_U8, IEEE80211_NUM_UPS - 1),
 	[NL80211_ATTR_ADMITTED_TIME] = { .type = NLA_U16 },
 	[NL80211_ATTR_SMPS_MODE] = { .type = NLA_U8 },
@@ -689,9 +702,14 @@ static const struct nla_policy nl80211_policy[NUM_NL80211_ATTR] = {
 	[NL80211_ATTR_TXQ_LIMIT] = { .type = NLA_U32 },
 	[NL80211_ATTR_TXQ_MEMORY_LIMIT] = { .type = NLA_U32 },
 	[NL80211_ATTR_TXQ_QUANTUM] = { .type = NLA_U32 },
+#if LINUX_VERSION_IS_GEQ(5,10,0)
 	[NL80211_ATTR_HE_CAPABILITY] =
 		NLA_POLICY_BINARY_RANGE(NL80211_HE_MIN_CAPABILITY_LEN, NL80211_HE_MAX_CAPABILITY_LEN),
-		[NL80211_ATTR_FTM_RESPONDER] =
+#else
+	[NL80211_ATTR_HE_CAPABILITY] = { .type = NLA_BINARY,
+					 .len = NL80211_HE_MAX_CAPABILITY_LEN },
+#endif
+	[NL80211_ATTR_FTM_RESPONDER] =
 		NLA_POLICY_NESTED(nl80211_ftm_responder_policy),
 	[NL80211_ATTR_TIMEOUT] = NLA_POLICY_MIN(NLA_U32, 1),
 	[NL80211_ATTR_PEER_MEASUREMENTS] =
@@ -1889,7 +1907,6 @@ static int nl80211_add_commands_unsplit(struct cfg80211_registered_device *rdev,
 		if (nla_put_u32(msg, i, NL80211_CMD_SET_CHANNEL))
 			goto nla_put_failure;
 	}
-	CMD(set_wds_peer, SET_WDS_PEER);
 	if (rdev->wiphy.flags & WIPHY_FLAG_SUPPORTS_TDLS) {
 		CMD(tdls_mgmt, TDLS_MGMT);
 		CMD(tdls_oper, TDLS_OPER);
@@ -2869,8 +2886,8 @@ static int parse_txq_params(struct nlattr *tb[],
 static bool nl80211_can_set_dev_channel(struct wireless_dev *wdev)
 {
 	/*
-	 * You can only set the channel explicitly for WDS interfaces,
-	 * all others have their channel managed via their respective
+	 * You can only set the channel explicitly for some interfaces,
+	 * most have their channel managed via their respective
 	 * "establish a connection" command (connect, join, ...)
 	 *
 	 * For AP/GO and mesh mode, the channel can be set with the
@@ -3073,29 +3090,6 @@ static int nl80211_set_channel(struct sk_buff *skb, struct genl_info *info)
 	struct net_device *netdev = info->user_ptr[1];
 
 	return __nl80211_set_channel(rdev, netdev, info);
-}
-
-static int nl80211_set_wds_peer(struct sk_buff *skb, struct genl_info *info)
-{
-	struct cfg80211_registered_device *rdev = info->user_ptr[0];
-	struct net_device *dev = info->user_ptr[1];
-	struct wireless_dev *wdev = dev->ieee80211_ptr;
-	const u8 *bssid;
-
-	if (!info->attrs[NL80211_ATTR_MAC])
-		return -EINVAL;
-
-	if (netif_running(dev))
-		return -EBUSY;
-
-	if (!rdev->ops->set_wds_peer)
-		return -EOPNOTSUPP;
-
-	if (wdev->iftype != NL80211_IFTYPE_WDS)
-		return -EOPNOTSUPP;
-
-	bssid = nla_data(info->attrs[NL80211_ATTR_MAC]);
-	return rdev_set_wds_peer(rdev, dev, bssid);
 }
 
 static int nl80211_set_wiphy(struct sk_buff *skb, struct genl_info *info)
@@ -4270,9 +4264,6 @@ static int nl80211_del_key(struct sk_buff *skb, struct genl_info *info)
 	if (err)
 		return err;
 
-	if (key.idx < 0)
-		return -EINVAL;
-
 	if (info->attrs[NL80211_ATTR_MAC])
 		mac_addr = nla_data(info->attrs[NL80211_ATTR_MAC]);
 
@@ -4286,6 +4277,10 @@ static int nl80211_del_key(struct sk_buff *skb, struct genl_info *info)
 	/* for now */
 	if (key.type != NL80211_KEYTYPE_PAIRWISE &&
 	    key.type != NL80211_KEYTYPE_GROUP)
+		return -EINVAL;
+
+	if (!cfg80211_valid_key_idx(rdev, key.idx,
+				    key.type == NL80211_KEYTYPE_PAIRWISE))
 		return -EINVAL;
 
 	if (!rdev->ops->del_key)
@@ -14733,7 +14728,7 @@ static __genl_const struct genl_ops nl80211_ops[] = {
 };
 
 static const struct genl_small_ops nl80211_small_ops[] = {
-#endif /* >= 5.10 */
+#endif
 	{
 		.cmd = NL80211_CMD_SET_WIPHY,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
@@ -15202,14 +15197,6 @@ static const struct genl_small_ops nl80211_small_ops[] = {
 				  NL80211_FLAG_NEED_RTNL,
 	},
 	{
-		.cmd = NL80211_CMD_SET_WDS_PEER,
-		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
-		.doit = nl80211_set_wds_peer,
-		.flags = GENL_UNS_ADMIN_PERM,
-		.internal_flags = NL80211_FLAG_NEED_NETDEV |
-				  NL80211_FLAG_NEED_RTNL,
-	},
-	{
 		.cmd = NL80211_CMD_JOIN_MESH,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.doit = nl80211_join_mesh,
@@ -15598,7 +15585,7 @@ static struct genl_family nl80211_fam __genl_ro_after_init = {
 #if LINUX_VERSION_IS_GEQ(5,10,0)
 	.small_ops = nl80211_small_ops,
 	.n_small_ops = ARRAY_SIZE(nl80211_small_ops),
-#endif /* >= 5.10 */
+#endif
 	.mcgrps = nl80211_mcgrps,
 	.n_mcgrps = ARRAY_SIZE(nl80211_mcgrps),
 	.parallel_ops = true,

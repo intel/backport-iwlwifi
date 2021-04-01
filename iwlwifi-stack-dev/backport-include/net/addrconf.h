@@ -22,4 +22,19 @@ static inline bool ipv6_addr_is_solict_mult(const struct in6_addr *addr)
 }
 #endif /* LINUX_VERSION_IS_LESS(3,9,0) */
 
+#if LINUX_VERSION_IS_LESS(4,2,0)
+static inline int ipv6_mc_check_mld(struct sk_buff *skb)
+{
+	WARN_ON(1);
+
+	return -1;
+}
+#elif LINUX_VERSION_IS_LESS(5,1,0)
+static inline int backport_ipv6_mc_check_mld(struct sk_buff *skb)
+{
+	return ipv6_mc_check_mld(skb, NULL);
+}
+#define ipv6_mc_check_mld LINUX_BACKPORT(ipv6_mc_check_mld)
+#endif
+
 #endif	/* _BACKPORT_NET_ADDRCONF_H */

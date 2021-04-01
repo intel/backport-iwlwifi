@@ -105,6 +105,15 @@
 #define IWL_MVM_ENABLE_EBS			1
 #define IWL_MVM_FTM_INITIATOR_ALGO		IWL_TOF_ALGO_TYPE_MAX_LIKE
 #define IWL_MVM_FTM_INITIATOR_DYNACK		true
+#define IWL_MVM_FTM_R2I_MAX_REP			7
+#define IWL_MVM_FTM_I2R_MAX_REP			7
+#define IWL_MVM_FTM_R2I_MAX_STS			1
+#define IWL_MVM_FTM_I2R_MAX_STS			1
+#define IWL_MVM_FTM_R2I_MAX_TOTAL_LTF		3
+#define IWL_MVM_FTM_I2R_MAX_TOTAL_LTF		3
+#define IWL_MVM_FTM_INITIATOR_SECURE_LTF	false
+#define IWL_MVM_FTM_RESP_NDP_SUPPORT		true
+#define IWL_MVM_FTM_RESP_LMR_FEEDBACK_SUPPORT	true
 #define IWL_MVM_D3_DEBUG			false
 #define IWL_MVM_USE_TWT				true
 #define IWL_MVM_TWT_TESTMODE			false
@@ -120,6 +129,8 @@
 #define IWL_MVM_PHY_FILTER_CHAIN_C		0
 #define IWL_MVM_PHY_FILTER_CHAIN_D		0
 #define IWL_MVM_DISABLE_AP_FILS			false
+#define IWL_MVM_6GHZ_PASSIVE_SCAN_TIMEOUT       3000 /* in seconds */
+#define IWL_MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT 60   /* in seconds */
 #else /* CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES */
 #define IWL_MVM_DEFAULT_PS_TX_DATA_TIMEOUT	(mvm->trans->dbg_cfg.MVM_DEFAULT_PS_TX_DATA_TIMEOUT)
 #define IWL_MVM_DEFAULT_PS_RX_DATA_TIMEOUT	(mvm->trans->dbg_cfg.MVM_DEFAULT_PS_RX_DATA_TIMEOUT)
@@ -211,11 +222,20 @@
 #define IWL_MVM_FTM_RESP_TOA_OFFSET		(mvm->trans->dbg_cfg.MVM_FTM_RESP_TOA_OFFSET)
 #define IWL_MVM_FTM_RESP_VALID			(mvm->trans->dbg_cfg.MVM_FTM_RESP_VALID)
 #define IWL_MVM_FTM_RESP_FLAGS			(mvm->trans->dbg_cfg.MVM_FTM_RESP_FLAGS)
+#define IWL_MVM_FTM_RESP_NDP_SUPPORT		(mvm->trans->dbg_cfg.MVM_FTM_RESP_NDP_SUPPORT)
+#define IWL_MVM_FTM_RESP_LMR_FEEDBACK_SUPPORT	(mvm->trans->dbg_cfg.MVM_FTM_RESP_LMR_FEEDBACK_SUPPORT)
 #define IWL_MVM_FTM_INITIATOR_ALGO		(mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_ALGO)
 #define IWL_MVM_FTM_INITIATOR_DYNACK		(mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_DYNACK)
 #define IWL_MVM_FTM_INITIATOR_MCSI_ENABLED	(mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_MCSI_ENABLED)
 #define IWL_MVM_FTM_INITIATOR_COMMON_CALIB	(mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_COMMON_CALIB)
 #define IWL_MVM_FTM_INITIATOR_FAST_ALGO_DISABLE (mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_FAST_ALGO_DISABLE)
+#define IWL_MVM_FTM_R2I_MAX_REP                 (mvm->trans->dbg_cfg.MVM_FTM_R2I_MAX_REP)
+#define IWL_MVM_FTM_I2R_MAX_REP                 (mvm->trans->dbg_cfg.MVM_FTM_I2R_MAX_REP)
+#define IWL_MVM_FTM_R2I_MAX_STS                 (mvm->trans->dbg_cfg.MVM_FTM_R2I_MAX_STS)
+#define IWL_MVM_FTM_I2R_MAX_STS                 (mvm->trans->dbg_cfg.MVM_FTM_I2R_MAX_STS)
+#define IWL_MVM_FTM_R2I_MAX_TOTAL_LTF           (mvm->trans->dbg_cfg.MVM_FTM_R2I_MAX_TOTAL_LTF)
+#define IWL_MVM_FTM_I2R_MAX_TOTAL_LTF           (mvm->trans->dbg_cfg.MVM_FTM_I2R_MAX_TOTAL_LTF)
+#define IWL_MVM_FTM_INITIATOR_SECURE_LTF        (mvm->trans->dbg_cfg.MVM_FTM_INITIATOR_SECURE_LTF)
 #define IWL_MVM_D3_DEBUG			(((struct iwl_mvm *)ctx)->trans->dbg_cfg.MVM_D3_DEBUG)
 #define IWL_MVM_USE_TWT				(mvm->trans->dbg_cfg.MVM_USE_TWT)
 #define IWL_MVM_TWT_TESTMODE			(mvm->trans->dbg_cfg.MVM_TWT_TESTMODE)
@@ -230,6 +250,8 @@
 #define IWL_MVM_PHY_FILTER_CHAIN_C		(mvm->trans->dbg_cfg.MVM_PHY_FILTER_CHAIN_C)
 #define IWL_MVM_PHY_FILTER_CHAIN_D		(mvm->trans->dbg_cfg.MVM_PHY_FILTER_CHAIN_D)
 #define IWL_MVM_DISABLE_AP_FILS			(mvm->trans->dbg_cfg.MVM_DISABLE_AP_FILS)
+#define IWL_MVM_6GHZ_PASSIVE_SCAN_TIMEOUT       (mvm->trans->dbg_cfg.MVM_6GHZ_PASSIVE_SCAN_TIMEOUT)
+#define IWL_MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT (mvm->trans->dbg_cfg.MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT)
 
 #endif /* CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES */
 
