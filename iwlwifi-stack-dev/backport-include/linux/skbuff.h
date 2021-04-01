@@ -358,6 +358,14 @@ static inline void *backport___skb_push(struct sk_buff *skb, unsigned int len)
 }
 #define __skb_push LINUX_BACKPORT(__skb_push)
 
+static inline void *__skb_put_zero(struct sk_buff *skb, unsigned int len)
+{
+	void *tmp = __skb_put(skb, len);
+
+	memset(tmp, 0, len);
+	return tmp;
+}
+
 static inline void *skb_put_zero(struct sk_buff *skb, unsigned int len)
 {
 	void *tmp = skb_put(skb, len);

@@ -50,8 +50,9 @@ cp -ar "$driver_path/drivers/net/wireless/intel/iwlwifi/" "$kernel_path/drivers/
 rm -f "$kernel_path"/drivers/net/wireless$WIFIVERSION/iwl7000/*/Kconfig*
 
 # and patch the sources
-patch --posix -p2 --reject-file=/dev/stdout -d "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/" < "$source_path/mac80211.patch"
-patch --posix -p5 --reject-file=/dev/stdout -d "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/" < "$source_path/iwlwifi.patch"
+tmp=$(mktemp)
+patch --posix -p2 --reject-file=${tmp} -d "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/" < "$source_path/mac80211.patch" || { cat ${tmp} ; rm ${tmp} ; exit 1 ; }
+patch --posix -p5 --reject-file=${tmp} -d "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/" < "$source_path/iwlwifi.patch"  || { cat ${tmp} ; rm ${tmp} ; exit 1 ; }
 
 # apply the adjustments.spatch
 # it has some special handling, first we grep out the CFG80211_TESTMODE_CMD

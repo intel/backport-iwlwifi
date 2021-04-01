@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -14,7 +14,6 @@
  * @IWL_MVM_VENDOR_CMD_SET_LOW_LATENCY: set low-latency mode for the given
  *	virtual interface
  * @IWL_MVM_VENDOR_CMD_GET_LOW_LATENCY: query low-latency mode
- * @IWL_MVM_VENDOR_CMD_TCM_EVENT: TCM event
  * @IWL_MVM_VENDOR_CMD_LTE_STATE: inform the LTE modem state
  * @IWL_MVM_VENDOR_CMD_LTE_COEX_CONFIG_INFO: configure LTE-Coex static
  *	parameters
@@ -102,12 +101,25 @@
  *	HLTK for secure LTF bits generation.
  * @IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA: remove the PASN station with the mac
  *	address specified with &IWL_MVM_VENDOR_ATTR_ADDR.
+ * @IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG: configure TM/FTM
+ *	measurement protocol for time synchronization.
+ *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE specifies bitmap of
+ *	time sync measurement protocols for which to record timestamps.
+ *	&IWL_MVM_VENDOR_ATTR_ADDR specifies peer MAC address.
+ * @IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT: Time Sync measurement
+ *	confirmation notification for TM/FTM. Sent on receipt of 802.11 Ack from
+ *	peer for the Tx'ed TM/FTM measurement action frame.
+ *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_* specifies the details.
+ * @IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT: Time Sync measurement
+ *	notification for TM/FTM. Sent on receipt of respective WNM action frame
+ *	for TM protocol or public action frame for FTM protocol, from peer device.
+ *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_* specifies the details.
  */
 
 enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_SET_LOW_LATENCY			= 0x00,
 	IWL_MVM_VENDOR_CMD_GET_LOW_LATENCY			= 0x01,
-	IWL_MVM_VENDOR_CMD_TCM_EVENT				= 0x02,
+	/* 0x2 is deprecated */
 	IWL_MVM_VENDOR_CMD_LTE_STATE				= 0x03,
 	IWL_MVM_VENDOR_CMD_LTE_COEX_CONFIG_INFO			= 0x04,
 	IWL_MVM_VENDOR_CMD_LTE_COEX_DYNAMIC_INFO		= 0x05,
@@ -146,22 +158,9 @@ enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA			= 0x26,
 	IWL_MVM_VENDOR_CMD_RFIM_SET_TABLE			= 0x27,
 	IWL_MVM_VENDOR_CMD_RFIM_GET_TABLE			= 0x28,
-};
-
-/**
- * enum iwl_mvm_vendor_load - traffic load identifiers
- * @IWL_MVM_VENDOR_LOAD_LOW: low load: less than 10% airtime usage
- * @IWL_MVM_VENDOR_LOAD_MEDIUM: medium load: 10% or more, but less than 50%
- * @IWL_MVM_VENDOR_LOAD_HIGH: high load: 50% or more
- *
- * Traffic load is calculated based on the percentage of airtime used
- * (TX airtime is accounted as RTS+CTS+PPDU+ACK/BlockACK, RX airtime
- * is just the PPDU's time)
- */
-enum iwl_mvm_vendor_load {
-	IWL_MVM_VENDOR_LOAD_LOW,
-	IWL_MVM_VENDOR_LOAD_MEDIUM,
-	IWL_MVM_VENDOR_LOAD_HIGH,
+	IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG		= 0x29,
+	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT		= 0x2a,
+	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT			= 0x2b,
 };
 
 /**
@@ -609,14 +608,25 @@ enum iwl_vendor_fips_test_vector_hw {
 };
 
 /**
+ * enum iwl_mvm_vendor_time_sync_protocol_type - bitmap of time sync
+ * measurement protocols.
+ *
+ * @IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_NONE: Disable TM/FTM time sync
+ *	measurement protocol.
+ * @IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_TM: Timing measurement protocol.
+ * @IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_FTM: Fine Timing measurement protocol.
+ */
+enum iwl_mvm_vendor_time_sync_protocol_type {
+	IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_NONE,
+	IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_TM = BIT(0),
+	IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_FTM = BIT(1),
+};
+
+/**
  * enum iwl_mvm_vendor_attr - attributes used in vendor commands
  * @__IWL_MVM_VENDOR_ATTR_INVALID: attribute 0 is invalid
  * @IWL_MVM_VENDOR_ATTR_LOW_LATENCY: low-latency flag attribute
  * @IWL_MVM_VENDOR_ATTR_VIF_ADDR: interface MAC address
- * @IWL_MVM_VENDOR_ATTR_VIF_LL: vif-low-latency (u8, 0/1)
- * @IWL_MVM_VENDOR_ATTR_LL: global low-latency (u8, 0/1)
- * @IWL_MVM_VENDOR_ATTR_VIF_LOAD: vif traffic load (u8, see load enum)
- * @IWL_MVM_VENDOR_ATTR_LOAD: global traffic load (u8, see load enum)
  * @IWL_MVM_VENDOR_ATTR_COUNTRY: MCC to set, for regulatory information (u16)
  * IWL_MVM_VENDOR_ATTR_FILTER_ARP_NA: filter gratuitous ARP and unsolicited
  *	Neighbor Advertisement frames
@@ -766,15 +776,42 @@ enum iwl_vendor_fips_test_vector_hw {
  * @IWL_MVM_VENDOR_ATTR_STA_CIPHER: the cipher to use for the station with the
  *	mac address specified in &IWL_MVM_VENDOR_ATTR_ADDR.
  *	One of WLAN_CIPHER_SUITE_*.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE: bitmap of time sync
+ *	measurement protocols for which to record timestamps,
+ *	one of &enum iwl_mvm_vendor_time_sync_protocol_type.
+ * @IWL_MVM_VENDOR_ATTR_PAD: attribute used for padding for 64-bit alignment
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN: u32 attribute. Measurement
+ *	flow dialog token number.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1: u64 attribute. t1-time of the Tx'ed
+ *	 action frame departure on sender side in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR: u32 attribute. Maximum t1-time
+ *	error in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4: u64 attribute. t4-time of the Rx'ed
+ *	action frame's ack arrival on sender side in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR: u32 attribute. Maximum t4-time
+ *	error in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN: u32 attribute. Measurement
+ *	 flow previous dialog token number
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2: u64 attribute. t1-time of the Rx'ed
+ *	action frame arrival on receiver side in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR: u32 attribute. Maximum t1-time
+ *	error in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3: u64 attribute. t4-time of the Tx'ed
+ *	action frame's Ack departure on receiver side in units of
+ *	10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR: u32 attribute. Maximum t4-time
+ *	error in units of 10 nano seconds.
+ * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA: vendor specific data. This does not
+ *	include the IE header.
  */
 enum iwl_mvm_vendor_attr {
 	__IWL_MVM_VENDOR_ATTR_INVALID				= 0x00,
 	IWL_MVM_VENDOR_ATTR_LOW_LATENCY				= 0x01,
 	IWL_MVM_VENDOR_ATTR_VIF_ADDR				= 0x02,
-	IWL_MVM_VENDOR_ATTR_VIF_LL				= 0x03,
-	IWL_MVM_VENDOR_ATTR_LL					= 0x04,
-	IWL_MVM_VENDOR_ATTR_VIF_LOAD				= 0x05,
-	IWL_MVM_VENDOR_ATTR_LOAD				= 0x06,
+	/* 0x3 is deprecated */
+	/* 0x4 is deprecated */
+	/* 0x5 is deprecated */
+	/* 0x6 is deprecated */
 	IWL_MVM_VENDOR_ATTR_COUNTRY				= 0x07,
 	IWL_MVM_VENDOR_ATTR_FILTER_ARP_NA			= 0x08,
 	IWL_MVM_VENDOR_ATTR_FILTER_GTK				= 0x09,
@@ -854,6 +891,19 @@ enum iwl_mvm_vendor_attr {
 	IWL_MVM_VENDOR_ATTR_RFIM_FREQ				= 0x53,
 	IWL_MVM_VENDOR_ATTR_RFIM_CHANNELS			= 0x54,
 	IWL_MVM_VENDOR_ATTR_RFIM_BANDS				= 0x55,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE		= 0x56,
+	IWL_MVM_VENDOR_ATTR_PAD					= 0x57,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN		= 0x58,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1			= 0x59,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR		= 0x5a,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4			= 0x5b,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR		= 0x5c,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN		= 0x5d,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2			= 0x5e,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR		= 0x5f,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3			= 0x60,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR		= 0x61,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA			= 0x62,
 
 	NUM_IWL_MVM_VENDOR_ATTR,
 	MAX_IWL_MVM_VENDOR_ATTR = NUM_IWL_MVM_VENDOR_ATTR - 1,

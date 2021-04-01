@@ -1132,7 +1132,11 @@ struct ieee80211_tx_status {
 	struct ieee80211_tx_info *info;
 	struct sk_buff *skb;
 	struct rate_info *rate;
+#if LINUX_VERSION_IS_GEQ(4,19,0)
 	struct list_head *free_list;
+#else
+	struct sk_buff_head *free_list;
+#endif
 };
 
 /**
@@ -4447,7 +4451,11 @@ void ieee80211_restart_hw(struct ieee80211_hw *hw);
  * @list: the destination list
  */
 void ieee80211_rx_list(struct ieee80211_hw *hw, struct ieee80211_sta *sta,
+#if LINUX_VERSION_IS_GEQ(4,19,0)
 		       struct sk_buff *skb, struct list_head *list);
+#else
+		       struct sk_buff *skb, struct sk_buff_head *list);
+#endif
 
 /**
  * ieee80211_rx_napi - receive frame from NAPI context

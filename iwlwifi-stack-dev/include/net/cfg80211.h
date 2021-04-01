@@ -3462,6 +3462,8 @@ struct cfg80211_pmsr_result {
  * @non_trigger_based: use non trigger based ranging for the measurement
  *		 If neither @trigger_based nor @non_trigger_based is set,
  *		 EDCA based ranging will be used.
+ * @lmr_feedback: negotiate for I2R LMR feedback. Only valid if either
+ *		 @trigger_based or @non_trigger_based is set.
  *
  * See also nl80211 for the respective attribute documentation.
  */
@@ -3473,7 +3475,8 @@ struct cfg80211_pmsr_ftm_request_peer {
 	   request_lci:1,
 	   request_civicloc:1,
 	   trigger_based:1,
-	   non_trigger_based:1;
+	   non_trigger_based:1,
+	   lmr_feedback:1;
 	u8 num_bursts_exp;
 	u8 burst_duration;
 	u8 ftms_per_burst;
@@ -3736,8 +3739,6 @@ struct mgmt_frame_regs {
  *	(as advertised by the nl80211 feature flag.)
  * @get_tx_power: store the current TX power into the dbm variable;
  *	return 0 if successful
- *
- * @set_wds_peer: set the WDS peer for a WDS interface
  *
  * @rfkill_poll: polls the hw rfkill line, use cfg80211 reporting
  *	functions to adjust rfkill hw state
@@ -4058,9 +4059,6 @@ struct cfg80211_ops {
 				enum nl80211_tx_power_setting type, int mbm);
 	int	(*get_tx_power)(struct wiphy *wiphy, struct wireless_dev *wdev,
 				int *dbm);
-
-	int	(*set_wds_peer)(struct wiphy *wiphy, struct net_device *dev,
-				const u8 *addr);
 
 	void	(*rfkill_poll)(struct wiphy *wiphy);
 

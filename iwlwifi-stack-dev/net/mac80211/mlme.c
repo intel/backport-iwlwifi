@@ -5183,7 +5183,7 @@ static int ieee80211_prep_channel(struct ieee80211_sub_if_data *sdata,
 		he_oper_ie = cfg80211_find_ext_ie(WLAN_EID_EXT_HE_OPERATION,
 						  ies->data, ies->len);
 		if (he_oper_ie &&
-		    he_oper_ie[1] == ieee80211_he_oper_size(&he_oper_ie[3]))
+		    he_oper_ie[1] >= ieee80211_he_oper_size(&he_oper_ie[3]))
 			he_oper = (void *)(he_oper_ie + 3);
 		else
 			he_oper = NULL;
@@ -5755,15 +5755,6 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 		       2 * FILS_NONCE_LEN);
 
 	assoc_data->bss = req->bss;
-
-	if (ifmgd->req_smps == IEEE80211_SMPS_AUTOMATIC) {
-		if (ifmgd->powersave)
-			sdata->smps_mode = IEEE80211_SMPS_DYNAMIC;
-		else
-			sdata->smps_mode = IEEE80211_SMPS_OFF;
-	} else
-		sdata->smps_mode = ifmgd->req_smps;
-
 	assoc_data->capability = req->bss->capability;
 	assoc_data->supp_rates = bss->supp_rates;
 	assoc_data->supp_rates_len = bss->supp_rates_len;
@@ -5866,6 +5857,15 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 	err = ieee80211_prep_connection(sdata, req->bss, true, override);
 	if (err)
 		goto err_clear;
+
+	if (ifmgd->req_smps == IEEE80211_SMPS_AUTOMATIC) {
+		if (ifmgd->powersave)
+			sdata->smps_mode = IEEE80211_SMPS_DYNAMIC;
+		else
+			sdata->smps_mode = IEEE80211_SMPS_OFF;
+	} else {
+		sdata->smps_mode = ifmgd->req_smps;
+	}
 
 	rcu_read_lock();
 	beacon_ies = rcu_dereference(req->bss->beacon_ies);

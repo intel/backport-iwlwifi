@@ -1192,6 +1192,10 @@ int __iwl_mvm_mac_start(struct iwl_mvm *mvm)
 	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_PERIODIC,
 			       NULL);
 
+#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
+	mvm->last_reset_or_resume_time_jiffies = jiffies;
+#endif /* CPTCFG_IWLWIFI_WIFI_6_SUPPORT */
+
 	if (ret && test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status)) {
 		/* Something went wrong - we need to finish some cleanup
 		 * that normally iwl_mvm_mac_restart_complete() below

@@ -6,7 +6,7 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2019 - 2020 Intel Corporation
+ * Copyright(c) 2019 - 2021 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -40,6 +40,8 @@
 #include "iwl-drv.h"
 #include "iwl-devtrace-data.h"
 #include "iwl-devtrace-iwlwifi.h"
+#include "iwl-context-info-gen3.h"
+#include "iwl-prph.h"
 #include "iwl-io.h"
 #include "queue/tx.h"
 
@@ -55,6 +57,8 @@ struct iwl_trans_virtio {
 
 	/* The virtio device we're associated with */
 	struct virtio_device *vdev;
+
+	u64 dma_mask;
 
 	struct iwl_trans_config trans_cfg;
 	/*
@@ -102,6 +106,9 @@ struct iwl_trans_virtio {
 
 	/* protect access to HW */
 	spinlock_t reg_lock;
+
+	wait_queue_head_t sx_waitq;
+	bool sx_complete;
 };
 
 enum iwl_buf_type {
@@ -201,6 +208,63 @@ static int add_inbuf(struct virtqueue *vq, void *data, char *buf, size_t size);
 /*TODO: should we have dynamic size for rx data */
 #define IWL_BUF_SIZE PAGE_SIZE
 
+static void handle_irq_control(struct iwl_trans_virtio *trans_virtio,
+			       struct virtio_iwl_control_hdr *msg)
+{
+	struct iwl_trans *trans = trans_virtio->trans;
+	struct {
+		struct virtio_iwl_control_hdr hdr;
+		struct virtio_iwl_irq_msg msg;
+	} __packed *irq = (void *)msg;
+
+	IWL_DEBUG_ISR(trans, "IRQ bitmap 0x%X\n", irq->msg.value);
+
+	switch (msg->value) {
+	case CSR_INT:
+		switch (irq->msg.value) {
+		case CSR_INT_BIT_HW_ERR:
+		case CSR_INT_BIT_SW_ERR:
+			iwl_trans_fw_error(trans_virtio->trans);
+			break;
+		case CSR_INT_BIT_WAKEUP:
+			switch (irq->msg.sleep_notif) {
+			case IWL_D3_SLEEP_STATUS_SUSPEND:
+			case IWL_D3_SLEEP_STATUS_RESUME:
+				IWL_DEBUG_ISR(trans,
+					      "Sx interrupt: sleep notification = 0x%x\n",
+					      irq->msg.sleep_notif);
+				trans_virtio->sx_complete = true;
+				wake_up(&trans_virtio->sx_waitq);
+				break;
+			default:
+				break;
+			}
+			break;
+		default:
+			break;
+		}
+	default:
+		/* nothing yet */
+		break;
+	}
+}
+
+static void handle_control_message(struct iwl_trans_virtio *trans_virtio,
+				   struct virtio_iwl_control_hdr *msg)
+{
+	switch (msg->event) {
+	case VIRTIO_IWL_E_IRQ:
+		handle_irq_control(trans_virtio, msg);
+		break;
+	case VIRTIO_IWL_E_FW_ERROR:
+		iwl_trans_fw_error(trans_virtio->trans);
+		break;
+	default:
+		/* nothing yet */
+		break;
+	}
+}
+
 static void control_work_handler(struct work_struct *work)
 {
 	struct iwl_trans_virtio *trans_virtio;
@@ -216,13 +280,12 @@ static void control_work_handler(struct work_struct *work)
 	while ((ctr = virtqueue_get_buf(vq, &len))) {
 		spin_unlock(&trans_virtio->c_ivq.lock);
 
-		/* TODO: add this function for doing the logic
-		 *	handle_control_message(vq->vdev, buf);
-		 */
 		IWL_DEBUG_INFO(trans_virtio->trans,
-			       "got contole message event %d value %d\n",
+			       "got control message event %d value 0x%x\n",
 			       le32_to_cpu(ctr->event),
-			       le32_to_cpu(ctr->flags));
+			       le32_to_cpu(ctr->value));
+
+		handle_control_message(trans_virtio, ctr);
 
 		spin_lock(&trans_virtio->c_ivq.lock);
 		if (add_inbuf(trans_virtio->c_ivq.vq,
@@ -264,9 +327,13 @@ void iwl_virtio_hcmd_complete(struct iwl_trans *trans,
 
 	group_id = tx_hdr->group_id;
 	cmd_id = iwl_cmd_id(tx_hdr->cmd, group_id, 0);
-	WARN(cmd_id != rx_id,
-	     "received out of order host cmd txed: %d rxed %d\n",
-	     cmd_id, rx_id);
+	if (WARN(cmd_id != rx_id,
+		 "received out of order host cmd txed: %d rxed %d\n",
+		 cmd_id, rx_id)) {
+		__free_pages(page, iwl_trans_page_order(trans));
+		iwl_trans_sync_nmi(trans);
+		return;
+	}
 
 	/* Check if this rx is a respond for a sync command */
 	is_sync_respond = tx_s && tx_s->id == rx_id;
@@ -448,28 +515,30 @@ static size_t _iwl_virtio_enqueue_cmd(struct iwl_virtqueue *iwl_q,
 				      char *buf, size_t size)
 {
 	struct scatterlist sg[1];
+	unsigned long flags;
 	int ret = 0;
 
 	sg_init_one(sg, buf, size);
 
-	spin_lock(&iwl_q->lock);
+	spin_lock_irqsave(&iwl_q->lock, flags);
 	if (virtqueue_add_outbuf(iwl_q->vq, sg, 1, page, GFP_ATOMIC) == 0)
 		virtqueue_kick(iwl_q->vq);
 	else
 		ret = -ENOSPC;
 
-	spin_unlock(&iwl_q->lock);
+	spin_unlock_irqrestore(&iwl_q->lock, flags);
 
 	return ret;
 }
 
 static void *_iwl_virtio_dequeue_cmd(struct iwl_virtqueue *iwl_q, u32 *size)
 {
+	unsigned long flags;
 	void *buf;
 
-	spin_lock(&iwl_q->lock);
+	spin_lock_irqsave(&iwl_q->lock, flags);
 	buf = virtqueue_get_buf(iwl_q->vq, size);
-	spin_unlock(&iwl_q->lock);
+	spin_unlock_irqrestore(&iwl_q->lock, flags);
 
 	return buf;
 }
@@ -767,13 +836,66 @@ static int iwl_trans_virtio_start_hw(struct iwl_trans *trans)
 	return 0;
 }
 
+static void
+iwl_virtio_ctxt_info_dbg_enable(struct iwl_trans *trans,
+				struct iwl_prph_scratch_hwm_cfg *dbg_cfg,
+				u32 *control_flags)
+{
+	enum iwl_fw_ini_allocation_id alloc_id = IWL_FW_INI_ALLOCATION_ID_DBGC1;
+	struct iwl_fw_ini_allocation_tlv *fw_mon_cfg;
+	u32 dbg_flags = 0;
+
+	if (!iwl_trans_dbg_ini_valid(trans))
+		return;
+
+	fw_mon_cfg = &trans->dbg.fw_mon_cfg[alloc_id];
+
+	switch (le32_to_cpu(fw_mon_cfg->buf_location)) {
+	case IWL_FW_INI_LOCATION_SRAM_PATH:
+		dbg_flags = IWL_PRPH_SCRATCH_EDBG_DEST_INTERNAL;
+		IWL_DEBUG_FW(trans, "WRT: Applying SMEM buffer destination\n");
+		break;
+
+	case IWL_FW_INI_LOCATION_NPK_PATH:
+		dbg_flags = IWL_PRPH_SCRATCH_EDBG_DEST_TB22DTF;
+		IWL_DEBUG_FW(trans, "WRT: Applying NPK buffer destination\n");
+		break;
+
+	case IWL_FW_INI_LOCATION_DRAM_PATH:
+		if (trans->dbg.fw_mon_ini[alloc_id].num_frags) {
+			struct iwl_dram_data *frag =
+				&trans->dbg.fw_mon_ini[alloc_id].frags[0];
+
+			dbg_flags = IWL_PRPH_SCRATCH_EDBG_DEST_DRAM;
+			dbg_cfg->hwm_base_addr = cpu_to_le64(frag->physical);
+			dbg_cfg->hwm_size = cpu_to_le32(frag->size);
+			IWL_DEBUG_FW(trans,
+				     "WRT: Applying DRAM destination (alloc_id=%u, num_frags=%u)\n",
+				     alloc_id,
+				     trans->dbg.fw_mon_ini[alloc_id].num_frags);
+		}
+		break;
+	default:
+		IWL_ERR(trans, "WRT: Invalid buffer destination\n");
+	}
+
+	if (dbg_flags)
+		*control_flags |= IWL_PRPH_SCRATCH_EARLY_DEBUG_EN | dbg_flags;
+}
+
 static int iwl_trans_virtio_start_fw(struct iwl_trans *trans,
 				     const struct fw_img *fw,
 				     bool run_in_rfkill)
 {
 	struct iwl_trans_virtio *trans_virtio =
 		IWL_TRANS_GET_VIRTIO_TRANS(trans);
-	u32 buf;
+	struct {
+		struct iwl_context_info_gen3 info;
+		struct iwl_prph_scratch prph_scratch;
+	} ctxt;
+	struct iwl_prph_scratch_ctrl_cfg *prph_sc_ctrl =
+		&ctxt.prph_scratch.ctrl_cfg;
+	u32 control_flags = 0;
 	int queue_size = max_t(u32, IWL_CMD_QUEUE_SIZE,
 			       trans->cfg->min_txq_size);
 
@@ -781,7 +903,37 @@ static int iwl_trans_virtio_start_fw(struct iwl_trans *trans,
 	if (iwl_txq_gen2_init(trans, trans->txqs.cmd.q_id, queue_size))
 		return -ENOMEM;
 
-	send_control_msg(trans_virtio, VIRTIO_IWL_E_FW_START, 0, 0, &buf, 4);
+	switch (trans_virtio->trans_cfg.rx_buf_size) {
+	case IWL_AMSDU_DEF:
+		return -EINVAL;
+	case IWL_AMSDU_2K:
+		break;
+	case IWL_AMSDU_4K:
+		control_flags |= IWL_PRPH_SCRATCH_RB_SIZE_4K;
+		break;
+	case IWL_AMSDU_8K:
+		control_flags |= IWL_PRPH_SCRATCH_RB_SIZE_4K;
+		/* if firmware supports the ext size, tell it */
+		control_flags |= IWL_PRPH_SCRATCH_RB_SIZE_EXT_8K;
+		break;
+	case IWL_AMSDU_12K:
+		control_flags |= IWL_PRPH_SCRATCH_RB_SIZE_4K;
+		/* if firmware supports the ext size, tell it */
+		control_flags |= IWL_PRPH_SCRATCH_RB_SIZE_EXT_16K;
+		break;
+	}
+
+	iwl_virtio_ctxt_info_dbg_enable(trans, &prph_sc_ctrl->hwm_cfg,
+					&control_flags);
+	prph_sc_ctrl->control.control_flags = cpu_to_le32(control_flags);
+
+	ctxt.info.prph_scratch_size = cpu_to_le32(sizeof(ctxt.prph_scratch));
+	ctxt.info.mtr_size = cpu_to_le16(TFD_QUEUE_CB_SIZE(queue_size));
+	ctxt.info.mcr_size =
+		cpu_to_le16(RX_QUEUE_CB_SIZE(trans->cfg->num_rbds));
+
+	send_control_msg(trans_virtio, VIRTIO_IWL_E_FW_START, 0, 0,
+			 &ctxt, sizeof(ctxt));
 	set_bit(STATUS_DEVICE_ENABLED, &trans->status);
 	return 0;
 }
@@ -861,7 +1013,19 @@ static int iwl_trans_virtio_write_mem(struct iwl_trans *trans, u32 addr,
 static int iwl_trans_virtio_read_mem(struct iwl_trans *trans, u32 addr,
 				     void *buf, int dwords)
 {
-	return 0;
+	struct iwl_trans_virtio *trans_virtio =
+		IWL_TRANS_GET_VIRTIO_TRANS(trans);
+
+	/* this can happen in collecting debug data
+	 * with no size defined in TLVs
+	 */
+	if (!dwords)
+		return 0;
+
+	memset(buf, 0, sizeof(u32) * dwords);
+
+	return send_control_msg(trans_virtio, VIRTIO_IWL_E_MEM,
+				VIRTIO_IWL_F_DIR_IN, addr, buf, dwords * 4);
 }
 
 static int iwl_trans_virtio_wait_txq_empty(struct iwl_trans *trans, int txq_idx)
@@ -876,7 +1040,7 @@ static void iwl_trans_virtio_fw_alive(struct iwl_trans *trans, u32 scd_addr)
 		IWL_TRANS_GET_VIRTIO_TRANS(trans);
 	u32 buf;
 
-	send_control_msg(trans_virtio, 10, 0, 0, &buf, 4);
+	send_control_msg(trans_virtio, VIRTIO_IWL_E_FW_ALIVE, 0, 0, &buf, 4);
 }
 
 int iwl_trans_validate_hcmd(struct iwl_host_cmd *cmd)
@@ -950,7 +1114,10 @@ int iwl_trans_virtio_send_hcmd(struct iwl_trans *trans,
 		goto error;
 
 	/* To make life simple we copy the cmd to one buffer */
-	page = iwl_virtio_rx_alloc_page(trans, GFP_KERNEL);
+	page = iwl_virtio_rx_alloc_page(trans,
+					(cmd->flags & CMD_ASYNC)
+						? GFP_ATOMIC
+						: GFP_KERNEL);
 	if (!page) {
 		ret = -ENOMEM;
 		goto free;
@@ -1029,6 +1196,16 @@ static void iwl_trans_virtio_stop_device(struct iwl_trans *trans)
 	struct iwl_trans_virtio *trans_virtio =
 		IWL_TRANS_GET_VIRTIO_TRANS(trans);
 	u32 val;
+	u32 cmd_size;
+	struct page *page;
+	struct iwl_virtqueue *hcmd_q = &trans_virtio->h_ovq;
+
+	/* clear all pending hcmd messages */
+	while ((page = _iwl_virtio_dequeue_cmd(hcmd_q, &cmd_size)))
+		__free_pages(page, iwl_trans_page_order(trans));
+
+	trans_virtio->tx_sync = NULL;
+	iwl_txq_gen2_tx_free(trans);
 
 	iwl_op_mode_time_point(trans->op_mode,
 			       IWL_FW_INI_TIME_POINT_HOST_DEVICE_DISABLE,
@@ -1183,6 +1360,56 @@ int iwl_trans_virtio_txq_alloc(struct iwl_trans *trans,
 	return (sta_id + 1) * (tid + 1) - 1;
 }
 
+static int iwl_trans_virtio_d3_suspend(struct iwl_trans *trans, bool test,
+				       bool reset)
+{
+	struct iwl_trans_virtio *trans_virtio =
+		IWL_TRANS_GET_VIRTIO_TRANS(trans);
+	int ret;
+
+	iwl_write_umac_prph(trans, UREG_DOORBELL_TO_ISR6,
+			    UREG_DOORBELL_TO_ISR6_SUSPEND);
+
+	ret = wait_event_timeout(trans_virtio->sx_waitq,
+				 trans_virtio->sx_complete, 2 * HZ);
+	/* Invalidate it toward resume. */
+	trans_virtio->sx_complete = false;
+
+	if (!ret) {
+		IWL_ERR(trans, "Timeout entering D3\n");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
+
+static int iwl_trans_virtio_d3_resume(struct iwl_trans *trans,
+				      enum iwl_d3_status *status,
+				      bool test, bool reset)
+{
+	struct iwl_trans_virtio *trans_virtio =
+		IWL_TRANS_GET_VIRTIO_TRANS(trans);
+	int ret;
+
+	*status = IWL_D3_STATUS_ALIVE;
+
+	trans_virtio->sx_complete = false;
+	iwl_write_umac_prph(trans, UREG_DOORBELL_TO_ISR6,
+			    UREG_DOORBELL_TO_ISR6_RESUME);
+
+	ret = wait_event_timeout(trans_virtio->sx_waitq,
+				 trans_virtio->sx_complete, 2 * HZ);
+	/* Invalidate it toward next suspend. */
+	trans_virtio->sx_complete = false;
+
+	if (!ret) {
+		IWL_ERR(trans, "Timeout exiting D3\n");
+		return -ETIMEDOUT;
+	}
+
+	return 0;
+}
+
 static const struct iwl_trans_ops trans_ops_virtio = {
 	.configure = iwl_trans_virtio_configure,
 	.start_hw = iwl_trans_virtio_start_hw,
@@ -1211,6 +1438,9 @@ static const struct iwl_trans_ops trans_ops_virtio = {
 	.freeze_txq_timer = iwl_trans_txq_freeze_timer,
 	.set_q_ptrs = iwl_txq_set_q_ptrs,
 	.wait_txq_empty = iwl_trans_virtio_wait_txq_empty,
+
+	.d3_suspend = iwl_trans_virtio_d3_suspend,
+	.d3_resume = iwl_trans_virtio_d3_resume,
 };
 
 struct iwl_trans *
@@ -1219,6 +1449,7 @@ iwl_trans_virtio_alloc(struct virtio_device *vdev,
 {
 	struct iwl_trans_virtio *trans_virtio;
 	struct iwl_trans *trans;
+	int ret;
 
 	/* just use the old large allocation here - easier */
 	trans = iwl_trans_alloc(sizeof(*trans_virtio),
@@ -1226,6 +1457,12 @@ iwl_trans_virtio_alloc(struct virtio_device *vdev,
 				cfg_trans);
 	if (!trans)
 		return ERR_PTR(-ENOMEM);
+
+	ret = iwl_trans_init(trans);
+	if (ret) {
+		iwl_trans_free(trans);
+		return ERR_PTR(ret);
+	}
 
 	trans_virtio =
 		IWL_TRANS_GET_VIRTIO_TRANS(trans);
@@ -1272,6 +1509,17 @@ static int virtiwl_probe(struct virtio_device *vdev)
 	trans_virtio =
 		IWL_TRANS_GET_VIRTIO_TRANS(iwl_trans);
 
+	/*
+	 * This is a hack, normally virtio devices don't have "DMA" as such.
+	 * However, some code that's shared with PCIe assumes we always do,
+	 * and if the kernel was compiled without CONFIG_NO_DMA then the
+	 * DMA mapping functions are available (and we prefer using them),
+	 * but they require a dma_mask to be set. We have no requirements.
+	 */
+	if (!vdev->dev.dma_mask)
+		vdev->dev.dma_mask = &trans_virtio->dma_mask;
+	dma_set_mask_and_coherent(&vdev->dev, DMA_BIT_MASK(64));
+
 	vdev->priv = trans_virtio;
 	iwl_trans->cfg = cfg;
 	iwl_trans->name = cfg->name;
@@ -1292,6 +1540,8 @@ static int virtiwl_probe(struct virtio_device *vdev)
 	INIT_WORK(&trans_virtio->control_work, &control_work_handler);
 	INIT_WORK(&trans_virtio->fw_load.work, &fw_load_work_handler);
 	INIT_WORK(&trans_virtio->rxdef_work, &rxdef_work_handler);
+
+	init_waitqueue_head(&trans_virtio->sx_waitq);
 
 	/* TODO: maybe get this from config space */
 	trans_virtio->nr_queues = VIRTIO_IWL_Q_MAX;
@@ -1322,13 +1572,32 @@ static void virtiwl_remove(struct virtio_device *vdev)
 	remove_vqs(trans_virtio);
 
 	iwl_txq_gen2_tx_free(trans_virtio->trans);
-	/*
-	 * This should be done in generic trans (without DMA support)
-	 * but only virtio doesn't support DMA, so we do it here.
-	 */
-	kmem_cache_destroy(trans_virtio->trans->txqs.bc_pool);
 	iwl_trans_virtio_free(trans_virtio);
 }
+
+#ifdef CONFIG_PM_SLEEP
+static int iwl_virtio_suspend(struct device *device)
+{
+	return 0;
+}
+
+static int iwl_virtio_resume(struct device *device)
+{
+	return 0;
+}
+
+static const struct dev_pm_ops iwl_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(iwl_virtio_suspend,
+				iwl_virtio_resume)
+};
+
+#define IWL_PM_OPS	(&iwl_dev_pm_ops)
+
+#else /* CONFIG_PM_SLEEP */
+
+#define IWL_PM_OPS	NULL
+
+#endif /* CONFIG_PM_SLEEP */
 
 static struct virtio_driver virtio_iwl = {
 	.feature_table			= features,
@@ -1338,6 +1607,7 @@ static struct virtio_driver virtio_iwl = {
 	.id_table			= id_table,
 	.probe				= virtiwl_probe,
 	.remove				= virtiwl_remove,
+	.driver.pm			= IWL_PM_OPS,
 };
 
 int __must_check iwl_virtio_register_driver(void)

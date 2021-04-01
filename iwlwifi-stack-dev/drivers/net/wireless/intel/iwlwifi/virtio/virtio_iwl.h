@@ -6,7 +6,7 @@
  *
  * GPL LICENSE SUMMARY
  *
- * Copyright(c) 2019-2020 Intel Corporation
+ * Copyright(c) 2019-2021 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -85,6 +85,9 @@ enum virtio_iwl_events {
 	VIRTIO_IWL_E_PRPH,
 	VIRTIO_IWL_E_MEM,
 	VIRTIO_IWL_E_SET_PMI,
+	VIRTIO_IWL_E_IRQ,
+	VIRTIO_IWL_E_FW_ERROR,
+	VIRTIO_IWL_E_FW_ALIVE,
 };
 
 enum virtio_iwl_queus {
@@ -105,6 +108,11 @@ struct virtio_iwl_control_hdr {
 	__le32 flags;	/* direction of the message r/w */
 	__le32 value;	/* used for address of r/w memory */
 	__le32 len;	/* the len of valid data in the next sg */
+};
+
+struct virtio_iwl_irq_msg {
+	__le32 value;
+	__le32 sleep_notif;
 };
 
 #endif /* __VIRTIO_IWL_DEV */

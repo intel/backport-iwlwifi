@@ -92,19 +92,6 @@ config IWLMVM_VENDOR_CMDS
 	  This option mostly exists for non-upstream tagging, so best
 	  leave it set to Y.
 
-config IWLMVM_VENDOR_TCM_EVENTS
-	bool "enable TCM vendor events"
-	depends on IWLMVM_VENDOR_CMDS
-	default y
-	help
-	  This option enables vendor TCM events to userspace that can
-	  be used to adjust certain parameters depending on the
-	  traffic conditions.  These events can become rather noisy
-	  with standard wpa_supplicant, since it prints out 3 debug
-	  messages every time the event is received (as an unknown
-	  event).  When used with standard wpa_supplicant, it is
-	  recommended to disable this option.
-
 config IWLMVM_TDLS_PEER_CACHE
 	bool "enable TDLS peer caching and traffic monitoring"
 	depends on IWLMVM_VENDOR_CMDS

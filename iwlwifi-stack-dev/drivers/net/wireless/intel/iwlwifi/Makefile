@@ -32,7 +32,9 @@ iwlwifi-$(CPTCFG_IWLFMAC) += cfg/9000.o cfg/22000.o
 iwlwifi-$(CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES) += iwl-dbg-cfg.o
 
 iwlwifi-$(CPTCFG_IWLWIFI_VIRTIO) += virtio/drv.o
+ifeq ($(CPTCFG_NO_DMA),y)
 ccflags-$(CPTCFG_IWLWIFI_VIRTIO) += -include "virtio/iwl-virtio-dma.h"
+endif
 
 iwlwifi-objs += $(iwlwifi-m)
 iwlwifi-objs += $(iwlwifi-y)

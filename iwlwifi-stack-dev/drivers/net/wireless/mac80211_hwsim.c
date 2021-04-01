@@ -1673,6 +1673,7 @@ static void mac80211_hwsim_tx(struct ieee80211_hw *hw,
 	struct ieee80211_chanctx_conf *chanctx_conf;
 	struct ieee80211_channel *channel;
 	bool ack;
+	enum nl80211_chan_width confbw = NL80211_CHAN_WIDTH_20_NOHT;
 	u32 _portid, i;
 
 	if (WARN_ON(skb->len < 10)) {
@@ -1683,12 +1684,14 @@ static void mac80211_hwsim_tx(struct ieee80211_hw *hw,
 
 	if (!data->use_chanctx) {
 		channel = data->channel;
+		confbw = data->bw;
 	} else if (txi->hw_queue == 4) {
 		channel = data->tmp_chan;
 	} else {
 		chanctx_conf = rcu_dereference(txi->control.vif->chanctx_conf);
 		if (chanctx_conf) {
 			channel = chanctx_conf->def.chan;
+			confbw = chanctx_conf->def.width;
 		} else {
 			channel = NULL;
 		}
@@ -1730,7 +1733,7 @@ static void mac80211_hwsim_tx(struct ieee80211_hw *hw,
 		else if (rflags & IEEE80211_TX_RC_160_MHZ_WIDTH)
 			bw = NL80211_CHAN_WIDTH_160;
 
-		if (WARN_ON(hwsim_get_chanwidth(bw) > hwsim_get_chanwidth(data->bw)))
+		if (WARN_ON(hwsim_get_chanwidth(bw) > hwsim_get_chanwidth(confbw)))
 			return;
 	}
 
@@ -2178,6 +2181,7 @@ mac80211_hwsim_sta_rc_update(struct ieee80211_hw *hw,
 {
 	struct mac80211_hwsim_data *data = hw->priv;
 	u32 bw = U32_MAX;
+	enum nl80211_chan_width confbw = NL80211_CHAN_WIDTH_20_NOHT;
 
 	switch (sta->bandwidth) {
 #define C(_bw) case IEEE80211_STA_RX_BW_##_bw: bw = _bw; break
@@ -2188,7 +2192,17 @@ mac80211_hwsim_sta_rc_update(struct ieee80211_hw *hw,
 #undef C
 	}
 
-	WARN(bw > hwsim_get_chanwidth(data->bw),
+	if (!data->use_chanctx) {
+		confbw = data->bw;
+	} else {
+		struct ieee80211_chanctx_conf *chanctx_conf =
+			rcu_dereference(vif->chanctx_conf);
+
+		if (!WARN_ON(!chanctx_conf))
+			confbw = chanctx_conf->def.width;
+	}
+
+	WARN(bw > hwsim_get_chanwidth(confbw),
 	     "intf %pM: bad STA %pM bandwidth %d MHz (%d) > channel config %d MHz (%d)\n",
 	     vif->addr, sta->addr, bw, sta->bandwidth,
 	     hwsim_get_chanwidth(data->bw), data->bw);
@@ -2924,7 +2938,7 @@ static const struct ieee80211_sband_iftype_data he_capa_2ghz[] = {
 				.mac_cap_info[3] =
 					IEEE80211_HE_MAC_CAP3_OMI_CONTROL |
 					IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3,
-				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMDSU_IN_AMPDU,
+				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMSDU_IN_AMPDU,
 				.phy_cap_info[1] =
 					IEEE80211_HE_PHY_CAP1_PREAMBLE_PUNC_RX_MASK |
 					IEEE80211_HE_PHY_CAP1_DEVICE_CLASS_A |
@@ -2968,7 +2982,7 @@ static const struct ieee80211_sband_iftype_data he_capa_2ghz[] = {
 				.mac_cap_info[3] =
 					IEEE80211_HE_MAC_CAP3_OMI_CONTROL |
 					IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3,
-				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMDSU_IN_AMPDU,
+				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMSDU_IN_AMPDU,
 				.phy_cap_info[1] =
 					IEEE80211_HE_PHY_CAP1_PREAMBLE_PUNC_RX_MASK |
 					IEEE80211_HE_PHY_CAP1_DEVICE_CLASS_A |
@@ -3014,7 +3028,7 @@ static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
 				.mac_cap_info[3] =
 					IEEE80211_HE_MAC_CAP3_OMI_CONTROL |
 					IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3,
-				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMDSU_IN_AMPDU,
+				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMSDU_IN_AMPDU,
 				.phy_cap_info[0] =
 					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
 					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
@@ -3068,7 +3082,7 @@ static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
 				.mac_cap_info[3] =
 					IEEE80211_HE_MAC_CAP3_OMI_CONTROL |
 					IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3,
-				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMDSU_IN_AMPDU,
+				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMSDU_IN_AMPDU,
 				.phy_cap_info[0] =
 					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
 					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
@@ -4212,7 +4226,7 @@ done:
 static const struct genl_small_ops hwsim_ops[] = {
 #else
 static const struct genl_ops hwsim_ops[] = {
-#endif /* >= 5.10 */
+#endif
 	{
 		.cmd = HWSIM_CMD_REGISTER,
 		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
@@ -4262,7 +4276,7 @@ static struct genl_family hwsim_genl_family __genl_ro_after_init = {
 #else
 	.ops = hwsim_ops,
 	.n_ops = ARRAY_SIZE(hwsim_ops),
-#endif /* >= 5.10 */
+#endif
 	.mcgrps = hwsim_mcgrps,
 	.n_mcgrps = ARRAY_SIZE(hwsim_mcgrps),
 };

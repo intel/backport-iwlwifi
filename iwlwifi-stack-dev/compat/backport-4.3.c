@@ -26,7 +26,6 @@ struct backport_thermal_ops_wrapper {
 	struct thermal_zone_device_ops *driver_ops;
 };
 
-#ifndef CONFIG_BTNS_PMIC
 static int backport_thermal_get_temp(struct thermal_zone_device *dev,
 				     unsigned long *temp)
 {
@@ -111,90 +110,6 @@ static int backport_thermal_set_emul_temp(struct thermal_zone_device *dev,
 	return wrapper->driver_ops->set_emul_temp(dev, (int)temp);
 }
 #endif /* LINUX_VERSION_IS_GEQ(3, 19, 0) */
-#else /* !CONFIG_BTNS_PMIC */
-static int backport_thermal_get_temp(struct thermal_zone_device *dev,
-				     long *temp)
-{
-	struct backport_thermal_ops_wrapper *wrapper =
-		container_of(dev->ops, struct backport_thermal_ops_wrapper, ops);
-	int _temp, ret;
-
-	ret = wrapper->driver_ops->get_temp(dev, &_temp);
-	if (!ret)
-		*temp = (long)_temp;
-
-	return ret;
-}
-
-static int backport_thermal_get_trip_temp(struct thermal_zone_device *dev,
-					  int i, long *temp)
-{
-	struct backport_thermal_ops_wrapper *wrapper =
-		container_of(dev->ops, struct backport_thermal_ops_wrapper, ops);
-	int _temp, ret;
-
-	ret = wrapper->driver_ops->get_trip_temp(dev, i,  &_temp);
-	if (!ret)
-		*temp = (long)_temp;
-
-	return ret;
-}
-
-static int backport_thermal_set_trip_temp(struct thermal_zone_device *dev,
-					  int i, long temp)
-{
-	struct backport_thermal_ops_wrapper *wrapper =
-		container_of(dev->ops, struct backport_thermal_ops_wrapper, ops);
-
-	return wrapper->driver_ops->set_trip_temp(dev, i, (int)temp);
-}
-
-static int backport_thermal_get_trip_hyst(struct thermal_zone_device *dev,
-					  int i, long *temp)
-{
-	struct backport_thermal_ops_wrapper *wrapper =
-		container_of(dev->ops, struct backport_thermal_ops_wrapper, ops);
-	int _temp, ret;
-
-	ret = wrapper->driver_ops->get_trip_hyst(dev, i, &_temp);
-	if (!ret)
-		*temp = (long)_temp;
-
-	return ret;
-}
-
-static int backport_thermal_set_trip_hyst(struct thermal_zone_device *dev,
-					  int i, long temp)
-{
-	struct backport_thermal_ops_wrapper *wrapper =
-		container_of(dev->ops, struct backport_thermal_ops_wrapper, ops);
-
-	return wrapper->driver_ops->set_trip_hyst(dev, i, (int)temp);
-}
-
-static int backport_thermal_get_crit_temp(struct thermal_zone_device *dev,
-					  long *temp)
-{
-	struct backport_thermal_ops_wrapper *wrapper =
-		container_of(dev->ops, struct backport_thermal_ops_wrapper, ops);
-	int _temp, ret;
-
-	ret = wrapper->driver_ops->get_crit_temp(dev, &_temp);
-	if (!ret)
-		*temp = (long)_temp;
-
-	return ret;
-}
-
-static int backport_thermal_set_emul_temp(struct thermal_zone_device *dev,
-					  unsigned long temp)
-{
-	struct backport_thermal_ops_wrapper *wrapper =
-		container_of(dev->ops, struct backport_thermal_ops_wrapper, ops);
-
-	return wrapper->driver_ops->set_emul_temp(dev, (int)temp);
-}
-#endif /* !CONFIG_BTNS_PMIC */
 
 struct thermal_zone_device *backport_thermal_zone_device_register(
 	const char *type, int trips, int mask, void *devdata,
@@ -220,12 +135,6 @@ struct thermal_zone_device *backport_thermal_zone_device_register(
 	copy(get_trip_type);
 	copy(get_trend);
 	copy(notify);
-#ifdef CONFIG_BTNS_PMIC
-	copy(get_slope);
-	copy(set_slope);
-	copy(get_intercept);
-	copy(set_intercept);
-#endif
 
 	/* Assign the backport ops to the old struct to get the
 	 * correct types.  But only assign if the registrant defined

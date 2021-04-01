@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
- * Copyright (C) 2019-2020 Intel Corporation
+ * Copyright (C) 2019-2021 Intel Corporation
  */
 #include <linux/uuid.h>
 #include "iwl-drv.h"
@@ -86,21 +86,47 @@ static void *iwl_acpi_get_dsm_object(struct device *dev, int rev, int func,
 	return obj;
 }
 
-/**
- * Evaluate a DSM with no arguments and a single u8 return value,
- * verify and return that value.
+/*
+ * Generic function to evaluate a DSM with no arguments
+ * and an integer return value,
+ * (as an integer object or inside a buffer object),
+ * verify and assign the value in the "value" parameter.
+ * return 0 in success and the appropriate errno otherwise.
  */
-int iwl_acpi_get_dsm_u8(struct device *dev, int rev, int func,
-			const guid_t *guid)
+static int iwl_acpi_get_dsm_integer(struct device *dev, int rev, int func,
+				    const guid_t *guid, u64 *value,
+				    size_t expected_size)
 {
 	union acpi_object *obj;
-	int ret;
+	int ret = 0;
 
 	obj = iwl_acpi_get_dsm_object(dev, rev, func, NULL, guid);
-	if (IS_ERR(obj))
+	if (IS_ERR(obj)) {
+		IWL_DEBUG_DEV_RADIO(dev,
+				    "Failed to get  DSM object. func= %d\n",
+				    func);
 		return -ENOENT;
+	}
 
-	if (obj->type != ACPI_TYPE_INTEGER) {
+	if (obj->type == ACPI_TYPE_INTEGER) {
+		*value = obj->integer.value;
+	} else if (obj->type == ACPI_TYPE_BUFFER) {
+		__le64 le_value = 0;
+
+		if (WARN_ON_ONCE(expected_size > sizeof(le_value)))
+			return -EINVAL;
+
+		/* if the buffer size doesn't match the expected size */
+		if (obj->buffer.length != expected_size)
+			IWL_DEBUG_DEV_RADIO(dev,
+					    "ACPI: DSM invalid buffer size, padding or truncating (%d)\n",
+					    obj->buffer.length);
+
+		 /* assuming LE from Intel BIOS spec */
+		memcpy(&le_value, obj->buffer.pointer,
+		       min_t(size_t, expected_size, (size_t)obj->buffer.length));
+		*value = le64_to_cpu(le_value);
+	} else {
 		IWL_DEBUG_DEV_RADIO(dev,
 				    "ACPI: DSM method did not return a valid object, type=%d\n",
 				    obj->type);
@@ -108,7 +134,6 @@ int iwl_acpi_get_dsm_u8(struct device *dev, int rev, int func,
 		goto out;
 	}
 
-	ret = obj->integer.value;
 	IWL_DEBUG_DEV_RADIO(dev,
 			    "ACPI: DSM method evaluated: func=%d, ret=%d\n",
 			    func, ret);
@@ -116,7 +141,48 @@ out:
 	ACPI_FREE(obj);
 	return ret;
 }
+
+/*
+ * Evaluate a DSM with no arguments and a u8 return value,
+ */
+int iwl_acpi_get_dsm_u8(struct device *dev, int rev, int func,
+			const guid_t *guid, u8 *value)
+{
+	int ret;
+	u64 val;
+
+	ret = iwl_acpi_get_dsm_integer(dev, rev, func,
+				       guid, &val, sizeof(u8));
+
+	if (ret < 0)
+		return ret;
+
+	/* cast val (u64) to be u8 */
+	*value = (u8)val;
+	return 0;
+}
 IWL_EXPORT_SYMBOL(iwl_acpi_get_dsm_u8);
+
+/*
+ * Evaluate a DSM with no arguments and a u32 return value,
+ */
+int iwl_acpi_get_dsm_u32(struct device *dev, int rev, int func,
+			 const guid_t *guid, u32 *value)
+{
+	int ret;
+	u64 val;
+
+	ret = iwl_acpi_get_dsm_integer(dev, rev, func,
+				       guid, &val, sizeof(u32));
+
+	if (ret < 0)
+		return ret;
+
+	/* cast val (u64) to be u32 */
+	*value = (u32)val;
+	return 0;
+}
+IWL_EXPORT_SYMBOL(iwl_acpi_get_dsm_u32);
 
 union acpi_object *iwl_acpi_get_wifi_pkg(struct device *dev,
 					 union acpi_object *data,
@@ -136,14 +202,13 @@ union acpi_object *iwl_acpi_get_wifi_pkg(struct device *dev,
 	/*
 	 * We need at least two packages, one for the revision and one
 	 * for the data itself.  Also check that the revision is valid
-	 * (i.e. it is an integer smaller than 2, as we currently support only
-	 * 2 revisions).
+	 * (i.e. it is an integer (each caller has to check by itself
+	 * if the returned revision is supported)).
 	 */
 	if (data->type != ACPI_TYPE_PACKAGE ||
 	    data->package.count < 2 ||
-	    data->package.elements[0].type != ACPI_TYPE_INTEGER ||
-	    data->package.elements[0].integer.value > 1) {
-		IWL_DEBUG_DEV_RADIO(dev, "Unsupported packages structure\n");
+	    data->package.elements[0].type != ACPI_TYPE_INTEGER) {
+		IWL_DEBUG_DEV_RADIO(dev, "Invalid packages structure\n");
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -655,3 +720,40 @@ int iwl_sar_geo_init(struct iwl_fw_runtime *fwrt,
 	return 0;
 }
 IWL_EXPORT_SYMBOL(iwl_sar_geo_init);
+
+__le32 iwl_acpi_get_lari_config_bitmap(struct iwl_fw_runtime *fwrt)
+{
+	int ret;
+	u8 value;
+	__le32 config_bitmap = 0;
+
+	/*
+	 ** Evaluate func 'DSM_FUNC_ENABLE_INDONESIA_5G2'
+	 */
+	ret = iwl_acpi_get_dsm_u8(fwrt->dev, 0,
+				  DSM_FUNC_ENABLE_INDONESIA_5G2,
+				  &iwl_guid, &value);
+
+	if (!ret && value == DSM_VALUE_INDONESIA_ENABLE)
+		config_bitmap |=
+			cpu_to_le32(LARI_CONFIG_ENABLE_5G2_IN_INDONESIA_MSK);
+
+	/*
+	 ** Evaluate func 'DSM_FUNC_DISABLE_SRD'
+	 */
+	ret = iwl_acpi_get_dsm_u8(fwrt->dev, 0,
+				  DSM_FUNC_DISABLE_SRD,
+				  &iwl_guid, &value);
+	if (!ret) {
+		if (value == DSM_VALUE_SRD_PASSIVE)
+			config_bitmap |=
+				cpu_to_le32(LARI_CONFIG_CHANGE_ETSI_TO_PASSIVE_MSK);
+		else if (value == DSM_VALUE_SRD_DISABLE)
+			config_bitmap |=
+				cpu_to_le32(LARI_CONFIG_CHANGE_ETSI_TO_DISABLED_MSK);
+	}
+
+	return config_bitmap;
+}
+IWL_EXPORT_SYMBOL(iwl_acpi_get_lari_config_bitmap);
+

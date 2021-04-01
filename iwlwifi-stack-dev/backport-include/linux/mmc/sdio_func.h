@@ -83,4 +83,18 @@ static inline void sdio_retune_crc_enable(struct sdio_func *func)
 }
 #endif /* < 5.2 */
 
+#ifndef module_sdio_driver
+/**
+ * module_sdio_driver() - Helper macro for registering a SDIO driver
+ * @__sdio_driver: sdio_driver struct
+ *
+ * Helper macro for SDIO drivers which do not do anything special in module
+ * init/exit. This eliminates a lot of boilerplate. Each module may only
+ * use this macro once, and calling it replaces module_init() and module_exit()
+ */
+#define module_sdio_driver(__sdio_driver) \
+	module_driver(__sdio_driver, sdio_register_driver, \
+		      sdio_unregister_driver)
+#endif
+
 #endif /* __BACKPORT_MMC_SDIO_FUNC_H */

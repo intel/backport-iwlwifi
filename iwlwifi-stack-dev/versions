@@ -2,5 +2,5 @@ BACKPORTS_VERSION="(see git)"
 BACKPORTED_KERNEL_VERSION="(see git)"
 BACKPORTED_KERNEL_NAME="iwlwifi"
 
-BACKPORTS_GIT_TRACKED="iwlwifi-stack-dev:tags/jenkins-Core_build_core59-66^0:Core_build_core59_66:effbcc81f741"
-BACKPORTS_BUILD_TSTAMP=\"Jan 28 2021 11:14:38\"
+BACKPORTS_GIT_TRACKED="iwlwifi-stack-dev:tags/jenkins-Core_build_core60-53^0:Core_build_core60_56:76b167d49fbd"
+BACKPORTS_BUILD_TSTAMP=\"Mar 14 2021 17:41:49\"

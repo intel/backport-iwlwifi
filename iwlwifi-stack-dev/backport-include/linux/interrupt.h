@@ -37,6 +37,23 @@ static inline void backport_hrtimer_start(struct hrtimer *timer, s64 time,
 	hrtimer_start(timer, _time, mode);
 }
 #define hrtimer_start LINUX_BACKPORT(hrtimer_start)
+
+#endif
+
+#if LINUX_VERSION_IS_LESS(5,9,0)
+
+static inline void
+tasklet_setup(struct tasklet_struct *t,
+	      void (*callback)(struct tasklet_struct *))
+{
+	void (*cb)(unsigned long data) = (void *)callback;
+
+	tasklet_init(t, cb, (unsigned long)t);
+}
+
+#define from_tasklet(var, callback_tasklet, tasklet_fieldname) \
+	container_of(callback_tasklet, typeof(*var), tasklet_fieldname)
+
 #endif
 
 #endif /* _BP_LINUX_INTERRUPT_H */

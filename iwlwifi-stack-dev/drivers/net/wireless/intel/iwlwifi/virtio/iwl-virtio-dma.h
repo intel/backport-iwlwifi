@@ -14,22 +14,24 @@
 #define LINUX_DMAPOOL_H /* avoid conflicts with linux/dmapool.h file */
 
 static inline struct kmem_cache *virtio_dmam_pool_create(const char *name,
+							 struct device *dev,
 							 size_t size,
 							 size_t align)
 {
-	return kmem_cache_create(name, size, align, SLAB_HWCACHE_ALIGN, NULL);
+	struct kmem_cache *cache;
+
+	cache = kmem_cache_create(name, size, align, SLAB_HWCACHE_ALIGN, NULL);
+	if (!cache)
+		return NULL;
+
+	if (devm_add_action_or_reset(dev, (void (*)(void *))kmem_cache_destroy, cache))
+		return NULL;
+
+	return cache;
 }
 
 #define dmam_pool_create(name, dev, size, align, allocation) \
-	virtio_dmam_pool_create((name), (size), (align))
-
-static inline void virtio_dma_pool_destroy(struct kmem_cache *s)
-{
-		kmem_cache_destroy(s);
-}
-
-#define dmam_pool_destroy(pool) \
-	virtio_dma_pool_destroy(pool)
+	virtio_dmam_pool_create((name), dev, (size), (align))
 
 #undef dma_map_single
 #define dma_map_single(dev, tb1_addr, tb1_len, dir) \
