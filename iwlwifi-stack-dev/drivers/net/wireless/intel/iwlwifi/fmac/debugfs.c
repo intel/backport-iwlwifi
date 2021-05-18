@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #include <linux/module.h>
 #include <linux/rtnetlink.h>
@@ -691,6 +691,11 @@ static ssize_t iwl_dbgfs_fw_restart_write(struct iwl_fmac *fmac,
 	if (!iwl_fmac_firmware_running(fmac)) {
 		mutex_unlock(&fmac->mutex);
 		return -EIO;
+	}
+
+	if (fmac->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000) {
+		iwl_force_nmi(fmac->trans);
+		return count;
 	}
 
 	iwl_fmac_send_cmd_pdu(fmac, REPLY_ERROR, 0, 0, NULL);

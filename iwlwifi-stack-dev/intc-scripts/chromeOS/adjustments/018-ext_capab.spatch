@@ -1,0 +1,17 @@
+@@
+identifier hw;
+identifier wiphy;
+expression E;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
+hw->wiphy->iftype_ext_capab = E;
++#endif
+
+@@
+identifier hw;
+identifier wiphy;
+expression E;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(4,8,0)
+hw->wiphy->num_iftype_ext_capab = E;
++#endif

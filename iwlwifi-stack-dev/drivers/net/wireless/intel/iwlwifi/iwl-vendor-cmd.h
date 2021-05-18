@@ -114,6 +114,18 @@
  *	notification for TM/FTM. Sent on receipt of respective WNM action frame
  *	for TM protocol or public action frame for FTM protocol, from peer device.
  *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_* specifies the details.
+ * @IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO: reports CSME connection info.
+ * @IWL_MVM_VENDOR_CMD_HOST_DISASSOC: reports host disconnection and sets disassoc
+ *	type with one of the options in &iwl_vendor_host_disconnect_type.
+ * @IWL_MVM_VENDOR_CMD_HOST_ASSOC: reports host association info, including SSID,
+ *	bssid, channel info, auth type which is on of the options in
+ *	&iwl_vendor_auth_akm_mode, and cipher suite.
+ * @IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP: host ask for ownership on the device.
+ * @IWL_MVM_VENDOR_CMD_HOST_SET_SW_RFKILL_STATE: set SW RF kill state
+ *	with on of the options in &iwl_vendor_sw_rfkill_state.
+ * @IWL_MVM_VENDOR_CMD_ROAMING_FORBIDDEN_EVENT: notifies if roaming is allowed.
+ *	contains a &IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN and a
+ *	&IWL_MVM_VENDOR_ATTR_VIF_ADDR attribute.
  */
 
 enum iwl_mvm_vendor_cmd {
@@ -158,9 +170,16 @@ enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA			= 0x26,
 	IWL_MVM_VENDOR_CMD_RFIM_SET_TABLE			= 0x27,
 	IWL_MVM_VENDOR_CMD_RFIM_GET_TABLE			= 0x28,
-	IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG		= 0x29,
-	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT		= 0x2a,
-	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT			= 0x2b,
+	IWL_MVM_VENDOR_CMD_RFIM_GET_CAPA			= 0x29,
+	IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG		= 0x2a,
+	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT		= 0x2b,
+	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT			= 0x2c,
+	IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO			= 0x2d,
+	IWL_MVM_VENDOR_CMD_HOST_DISASSOC			= 0x2e,
+	IWL_MVM_VENDOR_CMD_HOST_ASSOC				= 0x2f,
+	IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP			= 0x30,
+	IWL_MVM_VENDOR_CMD_HOST_SET_SW_RFKILL_STATE		= 0x31,
+	IWL_MVM_VENDOR_CMD_ROAMING_FORBIDDEN_EVENT		= 0x32,
 };
 
 /**
@@ -623,6 +642,39 @@ enum iwl_mvm_vendor_time_sync_protocol_type {
 };
 
 /**
+ * enum iwl_vendor_host_disconnect_type - host disconnection type.
+ * @IWL_VENDOR_DISCONNECT_TYPE_UNKNOWN: unknown.
+ * @IWL_VENDOR_DISCONNECT_TYPE_TEMPORARY: temporary host disconnection.
+ * @IWL_VENDOR_DISCONNECT_TYPE_LONG: long disconnection.
+ */
+enum iwl_vendor_host_disconnect_type {
+	IWL_VENDOR_DISCONNECT_TYPE_UNKNOWN,
+	IWL_VENDOR_DISCONNECT_TYPE_TEMPORARY,
+	IWL_VENDOR_DISCONNECT_TYPE_LONG,
+};
+
+enum iwl_vendor_auth_akm_mode {
+	IWL_VENDOR_AUTH_OPEN,
+	IWL_VENDOR_AUTH_SHARED,
+	IWL_VENDOR_AUTH_WPA = 0x3,
+	IWL_VENDOR_AUTH_WPA_PSK,
+	IWL_VENDOR_AUTH_RSNA = 0x6,
+	IWL_VENDOR_AUTH_RSNA_PSK,
+	IWL_VENDOR_AUTH_SAE = 0x9,
+	IWL_VENDOR_AUTH_MAX,
+};
+
+/**
+ * enum iwl_vendor_sw_rfkill_state - sw rfkill states
+ * @IWL_VENDOR_SW_RFKILL_ON: sw rfkill is on.
+ * @IWL_VENDOR_SW_RFKILL_OFF: sw rfkill is off
+ */
+enum iwl_vendor_sw_rfkill_state {
+	IWL_VENDOR_SW_RFKILL_ON,
+	IWL_VENDOR_SW_RFKILL_OFF,
+};
+
+/**
  * enum iwl_mvm_vendor_attr - attributes used in vendor commands
  * @__IWL_MVM_VENDOR_ATTR_INVALID: attribute 0 is invalid
  * @IWL_MVM_VENDOR_ATTR_LOW_LATENCY: low-latency flag attribute
@@ -702,9 +754,6 @@ enum iwl_mvm_vendor_time_sync_protocol_type {
  *	listed SSIDs
  * @IWL_MVM_VENDOR_ATTR_GSCAN_MAX_NUM_BLACK_LISTED_SSID: max number of block
  *	listed SSIDs
- *
- * @NUM_IWL_MVM_VENDOR_ATTR: number of vendor attributes
- * @MAX_IWL_MVM_VENDOR_ATTR: highest vendor attribute number
  * @IWL_MVM_VENDOR_ATTR_WIPHY_FREQ: frequency of the selected channel in MHz,
  *	defines the channel together with the attributes
  *	%IWL_MVM_VENDOR_ATTR_CHANNEL_WIDTH and if needed
@@ -803,6 +852,26 @@ enum iwl_mvm_vendor_time_sync_protocol_type {
  *	error in units of 10 nano seconds.
  * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA: vendor specific data. This does not
  *	include the IE header.
+ * @IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN: u8 attribute. Indicates whether
+ *	roaming is forbidden or not. Value 1 means roaming is forbidden,
+ *	0 mean roaming is allowed.
+ * @IWL_MVM_VENDOR_ATTR_AUTH_MODE: u32 attribute. Authentication mode type
+ *	as specified in &enum iwl_vendor_auth_akm_mode.
+ * @IWL_MVM_VENDOR_ATTR_CHANNEL_NUM: u8 attribute. Contains channel number.
+ * @IWL_MVM_VENDOR_ATTR_HOST_DISASSOC_TYPE: u8 attribute. Host disassociation
+ *	type as specified in &enum iwl_vendor_host_disconnect_type.
+ * @IWL_MVM_VENDOR_ATTR_SW_RFKILL_STATE: u8 attribute. SW rf kill state as
+ *	specified in &enum iwl_vendor_sw_rfkill_state.
+ * @IWL_MVM_VENDOR_ATTR_BAND: u8 attribute.
+ *	0 for 2.4 GHz band, 1 for 5.2GHz band and 2 for 6GHz band.
+ * @IWL_MVM_VENDOR_ATTR_COLLOC_CHANNEL: u32 attribute. Channel number of
+ *	collocated AP. Relevant for 6GHz AP info.
+ * @IWL_MVM_VENDOR_ATTR_COLLOC_ADDR: MAC address of a collocated AP.
+ *	Relevant for 6GHz AP info.
+ *
+ * @NUM_IWL_MVM_VENDOR_ATTR: number of vendor attributes
+ * @MAX_IWL_MVM_VENDOR_ATTR: highest vendor attribute number
+
  */
 enum iwl_mvm_vendor_attr {
 	__IWL_MVM_VENDOR_ATTR_INVALID				= 0x00,
@@ -891,19 +960,28 @@ enum iwl_mvm_vendor_attr {
 	IWL_MVM_VENDOR_ATTR_RFIM_FREQ				= 0x53,
 	IWL_MVM_VENDOR_ATTR_RFIM_CHANNELS			= 0x54,
 	IWL_MVM_VENDOR_ATTR_RFIM_BANDS				= 0x55,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE		= 0x56,
-	IWL_MVM_VENDOR_ATTR_PAD					= 0x57,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN		= 0x58,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1			= 0x59,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR		= 0x5a,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4			= 0x5b,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR		= 0x5c,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN		= 0x5d,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2			= 0x5e,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR		= 0x5f,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3			= 0x60,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR		= 0x61,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA			= 0x62,
+	IWL_MVM_VENDOR_ATTR_RFIM_CAPA				= 0x56,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE		= 0x57,
+	IWL_MVM_VENDOR_ATTR_PAD					= 0x58,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN		= 0x59,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1			= 0x5a,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR		= 0x5b,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4			= 0x5c,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR		= 0x5d,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN		= 0x5e,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2			= 0x5f,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR		= 0x60,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3			= 0x61,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR		= 0x62,
+	IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA			= 0x63,
+	IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN			= 0x64,
+	IWL_MVM_VENDOR_ATTR_AUTH_MODE				= 0x65,
+	IWL_MVM_VENDOR_ATTR_CHANNEL_NUM				= 0x66,
+	IWL_MVM_VENDOR_ATTR_HOST_DISASSOC_TYPE			= 0x67,
+	IWL_MVM_VENDOR_ATTR_SW_RFKILL_STATE			= 0x68,
+	IWL_MVM_VENDOR_ATTR_BAND				= 0x69,
+	IWL_MVM_VENDOR_ATTR_COLLOC_CHANNEL			= 0x70,
+	IWL_MVM_VENDOR_ATTR_COLLOC_ADDR				= 0x71,
 
 	NUM_IWL_MVM_VENDOR_ATTR,
 	MAX_IWL_MVM_VENDOR_ATTR = NUM_IWL_MVM_VENDOR_ATTR - 1,

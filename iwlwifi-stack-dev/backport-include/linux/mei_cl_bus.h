@@ -22,4 +22,16 @@
 #define mei_cldev_disable(cldev) mei_cl_disable_device(cldev)
 #endif
 
+#if LINUX_VERSION_IS_LESS(5,13,0) && !defined(CONFIG_WLAN_VENDOR_INTEL_MEI)
+static inline void *mei_cldev_dma_map(struct mei_cl_device *cldev,
+				      u8 buffer_id, size_t size)
+{
+	return ERR_PTR(-EINVAL);
+}
+static inline int mei_cldev_dma_unmap(struct mei_cl_device *cldev)
+{
+	return -EOPNOTSUPP;
+}
+#endif
+
 #endif /* __BACKPORT_LINUX_MEI_CL_BUS_H */

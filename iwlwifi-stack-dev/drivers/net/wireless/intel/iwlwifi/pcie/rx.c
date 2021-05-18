@@ -666,7 +666,6 @@ static int iwl_pcie_free_bd_size(struct iwl_trans *trans, bool use_rx_td)
 static void iwl_pcie_free_rxq_dma(struct iwl_trans *trans,
 				  struct iwl_rxq *rxq)
 {
-	struct device *dev = trans->dev;
 	bool use_rx_td = (trans->trans_cfg->device_family >=
 			  IWL_DEVICE_FAMILY_AX210);
 	int free_size = iwl_pcie_free_bd_size(trans, use_rx_td);
@@ -688,21 +687,6 @@ static void iwl_pcie_free_rxq_dma(struct iwl_trans *trans,
 				  rxq->used_bd, rxq->used_bd_dma);
 	rxq->used_bd_dma = 0;
 	rxq->used_bd = NULL;
-
-	if (trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210)
-		return;
-
-	if (rxq->tr_tail)
-		dma_free_coherent(dev, sizeof(__le16),
-				  rxq->tr_tail, rxq->tr_tail_dma);
-	rxq->tr_tail_dma = 0;
-	rxq->tr_tail = NULL;
-
-	if (rxq->cr_tail)
-		dma_free_coherent(dev, sizeof(__le16),
-				  rxq->cr_tail, rxq->cr_tail_dma);
-	rxq->cr_tail_dma = 0;
-	rxq->cr_tail = NULL;
 }
 
 static int iwl_pcie_alloc_rxq_dma(struct iwl_trans *trans,
@@ -746,21 +730,6 @@ static int iwl_pcie_alloc_rxq_dma(struct iwl_trans *trans,
 	rxq->rb_stts = trans_pcie->base_rb_stts + rxq->id * rb_stts_size;
 	rxq->rb_stts_dma =
 		trans_pcie->base_rb_stts_dma + rxq->id * rb_stts_size;
-
-	if (!use_rx_td)
-		return 0;
-
-	/* Allocate the driver's pointer to TR tail */
-	rxq->tr_tail = dma_alloc_coherent(dev, sizeof(__le16),
-					  &rxq->tr_tail_dma, GFP_KERNEL);
-	if (!rxq->tr_tail)
-		goto err;
-
-	/* Allocate the driver's pointer to CR tail */
-	rxq->cr_tail = dma_alloc_coherent(dev, sizeof(__le16),
-					  &rxq->cr_tail_dma, GFP_KERNEL);
-	if (!rxq->cr_tail)
-		goto err;
 
 	return 0;
 
@@ -1591,9 +1560,6 @@ restart:
 out:
 	/* Backtrack one entry */
 	rxq->read = i;
-	/* update cr tail with the rxq read pointer */
-	if (trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
-		*rxq->cr_tail = cpu_to_le16(r);
 	spin_unlock(&rxq->lock);
 
 	/*

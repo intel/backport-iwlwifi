@@ -889,12 +889,11 @@ static int iwl_trans_virtio_start_fw(struct iwl_trans *trans,
 {
 	struct iwl_trans_virtio *trans_virtio =
 		IWL_TRANS_GET_VIRTIO_TRANS(trans);
-	struct {
+	struct ctxt {
 		struct iwl_context_info_gen3 info;
 		struct iwl_prph_scratch prph_scratch;
-	} ctxt;
-	struct iwl_prph_scratch_ctrl_cfg *prph_sc_ctrl =
-		&ctxt.prph_scratch.ctrl_cfg;
+	} *ctxt;
+	struct iwl_prph_scratch_ctrl_cfg *prph_sc_ctrl;
 	u32 control_flags = 0;
 	int queue_size = max_t(u32, IWL_CMD_QUEUE_SIZE,
 			       trans->cfg->min_txq_size);
@@ -923,18 +922,25 @@ static int iwl_trans_virtio_start_fw(struct iwl_trans *trans,
 		break;
 	}
 
+	ctxt = kzalloc(sizeof(*ctxt), GFP_KERNEL);
+	if (!ctxt)
+		return -ENOMEM;
+
+	prph_sc_ctrl = &ctxt->prph_scratch.ctrl_cfg;
+
 	iwl_virtio_ctxt_info_dbg_enable(trans, &prph_sc_ctrl->hwm_cfg,
 					&control_flags);
 	prph_sc_ctrl->control.control_flags = cpu_to_le32(control_flags);
 
-	ctxt.info.prph_scratch_size = cpu_to_le32(sizeof(ctxt.prph_scratch));
-	ctxt.info.mtr_size = cpu_to_le16(TFD_QUEUE_CB_SIZE(queue_size));
-	ctxt.info.mcr_size =
+	ctxt->info.prph_scratch_size = cpu_to_le32(sizeof(ctxt->prph_scratch));
+	ctxt->info.mtr_size = cpu_to_le16(TFD_QUEUE_CB_SIZE(queue_size));
+	ctxt->info.mcr_size =
 		cpu_to_le16(RX_QUEUE_CB_SIZE(trans->cfg->num_rbds));
 
 	send_control_msg(trans_virtio, VIRTIO_IWL_E_FW_START, 0, 0,
-			 &ctxt, sizeof(ctxt));
+			 ctxt, sizeof(*ctxt));
 	set_bit(STATUS_DEVICE_ENABLED, &trans->status);
+	kfree(ctxt);
 	return 0;
 }
 
@@ -1328,6 +1334,7 @@ kfree:
 }
 
 static int iwl_trans_virtio_request_fw(struct iwl_trans *trans,
+				       const char *name,
 				       void *context,
 				       void (*cont)(const struct firmware *fw,
 						    void *context))

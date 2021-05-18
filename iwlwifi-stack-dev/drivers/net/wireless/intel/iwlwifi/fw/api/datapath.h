@@ -93,6 +93,12 @@ enum iwl_data_path_subcmd_ids {
 	RX_NO_DATA_NOTIF = 0xF5,
 
 	/**
+	 * @THERMAL_DUAL_CHAIN_DISABLE_REQ: firmware request for SMPS mode,
+	 *	&struct iwl_thermal_dual_chain_request
+	 */
+	THERMAL_DUAL_CHAIN_REQUEST = 0xF6,
+
+	/**
 	 * @TLC_MNG_UPDATE_NOTIF: &struct iwl_tlc_update_notif
 	 */
 	TLC_MNG_UPDATE_NOTIF = 0xF7,
@@ -210,10 +216,20 @@ struct iwl_time_msmt_cfm_notify {
  * @data: vendor specific data blob
  */
 struct iwl_time_msmt_ptp_ctx {
-	u8 element_id;
-	u8 length;
-	__le16 reserved;
-	u8 data[PTP_CTX_MAX_DATA_SIZE];
+	/* Differentiate between FTM and TM specific Vendor IEs */
+	union {
+		struct {
+			u8 element_id;
+			u8 length;
+			__le16 reserved;
+			u8 data[PTP_CTX_MAX_DATA_SIZE];
+		} ftm; /* FTM specific vendor IE */
+		struct {
+			u8 element_id;
+			u8 length;
+			u8 data[PTP_CTX_MAX_DATA_SIZE];
+		} tm; /* TM specific vendor IE */
+	};
 } __packed /* PTP_CTX_VER_1 */;
 
 /**
@@ -376,5 +392,25 @@ struct iwl_datapath_monitor_notif {
 	u8 mac_id;
 	u8 reserved[3];
 } __packed; /* MONITOR_NTF_API_S_VER_1 */
+
+/**
+ * enum iwl_thermal_dual_chain_req_events - firmware SMPS request event
+ * @THERMAL_DUAL_CHAIN_REQ_ENABLE: (re-)enable dual-chain operation
+ *	(subject to other constraints)
+ * @THERMAL_DUAL_CHAIN_REQ_DISABLE: disable dual-chain operation
+ *	(static SMPS)
+ */
+enum iwl_thermal_dual_chain_req_events {
+	THERMAL_DUAL_CHAIN_REQ_ENABLE,
+	THERMAL_DUAL_CHAIN_REQ_DISABLE,
+}; /* THERMAL_DUAL_CHAIN_DISABLE_STATE_API_E_VER_1 */
+
+/**
+ * struct iwl_thermal_dual_chain_request - SMPS request
+ * @event: the type of request, see &enum iwl_thermal_dual_chain_req_events
+ */
+struct iwl_thermal_dual_chain_request {
+	__le32 event;
+} __packed; /* THERMAL_DUAL_CHAIN_DISABLE_REQ_NTFY_API_S_VER_1 */
 
 #endif /* __iwl_fw_api_datapath_h__ */

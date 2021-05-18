@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #include <linux/module.h>
 #include <linux/rtnetlink.h>
@@ -422,30 +422,56 @@ static int iwl_fmac_config_prev_regdom(struct iwl_fmac *fmac)
 
 static void iwl_fmac_lari_cfg(struct iwl_fmac *fmac)
 {
-	int cmd_ret;
-	struct iwl_lari_config_change_cmd_v2 cmd = {};
+	int ret;
+	u32 value;
+	struct iwl_lari_config_change_cmd_v4 cmd = {};
 
 	cmd.config_bitmap = iwl_acpi_get_lari_config_bitmap(&fmac->fwrt);
 
+	ret = iwl_acpi_get_dsm_u32((&fmac->fwrt)->dev, 0, DSM_FUNC_11AX_ENABLEMENT,
+				   &iwl_guid, &value);
+	if (!ret)
+		cmd.oem_11ax_allow_bitmap = cpu_to_le32(value);
 	/* apply more config masks here */
 
-	if (cmd.config_bitmap) {
-		size_t cmd_size = iwl_fw_lookup_cmd_ver(fmac->fw,
-							REGULATORY_AND_NVM_GROUP,
-							LARI_CONFIG_CHANGE, 1) == 2 ?
-			sizeof(struct iwl_lari_config_change_cmd_v2) :
-			sizeof(struct iwl_lari_config_change_cmd_v1);
+	ret = iwl_acpi_get_dsm_u32((&fmac->fwrt)->dev, 0,
+				   DSM_FUNC_ENABLE_UNII4_CHAN,
+				   &iwl_guid, &value);
+	if (!ret)
+		cmd.oem_unii4_allow_bitmap = cpu_to_le32(value);
+
+	if (cmd.config_bitmap ||
+	    cmd.oem_11ax_allow_bitmap ||
+	    cmd.oem_unii4_allow_bitmap) {
+		size_t cmd_size;
+		u8 cmd_ver = iwl_fw_lookup_cmd_ver(fmac->fw,
+						   REGULATORY_AND_NVM_GROUP,
+						   LARI_CONFIG_CHANGE, 1);
+		if (cmd_ver == 4)
+			cmd_size = sizeof(struct iwl_lari_config_change_cmd_v4);
+		else if (cmd_ver == 3)
+			cmd_size = sizeof(struct iwl_lari_config_change_cmd_v3);
+		else if (cmd_ver == 2)
+			cmd_size = sizeof(struct iwl_lari_config_change_cmd_v2);
+		else
+			cmd_size = sizeof(struct iwl_lari_config_change_cmd_v1);
+
 		IWL_DEBUG_RADIO(fmac,
-				"sending LARI_CONFIG_CHANGE, config_bitmap=0x%x\n",
-				le32_to_cpu(cmd.config_bitmap));
-		cmd_ret = iwl_fmac_send_cmd_pdu(fmac,
-						WIDE_ID(REGULATORY_AND_NVM_GROUP,
-							LARI_CONFIG_CHANGE),
-						0, cmd_size, &cmd);
-		if (cmd_ret < 0)
+				"sending LARI_CONFIG_CHANGE, config_bitmap=0x%x, oem_11ax_allow_bitmap=0x%x\n",
+				le32_to_cpu(cmd.config_bitmap),
+				le32_to_cpu(cmd.oem_11ax_allow_bitmap));
+		IWL_DEBUG_RADIO(fmac,
+				"sending LARI_CONFIG_CHANGE, oem_unii4_allow_bitmap=0x%x, cmd_ver=%d\n",
+				le32_to_cpu(cmd.oem_unii4_allow_bitmap),
+				cmd_ver);
+		ret = iwl_fmac_send_cmd_pdu(fmac,
+					    WIDE_ID(REGULATORY_AND_NVM_GROUP,
+						    LARI_CONFIG_CHANGE),
+					    0, cmd_size, &cmd);
+		if (ret < 0)
 			IWL_DEBUG_RADIO(fmac,
 					"Failed to send LARI_CONFIG_CHANGE (%d)\n",
-					cmd_ret);
+					ret);
 	}
 }
 
@@ -991,183 +1017,7 @@ int iwl_fmac_send_cmd_pdu_status(struct iwl_fmac *fmac, u32 id, u16 len,
 	return iwl_fmac_send_cmd_status(fmac, &cmd, status);
 }
 
-struct iwl_error_event_table {
-	u32 valid;		/* (nonzero) valid, (0) log is empty */
-	u32 error_id;		/* type of error */
-	u32 trm_hw_status0;	/* TRM HW status */
-	u32 trm_hw_status1;	/* TRM HW status */
-	u32 blink2;		/* branch link */
-	u32 ilink1;		/* interrupt link */
-	u32 ilink2;		/* interrupt link */
-	u32 data1;		/* error-specific data */
-	u32 data2;		/* error-specific data */
-	u32 data3;		/* error-specific data */
-	u32 bcon_time;		/* beacon timer */
-	u32 tsf_low;		/* network timestamp function timer */
-	u32 tsf_hi;		/* network timestamp function timer */
-	u32 gp1;		/* GP1 timer register */
-	u32 gp2;		/* GP2 timer register */
-	u32 fw_rev_type;	/* firmware revision type */
-	u32 major;		/* uCode version major */
-	u32 minor;		/* uCode version minor */
-	u32 hw_ver;		/* HW Silicon version */
-	u32 brd_ver;		/* HW board version */
-	u32 log_pc;		/* log program counter */
-	u32 frame_ptr;		/* frame pointer */
-	u32 stack_ptr;		/* stack pointer */
-	u32 hcmd;		/* last host command header */
-	u32 isr0;		/* isr status register LMPM_NIC_ISR0:
-				 * rxtx_flag */
-	u32 isr1;		/* isr status register LMPM_NIC_ISR1:
-				 * host_flag */
-	u32 isr2;		/* isr status register LMPM_NIC_ISR2:
-				 * enc_flag */
-	u32 isr3;		/* isr status register LMPM_NIC_ISR3:
-				 * time_flag */
-	u32 isr4;		/* isr status register LMPM_NIC_ISR4:
-				 * wico interrupt */
-	u32 last_cmd_id;	/* last HCMD id handled by the firmware */
-	u32 wait_event;		/* wait event() caller address */
-	u32 l2p_control;	/* L2pControlField */
-	u32 l2p_duration;	/* L2pDurationField */
-	u32 l2p_mhvalid;	/* L2pMhValidBits */
-	u32 l2p_addr_match;	/* L2pAddrMatchStat */
-	u32 lmpm_pmg_sel;	/* indicate which clocks are turned on
-				 * (LMPM_PMG_SEL) */
-	u32 u_timestamp;	/* indicate when the date and time of the
-				 * compilation */
-	u32 flow_handler;	/* FH read/write pointers, RX credit */
-} __packed /* LOG_ERROR_TABLE_API_S_VER_3 */;
-
-/*
- * UMAC error struct - relevant starting from family 8000 chip.
- * Note: This structure is read from the device with IO accesses,
- * and the reading already does the endian conversion. As it is
- * read with u32-sized accesses, any members with a different size
- * need to be ordered correctly though!
- */
-struct iwl_umac_error_event_table {
-	u32 valid;		/* (nonzero) valid, (0) log is empty */
-	u32 error_id;		/* type of error */
-	u32 blink1;		/* branch link */
-	u32 blink2;		/* branch link */
-	u32 ilink1;		/* interrupt link */
-	u32 ilink2;		/* interrupt link */
-	u32 data1;		/* error-specific data */
-	u32 data2;		/* error-specific data */
-	u32 data3;		/* error-specific data */
-	u32 umac_major;
-	u32 umac_minor;
-	u32 frame_pointer;	/* core register 27*/
-	u32 stack_pointer;	/* core register 28 */
-	u32 cmd_header;		/* latest host cmd sent to UMAC */
-	u32 nic_isr_pref;	/* ISR status register */
-} __packed;
-
-static void iwl_fmac_dump_umac_error_log(struct iwl_fmac *fmac)
-{
-	struct iwl_trans *trans = fmac->trans;
-	struct iwl_umac_error_event_table table;
-	u32 base = fmac->trans->dbg.umac_error_event_table;
-
-	if (base < trans->cfg->min_umac_error_event_table) {
-		IWL_ERR(fmac,
-			"Not valid error log pointer 0x%08X for %s uCode\n",
-			base,
-			(fmac->fwrt.cur_fw_img == IWL_UCODE_INIT) ?
-				"Init" : "RT");
-		return;
-	}
-
-	iwl_trans_read_mem_bytes(trans, base, &table, sizeof(table));
-
-	if (table.valid)
-		fmac->fwrt.dump.umac_err_id = table.error_id;
-
-	IWL_ERR(fmac, "0x%08X | %s\n", table.error_id,
-		iwl_fw_lookup_assert_desc(table.error_id));
-	IWL_ERR(fmac, "0x%08X | umac branchlink1\n", table.blink1);
-	IWL_ERR(fmac, "0x%08X | umac branchlink2\n", table.blink2);
-	IWL_ERR(fmac, "0x%08X | umac interruptlink1\n", table.ilink1);
-	IWL_ERR(fmac, "0x%08X | umac interruptlink2\n", table.ilink2);
-	IWL_ERR(fmac, "0x%08X | umac data1\n", table.data1);
-	IWL_ERR(fmac, "0x%08X | umac data2\n", table.data2);
-	IWL_ERR(fmac, "0x%08X | umac data3\n", table.data3);
-	IWL_ERR(fmac, "0x%08X | umac major\n", table.umac_major);
-	IWL_ERR(fmac, "0x%08X | umac minor\n", table.umac_minor);
-	IWL_ERR(fmac, "0x%08X | frame pointer\n", table.frame_pointer);
-	IWL_ERR(fmac, "0x%08X | stack pointer\n", table.stack_pointer);
-	IWL_ERR(fmac, "0x%08X | last host cmd\n", table.cmd_header);
-	IWL_ERR(fmac, "0x%08X | isr status reg\n", table.nic_isr_pref);
-}
-
-static void iwl_fmac_dump_lmac_error_log(struct iwl_fmac *fmac, u8 lmac_num)
-{
-	struct iwl_trans *trans = fmac->trans;
-	struct iwl_error_event_table table;
-	u32 base = fmac->trans->dbg.lmac_error_event_table[lmac_num];
-
-	if (base < 0x400000) {
-		IWL_ERR(fmac,
-			"Not valid error log pointer 0x%08X for %s uCode\n",
-			base,
-			(fmac->fwrt.cur_fw_img == IWL_UCODE_INIT) ?
-				"Init" : "RT");
-		return;
-	}
-
-	iwl_trans_read_mem_bytes(trans, base, &table, sizeof(table));
-
-	if (table.valid)
-		fmac->fwrt.dump.lmac_err_id[lmac_num] = table.error_id;
-
-	/* Do not change this output - scripts rely on it */
-
-	IWL_ERR(fmac, "Loaded firmware version: %s\n", fmac->fw->fw_version);
-
-	IWL_ERR(fmac, "0x%08X | %-28s\n", table.error_id,
-		iwl_fw_lookup_assert_desc(table.error_id));
-	IWL_ERR(fmac, "0x%08X | trm_hw_status0\n", table.trm_hw_status0);
-	IWL_ERR(fmac, "0x%08X | trm_hw_status1\n", table.trm_hw_status1);
-	IWL_ERR(fmac, "0x%08X | branchlink2\n", table.blink2);
-	IWL_ERR(fmac, "0x%08X | interruptlink1\n", table.ilink1);
-	IWL_ERR(fmac, "0x%08X | interruptlink2\n", table.ilink2);
-	IWL_ERR(fmac, "0x%08X | data1\n", table.data1);
-	IWL_ERR(fmac, "0x%08X | data2\n", table.data2);
-	IWL_ERR(fmac, "0x%08X | data3\n", table.data3);
-	IWL_ERR(fmac, "0x%08X | beacon time\n", table.bcon_time);
-	IWL_ERR(fmac, "0x%08X | tsf low\n", table.tsf_low);
-	IWL_ERR(fmac, "0x%08X | tsf hi\n", table.tsf_hi);
-	IWL_ERR(fmac, "0x%08X | time gp1\n", table.gp1);
-	IWL_ERR(fmac, "0x%08X | time gp2\n", table.gp2);
-	IWL_ERR(fmac, "0x%08X | uCode revision type\n", table.fw_rev_type);
-	IWL_ERR(fmac, "0x%08X | uCode version major\n", table.major);
-	IWL_ERR(fmac, "0x%08X | uCode version minor\n", table.minor);
-	IWL_ERR(fmac, "0x%08X | hw version\n", table.hw_ver);
-	IWL_ERR(fmac, "0x%08X | board version\n", table.brd_ver);
-	IWL_ERR(fmac, "0x%08X | hcmd\n", table.hcmd);
-	IWL_ERR(fmac, "0x%08X | isr0\n", table.isr0);
-	IWL_ERR(fmac, "0x%08X | isr1\n", table.isr1);
-	IWL_ERR(fmac, "0x%08X | isr2\n", table.isr2);
-	IWL_ERR(fmac, "0x%08X | isr3\n", table.isr3);
-	IWL_ERR(fmac, "0x%08X | isr4\n", table.isr4);
-	IWL_ERR(fmac, "0x%08X | last cmd Id\n", table.last_cmd_id);
-	IWL_ERR(fmac, "0x%08X | wait_event\n", table.wait_event);
-	IWL_ERR(fmac, "0x%08X | l2p_control\n", table.l2p_control);
-	IWL_ERR(fmac, "0x%08X | l2p_duration\n", table.l2p_duration);
-	IWL_ERR(fmac, "0x%08X | l2p_mhvalid\n", table.l2p_mhvalid);
-	IWL_ERR(fmac, "0x%08X | l2p_addr_match\n", table.l2p_addr_match);
-	IWL_ERR(fmac, "0x%08X | lmpm_pmg_sel\n", table.lmpm_pmg_sel);
-	IWL_ERR(fmac, "0x%08X | timestamp\n", table.u_timestamp);
-	IWL_ERR(fmac, "0x%08X | flow_handler\n", table.flow_handler);
-}
-
-
 void iwl_fmac_dump_nic_error_log(struct iwl_fmac *fmac)
 {
-	iwl_fmac_dump_lmac_error_log(fmac, 0);
-	if (fmac->trans->dbg.lmac_error_event_table[1])
-		iwl_fmac_dump_lmac_error_log(fmac, 1);
-	iwl_fmac_dump_umac_error_log(fmac);
-	iwl_fw_error_print_fseq_regs(&fmac->fwrt);
+	iwl_fwrt_dump_error_logs(&fmac->fwrt);
 }

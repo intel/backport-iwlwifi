@@ -858,6 +858,8 @@ int iwl_mvm_sar_select_profile(struct iwl_mvm *mvm, int prof_a, int prof_b)
 	if (ret)
 		return ret;
 
+	iwl_mei_set_power_limit(per_chain);
+
 	IWL_DEBUG_RADIO(mvm, "Sending REDUCE_TX_POWER_CMD per chain\n");
 	return iwl_mvm_send_cmd_pdu(mvm, REDUCE_TX_POWER_CMD, 0, len, &cmd);
 }
@@ -1160,6 +1162,7 @@ static const struct dmi_system_id dmi_ppag_approved_list[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "ASUSTek COMPUTER INC."),
 		},
 	},
+	{}
 };
 
 static int iwl_mvm_ppag_init(struct iwl_mvm *mvm)
@@ -1256,7 +1259,7 @@ static void iwl_mvm_lari_cfg(struct iwl_mvm *mvm)
 {
 	int ret;
 	u32 value;
-	struct iwl_lari_config_change_cmd_v3 cmd = {};
+	struct iwl_lari_config_change_cmd_v4 cmd = {};
 
 	cmd.config_bitmap = iwl_acpi_get_lari_config_bitmap(&mvm->fwrt);
 
@@ -1266,12 +1269,22 @@ static void iwl_mvm_lari_cfg(struct iwl_mvm *mvm)
 		cmd.oem_11ax_allow_bitmap = cpu_to_le32(value);
 	/* apply more config masks here */
 
-	if (cmd.config_bitmap || cmd.oem_11ax_allow_bitmap) {
+	ret = iwl_acpi_get_dsm_u32((&mvm->fwrt)->dev, 0,
+				   DSM_FUNC_ENABLE_UNII4_CHAN,
+				   &iwl_guid, &value);
+	if (!ret)
+		cmd.oem_unii4_allow_bitmap = cpu_to_le32(value);
+
+	if (cmd.config_bitmap ||
+	    cmd.oem_11ax_allow_bitmap ||
+	    cmd.oem_unii4_allow_bitmap) {
 		size_t cmd_size;
 		u8 cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw,
 						   REGULATORY_AND_NVM_GROUP,
 						   LARI_CONFIG_CHANGE, 1);
-		if (cmd_ver == 3)
+		if (cmd_ver == 4)
+			cmd_size = sizeof(struct iwl_lari_config_change_cmd_v4);
+		else if (cmd_ver == 3)
 			cmd_size = sizeof(struct iwl_lari_config_change_cmd_v3);
 		else if (cmd_ver == 2)
 			cmd_size = sizeof(struct iwl_lari_config_change_cmd_v2);
@@ -1282,6 +1295,10 @@ static void iwl_mvm_lari_cfg(struct iwl_mvm *mvm)
 				"sending LARI_CONFIG_CHANGE, config_bitmap=0x%x, oem_11ax_allow_bitmap=0x%x\n",
 				le32_to_cpu(cmd.config_bitmap),
 				le32_to_cpu(cmd.oem_11ax_allow_bitmap));
+		IWL_DEBUG_RADIO(mvm,
+				"sending LARI_CONFIG_CHANGE, oem_unii4_allow_bitmap=0x%x, cmd_ver=%d\n",
+				le32_to_cpu(cmd.oem_unii4_allow_bitmap),
+				cmd_ver);
 		ret = iwl_mvm_send_cmd_pdu(mvm,
 					   WIDE_ID(REGULATORY_AND_NVM_GROUP,
 						   LARI_CONFIG_CHANGE),
@@ -1428,7 +1445,6 @@ static int iwl_mvm_load_rt_fw(struct iwl_mvm *mvm)
 	if (iwl_mvm_has_unified_ucode(mvm))
 		return iwl_run_unified_mvm_ucode(mvm);
 
-	WARN_ON(!mvm->nvm_data);
 	ret = iwl_run_init_mvm_ucode(mvm);
 
 	if (ret) {
@@ -1699,6 +1715,11 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 			IWL_ERR(mvm, "Failed to re-configure time sync on FW restart: %d\n",
 				err);
 	}
+
+#ifdef CPTCFG_IWLMVM_PHC
+	if (!mvm->ptp_data.ptp_clock)
+		iwl_mvm_ptp_init(mvm);
+#endif
 #endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
 
 	if (iwl_acpi_get_eckv(mvm->dev, &mvm->ext_clock_valid))

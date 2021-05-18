@@ -694,7 +694,7 @@ static  void cfg80211_scan_req_add_chan(struct cfg80211_scan_request *request,
 static bool cfg80211_find_ssid_match(struct cfg80211_colocated_ap *ap,
 				     struct cfg80211_scan_request *request)
 {
-	u8 i;
+	int i;
 	u32 s_ssid;
 
 	for (i = 0; i < request->n_ssids; i++) {
@@ -726,7 +726,7 @@ static int cfg80211_scan_6ghz(struct cfg80211_registered_device *rdev)
 	int n_channels, count = 0, err;
 	struct cfg80211_scan_request *request, *rdev_req = rdev->scan_req;
 	LIST_HEAD(coloc_ap_list);
-	bool need_scan_psc;
+	bool need_scan_psc = true;
 	const struct ieee80211_sband_iftype_data *iftd;
 
 	rdev_req->scan_6ghz = true;
@@ -770,20 +770,18 @@ static int cfg80211_scan_6ghz(struct cfg80211_registered_device *rdev)
 		(void *)&request->channels[n_channels];
 
 	/*
-	 * PSC channels should not be scanned if all the reported co-located APs
-	 * are indicating that all APs in the same ESS are co-located
+	 * PSC channels should not be scanned in case of direct scan with 1 SSID
+	 * and at least one of the reported co-located APs with same SSID
+	 * indicating that all APs in the same ESS are co-located
 	 */
-	if (count) {
-		need_scan_psc = false;
-
+	if (count && request->n_ssids == 1 && request->ssids[0].ssid_len) {
 		list_for_each_entry(ap, &coloc_ap_list, list) {
-			if (!ap->colocated_ess) {
-				need_scan_psc = true;
+			if (ap->colocated_ess &&
+			    cfg80211_find_ssid_match(ap, request)) {
+				need_scan_psc = false;
 				break;
 			}
 		}
-	} else {
-		need_scan_psc = true;
 	}
 
 	/*
@@ -2354,14 +2352,16 @@ cfg80211_inform_single_bss_frame_data(struct wiphy *wiphy,
 		return NULL;
 
 	if (ext) {
-		struct ieee80211_s1g_bcn_compat_ie *compat;
-		u8 *ie;
+		const struct ieee80211_s1g_bcn_compat_ie *compat;
+		const struct element *elem;
 
-		ie = (void *)cfg80211_find_ie(WLAN_EID_S1G_BCN_COMPAT,
-					      variable, ielen);
-		if (!ie)
+		elem = cfg80211_find_elem(WLAN_EID_S1G_BCN_COMPAT,
+					  variable, ielen);
+		if (!elem)
 			return NULL;
-		compat = (void *)(ie + 2);
+		if (elem->datalen < sizeof(*compat))
+			return NULL;
+		compat = (void *)elem->data;
 		bssid = ext->u.s1g_beacon.sa;
 		capability = le16_to_cpu(compat->compat_info);
 		beacon_int = le16_to_cpu(compat->beacon_int);

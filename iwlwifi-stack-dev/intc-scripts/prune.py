@@ -131,7 +131,9 @@ def get_includes(f, includes):
     '''
     for line in open(f, 'r'):
         if line.startswith('#include '):
-            includes.append(line.strip()[10:-1].split('/')[-1])
+            inc = line.strip()[10:-1].split('/')[-1]
+            if not f.endswith(inc) and not inc in includes:
+                includes.append(inc)
 
 def _prune_src(srcdir, dis):
     '''

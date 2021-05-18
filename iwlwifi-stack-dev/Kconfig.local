@@ -226,9 +226,6 @@ config BACKPORTED_MAC80211_STA_HASH_MAX_SIZE
 config BACKPORTED_WLAN
 	tristate
 	default WLAN
-config BACKPORTED_WIRELESS_WDS
-	tristate
-	default WIRELESS_WDS
 config BACKPORTED_PCMCIA_RAYCS
 	tristate
 	default PCMCIA_RAYCS

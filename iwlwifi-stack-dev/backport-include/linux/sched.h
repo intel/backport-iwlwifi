@@ -3,6 +3,9 @@
 
 #include_next <linux/sched.h>
 #include <linux/version.h>
+#if LINUX_VERSION_IS_LESS(4,10,0)
+#include <linux/kcov.h>
+#endif /* LINUX_VERSION_IS_LESS(4,10,0) */
 
 #if LINUX_VERSION_IS_LESS(5,9,0)
 #if LINUX_VERSION_IS_GEQ(4,11,0)

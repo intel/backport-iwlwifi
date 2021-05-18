@@ -558,20 +558,20 @@ static void iwl_xvt_rx_dispatch(struct iwl_op_mode *op_mode,
 	iwl_notification_wait_notify(&xvt->notif_wait, pkt);
 	IWL_DEBUG_INFO(xvt, "rx dispatch got notification\n");
 
-	switch (pkt->hdr.cmd) {
-	case TX_CMD:
+	switch (WIDE_ID(pkt->hdr.group_id, pkt->hdr.cmd)) {
+	case WIDE_ID(LEGACY_GROUP, TX_CMD):
 		iwl_xvt_rx_tx_cmd_handler(xvt, pkt);
 		break;
-	case BA_NOTIF:
+	case WIDE_ID(LEGACY_GROUP, BA_NOTIF):
 		iwl_xvt_rx_ba_notif(xvt, pkt);
 		break;
-	case REPLY_RX_MPDU_CMD:
+	case WIDE_ID(LEGACY_GROUP, REPLY_RX_MPDU_CMD):
 		iwl_xvt_reorder(xvt, pkt);
 		break;
-	case TXPATH_FLUSH:
+	case WIDE_ID(LONG_GROUP, TXPATH_FLUSH):
 		iwl_xvt_txpath_flush(xvt, pkt);
 		break;
-	case FRAME_RELEASE:
+	case WIDE_ID(LEGACY_GROUP, FRAME_RELEASE):
 		iwl_xvt_rx_frame_release(xvt, pkt);
 	}
 

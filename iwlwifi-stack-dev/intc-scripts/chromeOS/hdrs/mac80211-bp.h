@@ -1281,6 +1281,11 @@ cfg80211_iftype_allowed(struct wiphy *wiphy, enum nl80211_iftype iftype,
 }
 #endif /* < 5.4.0 */
 
+#if LINUX_VERSION_IS_LESS(5,5,0)
+#define kcov_remote_start_common(id) {}
+#define kcov_remote_stop() {}
+#endif /* LINUX_VERSION_IS_LESS(5,5,0) */
+
 #if CFG80211_VERSION < KERNEL_VERSION(5,5,0)
 #define NL80211_EXT_FEATURE_AQL -1
 
@@ -2435,7 +2440,22 @@ static inline int thermal_zone_device_enable(struct thermal_zone_device *tz)
 static inline int thermal_zone_device_enable(struct thermal_zone_device *tz)
 { return -ENODEV; }
 #endif /* CONFIG_THERMAL */
+
 #endif /* < 5.9.0 */
+
+#if LINUX_VERSION_IS_LESS(5,4,0)
+static inline void
+tasklet_setup(struct tasklet_struct *t,
+	      void (*callback)(struct tasklet_struct *))
+{
+	void (*cb)(unsigned long data) = (void *)callback;
+
+	tasklet_init(t, cb, (unsigned long)t);
+}
+
+#define from_tasklet(var, callback_tasklet, tasklet_fieldname) \
+	container_of(callback_tasklet, typeof(*var), tasklet_fieldname)
+#endif /* < 5.4.0 */
 
 #if CFG80211_VERSION < KERNEL_VERSION(5,9,0)
 static inline bool nl80211_is_s1ghz(enum nl80211_band band)
@@ -2539,6 +2559,16 @@ void dev_fetch_sw_netstats(struct rtnl_link_stats64 *s,
         }
 }
 
+static inline void dev_sw_netstats_rx_add(struct net_device *dev, unsigned int len)
+{
+	struct pcpu_sw_netstats *tstats = this_cpu_ptr(dev->tstats);
+
+	u64_stats_update_begin(&tstats->syncp);
+	tstats->rx_bytes += len;
+	tstats->rx_packets++;
+	u64_stats_update_end(&tstats->syncp);
+}
+
 #define bp_ieee80211_set_unsol_bcast_probe_resp(sdata, params) 0
 #define bp_unsol_bcast_probe_resp_interval(params) 0
 
@@ -2550,3 +2580,74 @@ void dev_fetch_sw_netstats(struct rtnl_link_stats64 *s,
 	(params->unsol_bcast_probe_resp.interval)
 
 #endif /* < 5.10 */
+
+#if CFG80211_VERSION < KERNEL_VERSION(5,4,0)
+enum nl80211_sar_type {
+	NL80211_SAR_TYPE_NONE,
+};
+
+struct cfg80211_sar_sub_specs {
+	s32 power;
+	u32 freq_range_index;
+};
+
+/**
+ * struct cfg80211_sar_specs - sar limit specs
+ * @type: it's set with power in 0.25dbm or other types
+ * @num_sub_specs: number of sar sub specs
+ * @sub_specs: memory to hold the sar sub specs
+ */
+struct cfg80211_sar_specs {
+	enum nl80211_sar_type type;
+	u32 num_sub_specs;
+	struct cfg80211_sar_sub_specs sub_specs[];
+};
+#endif /* < 5.4.0 */
+
+#if CFG80211_VERSION < KERNEL_VERSION(5,13,0)
+#define NL80211_EXT_FEATURE_PROT_RANGE_NEGO_AND_MEASURE -1
+
+static inline bool cfg80211_any_usable_channels(struct wiphy *wiphy,
+						unsigned long sband_mask,
+						u32 prohibited_flags)
+{
+	int idx;
+
+	prohibited_flags |= IEEE80211_CHAN_DISABLED;
+
+	for_each_set_bit(idx, &sband_mask, NUM_NL80211_BANDS) {
+		struct ieee80211_supported_band *sband = wiphy->bands[idx];
+		int chanidx;
+
+		if (!sband)
+			continue;
+
+		for (chanidx = 0; chanidx < sband->n_channels; chanidx++) {
+			struct ieee80211_channel *chan;
+
+			chan = &sband->channels[chanidx];
+
+			if (chan->flags & prohibited_flags)
+				continue;
+
+			return true;
+		}
+	}
+
+	return false;
+}
+#endif /* < 5.12.0 */
+
+#if LINUX_VERSION_IS_LESS(5,11,0)
+static inline void dev_sw_netstats_tx_add(struct net_device *dev,
+					  unsigned int packets,
+					  unsigned int len)
+{
+	struct pcpu_sw_netstats *tstats = this_cpu_ptr(dev->tstats);
+
+	u64_stats_update_begin(&tstats->syncp);
+	tstats->tx_bytes += len;
+	tstats->tx_packets += packets;
+	u64_stats_update_end(&tstats->syncp);
+}
+#endif

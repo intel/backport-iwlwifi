@@ -451,10 +451,11 @@ static int iwl_request_firmware(struct iwl_drv *drv, bool first)
 	IWL_DEBUG_FW_INFO(drv, "attempting to load firmware '%s'\n",
 			  drv->firmware_name);
 
-#ifdef CPTCFG_IWLWIFI_VIRTIO
-	if (drv->trans->ops->request_firmware)
-		return drv->trans->ops->request_firmware(drv->trans, drv,
-							 iwl_req_fw_callback);
+#ifdef CPTCFG_IWLWIFI_SIMULATION
+	if (drv->trans->ops->request_firmware &&
+	    !drv->trans->ops->request_firmware(drv->trans, drv->firmware_name,
+					       drv, iwl_req_fw_callback))
+		return 0;
 #endif
 
 	return request_firmware_nowait(THIS_MODULE, 1, drv->firmware_name,
@@ -1886,7 +1887,7 @@ static void iwl_req_fw_callback(const struct firmware *ucode_raw, void *context)
 		break;
 	default:
 		WARN(1, "Invalid fw type %d\n", fw->type);
-		/* fall through */
+		fallthrough;
 	case IWL_FW_MVM:
 		op = &iwlwifi_opmode_table[MVM_OP_MODE];
 		break;

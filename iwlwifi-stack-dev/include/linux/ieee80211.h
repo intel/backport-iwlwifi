@@ -1263,7 +1263,6 @@ struct ieee80211_mgmt {
 #define BSS_MEMBERSHIP_SELECTOR_HE_PHY	122
 #define BSS_MEMBERSHIP_SELECTOR_SAE_H2E 123
 
-
 /* mgmt header + 1 byte category code */
 #define IEEE80211_MIN_ACTION_SIZE offsetof(struct ieee80211_mgmt, u.action.u)
 
@@ -3422,6 +3421,8 @@ struct ieee80211_multiple_bssid_configuration {
 #define WLAN_AKM_SUITE_FT_PSK_SHA384		SUITE(0x000FAC, 19)
 #define WLAN_AKM_SUITE_PSK_SHA384		SUITE(0x000FAC, 20)
 
+#define WLAN_AKM_SUITE_WFA_DPP			SUITE(WLAN_OUI_WFA, 2)
+
 #define WLAN_MAX_KEY_LEN		32
 
 #define WLAN_PMK_NAME_LEN		16
@@ -3432,6 +3433,7 @@ struct ieee80211_multiple_bssid_configuration {
 
 #define WLAN_OUI_WFA			0x506f9a
 #define WLAN_OUI_TYPE_WFA_P2P		9
+#define WLAN_OUI_TYPE_WFA_DPP		0x1A
 #define WLAN_OUI_MICROSOFT		0x0050f2
 #define WLAN_OUI_TYPE_MICROSOFT_WPA	1
 #define WLAN_OUI_TYPE_MICROSOFT_WMM	2
@@ -3838,8 +3840,8 @@ static inline bool for_each_element_completed(const struct element *element,
 #define WLAN_RSNX_CAPA_SAE_H2E BIT(5)
 
 /*
- * reduced neighbor report, based on Draft P802.11ax_D5.0,
- * section 9.4.2.170
+ * reduced neighbor report, based on Draft P802.11ax_D6.1,
+ * section 9.4.2.170 and accepted contributions.
  */
 #define IEEE80211_AP_INFO_TBTT_HDR_TYPE				0x03
 #define IEEE80211_AP_INFO_TBTT_HDR_FILTERED			0x04

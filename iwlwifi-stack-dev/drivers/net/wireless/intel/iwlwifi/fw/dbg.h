@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2005-2014, 2018-2019 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2019, 2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
@@ -320,5 +320,5 @@ static inline void iwl_fwrt_update_fw_versions(struct iwl_fw_runtime *fwrt,
 	}
 }
 
-void iwl_fw_error_print_fseq_regs(struct iwl_fw_runtime *fwrt);
+void iwl_fwrt_dump_error_logs(struct iwl_fw_runtime *fwrt);
 #endif  /* __iwl_fw_dbg_h__ */
