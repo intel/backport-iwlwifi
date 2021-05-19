@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -463,7 +463,7 @@ static ssize_t iwl_dbgfs_os_device_timediff_read(struct file *file,
 	int pos = 0;
 
 	mutex_lock(&mvm->mutex);
-	iwl_mvm_get_sync_time(mvm, &curr_gp2, &curr_os);
+	iwl_mvm_get_sync_time(mvm, CLOCK_BOOTTIME, &curr_gp2, &curr_os, NULL);
 	mutex_unlock(&mvm->mutex);
 
 	do_div(curr_os, NSEC_PER_USEC);
@@ -714,18 +714,31 @@ static ssize_t iwl_dbgfs_twt_setup_write(struct ieee80211_vif *vif, char *buf,
 	u8 flow_id;
 	u8 protection;
 	u8 twt_request = 1;
+	u8 broadcast = 0;
+	u8 tenth_param;
 	int ret;
 
 	ret = sscanf(buf, "%u %llu %u %u %u %hhu %hhu %hhu %hhu %hhu",
 		     &twt_operation, &target_wake_time, &interval_exp,
 		     &interval_mantissa, &min_wake_duration, &trigger,
-		     &flow_type, &flow_id, &protection, &twt_request);
+		     &flow_type, &flow_id, &protection, &tenth_param);
 
 	// the new twt_request parameter is optional for station
 	if ((ret != 9 && ret != 10) ||
-	    (vif->type != NL80211_IFTYPE_STATION && twt_request == 1) ||
-	    (vif->type == NL80211_IFTYPE_STATION && twt_request != 1))
+	    (vif->type != NL80211_IFTYPE_STATION && tenth_param == 1))
 		return -EINVAL;
+
+	/*
+	 * The 10th parameter:
+	 * In STA mode - the TWT type (broadcast or individual)
+	 * In AP mode - the role (0 responder, 1 requester, 2 unsolicited)
+	 */
+	if (ret == 10) {
+		if (vif->type == NL80211_IFTYPE_STATION)
+			broadcast = tenth_param;
+		else
+			twt_request = tenth_param;
+	}
 
 	cmd = kzalloc(sizeof(*cmd) + sizeof(*dhc_twt_cmd), GFP_KERNEL);
 	if (!cmd)
@@ -743,6 +756,7 @@ static ssize_t iwl_dbgfs_twt_setup_write(struct ieee80211_vif *vif, char *buf,
 	dhc_twt_cmd->flow_id = flow_id;
 	dhc_twt_cmd->protection = protection;
 	dhc_twt_cmd->twt_request = twt_request;
+	dhc_twt_cmd->negotiation_type = broadcast ? 3 : 0;
 
 	cmd->length = cpu_to_le32(sizeof(*dhc_twt_cmd) >> 2);
 	cmd->index_and_mask =

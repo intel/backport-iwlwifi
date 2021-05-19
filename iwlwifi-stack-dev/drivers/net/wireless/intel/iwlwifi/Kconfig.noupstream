@@ -143,15 +143,31 @@ config IWLWIFI_ATLAS_PLATFORM_WORKAROUND
 	  Say Y here to enable Atlas platform detection at runtime,
 	  to enable a specific workaround if detected.
 
+config IWLWIFI_FPGA
+	bool
+	default y
+	help
+	  The code that is related to fpga is not intended to ever go upstream.
+
 config IWLWIFI_WIFI_6_SUPPORT
 	bool "enable WiFi 6 code"
 	help
 	  The code that related to Wifi 6 is not intended to go upstream yet,
 	  still can enable it by this option
 
+config IWLWIFI_SIMULATION
+	def_bool y
+	depends on UML
+
 config IWLWIFI_VIRTIO
 	def_bool y
 	depends on VIRTIO
 	depends on UML
+	select IWLWIFI_SIMULATION
 	# this means kernel is > 4.17, i.e. no 4.17 backports required
 	depends on !KERNEL_4_17
+
+config IWLMVM_PHC
+	def_bool y
+	# this means kernel is > 4.10, i.e. no 4.10 backports required
+	depends on !KERNEL_4_10

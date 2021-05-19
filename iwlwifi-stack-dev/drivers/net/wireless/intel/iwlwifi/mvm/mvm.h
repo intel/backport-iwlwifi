@@ -16,6 +16,12 @@
 #include <linux/thermal.h>
 #endif
 
+#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
+#include <linux/ptp_clock_kernel.h>
+#endif
+
+#include <linux/ktime.h>
+
 #include "iwl-op-mode.h"
 #include "iwl-trans.h"
 #include "fw/notif-wait.h"
@@ -29,6 +35,7 @@
 #include "fw/runtime.h"
 #include "fw/dbg.h"
 #include "fw/acpi.h"
+#include "mei/iwl-mei.h"
 #include "iwl-nvm-parse.h"
 
 #include <linux/average.h>
@@ -197,6 +204,10 @@ enum iwl_mvm_smps_type_request {
 	IWL_MVM_SMPS_REQ_BT_COEX,
 	IWL_MVM_SMPS_REQ_TT,
 	IWL_MVM_SMPS_REQ_PROT,
+	IWL_MVM_SMPS_REQ_FW,
+#ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
+	IWL_MVM_SMPS_REQ_DBG,
+#endif
 	NUM_IWL_MVM_SMPS_REQ,
 };
 
@@ -795,6 +806,13 @@ struct iwl_csi_data_buffer {
 	unsigned int offset;
 	unsigned int page_order;
 };
+
+struct ptp_data {
+	struct ptp_clock *ptp_clock;
+	struct ptp_clock_info ptp_clock_info;
+	/* keeps track of GP2 wrap-around */
+	u32 last_gp2;
+};
 #endif
 
 struct iwl_mvm {
@@ -858,6 +876,18 @@ struct iwl_mvm {
 
 	const char *nvm_file_name;
 	struct iwl_nvm_data *nvm_data;
+	struct iwl_mei_nvm *mei_nvm_data;
+	struct iwl_mvm_csme_conn_info __rcu *csme_conn_info;
+	bool mei_rfkill_blocked;
+	bool mei_registered;
+	struct work_struct sap_connected_wk;
+
+	/*
+	 * NVM built based on the SAP data but that we can't free even after
+	 * we get ownership because it contains the cfg80211's channel.
+	 */
+	struct iwl_nvm_data *temp_nvm_data;
+
 	/* NVM sections */
 	struct iwl_nvm_section nvm_sections[NVM_MAX_NUM_SECTIONS];
 
@@ -1028,6 +1058,8 @@ struct iwl_mvm {
 	 */
 	bool temperature_test;  /* Debug test temperature is enabled */
 
+	bool fw_static_smps_request;
+
 	unsigned long bt_coex_last_tcm_ts;
 
 	u8 uapsd_noagg_bssid_write_idx;
@@ -1059,6 +1091,8 @@ struct iwl_mvm {
 	/* Indicate if 32Khz external clock is valid */
 	u32 ext_clock_valid;
 
+	/* This vif used by CSME to send / receive traffic */
+	struct ieee80211_vif *csme_vif;
 	struct ieee80211_vif __rcu *csa_vif;
 	struct ieee80211_vif __rcu *csa_tx_blocked_vif;
 	u8 csa_tx_block_bcn_timeout;
@@ -1161,6 +1195,7 @@ struct iwl_mvm {
 
 	struct list_head list;
 
+	struct ptp_data ptp_data;
 #endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
 	struct {
 #ifdef CPTCFG_IWLMVM_VENDOR_CMDS
@@ -1227,6 +1262,11 @@ enum iwl_mvm_status {
 	IWL_MVM_STATUS_FIRMWARE_RUNNING,
 	IWL_MVM_STATUS_NEED_FLUSH_P2P,
 	IWL_MVM_STATUS_IN_D3,
+};
+
+struct iwl_mvm_csme_conn_info {
+	struct rcu_head rcu_head;
+	struct iwl_mei_conn_info conn_info;
 };
 
 /* Keep track of completed init configuration */
@@ -1547,7 +1587,8 @@ u8 iwl_mvm_mac80211_ac_to_ucode_ac(enum ieee80211_ac_numbers ac);
 void iwl_mvm_dump_nic_error_log(struct iwl_mvm *mvm);
 u8 first_antenna(u8 mask);
 u8 iwl_mvm_next_antenna(struct iwl_mvm *mvm, u8 valid, u8 last_idx);
-void iwl_mvm_get_sync_time(struct iwl_mvm *mvm, u32 *gp2, u64 *boottime);
+void iwl_mvm_get_sync_time(struct iwl_mvm *mvm, int clock_type, u32 *gp2,
+			   u64 *boottime, ktime_t *realtime);
 u32 iwl_mvm_get_systime(struct iwl_mvm *mvm);
 
 /* Tx / Host Commands */
@@ -1893,7 +1934,6 @@ void iwl_mvm_ipv6_addr_change(struct ieee80211_hw *hw,
 void iwl_mvm_set_default_unicast_key(struct ieee80211_hw *hw,
 				     struct ieee80211_vif *vif, int idx);
 extern const struct file_operations iwl_dbgfs_d3_test_ops;
-struct iwl_wowlan_status *iwl_mvm_send_wowlan_get_status(struct iwl_mvm *mvm);
 #ifdef CONFIG_PM
 void iwl_mvm_set_last_nonqos_seq(struct iwl_mvm *mvm,
 				 struct ieee80211_vif *vif);
@@ -1951,7 +1991,9 @@ int iwl_mvm_disable_beacon_filter(struct iwl_mvm *mvm,
 void iwl_mvm_update_smps(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 				enum iwl_mvm_smps_type_request req_type,
 				enum ieee80211_smps_mode smps_request);
-bool iwl_mvm_rx_diversity_allowed(struct iwl_mvm *mvm);
+bool iwl_mvm_rx_diversity_allowed(struct iwl_mvm *mvm,
+				  struct iwl_mvm_phy_ctxt *ctxt);
+void iwl_mvm_apply_fw_smps_request(struct ieee80211_vif *vif);
 
 /* Low latency */
 int iwl_mvm_update_low_latency(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
@@ -2043,6 +2085,7 @@ void iwl_mvm_ct_kill_notif(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb);
 void iwl_mvm_enter_ctkill(struct iwl_mvm *mvm);
 int iwl_mvm_send_temp_report_ths_cmd(struct iwl_mvm *mvm);
 int iwl_mvm_ctdp_command(struct iwl_mvm *mvm, u32 op, u32 budget);
+struct iwl_mvm_csme_conn_info *iwl_mvm_get_csme_conn_info(struct iwl_mvm *mvm);
 
 /* Location Aware Regulatory */
 struct iwl_mcc_update_resp *
@@ -2169,6 +2212,8 @@ void iwl_mvm_event_frame_timeout_callback(struct iwl_mvm *mvm,
 					  u16 tid);
 
 #ifdef CPTCFG_IWLMVM_VENDOR_CMDS
+void iwl_mvm_send_csme_conn_info_event(struct iwl_mvm *mvm,
+				       const struct iwl_mei_conn_info *conn_info);
 void iwl_mvm_recalc_multicast(struct iwl_mvm *mvm);
 int iwl_mvm_configure_bcast_filter(struct iwl_mvm *mvm);
 
@@ -2181,6 +2226,10 @@ void iwl_mvm_time_sync_msmt_confirm_event(struct iwl_mvm *mvm,
 					  struct iwl_rx_cmd_buffer *rxb);
 void iwl_mvm_time_sync_msmt_event(struct iwl_mvm *mvm,
 				  struct iwl_rx_cmd_buffer *rxb);
+#ifdef CPTCFG_IWLMVM_PHC
+void iwl_mvm_ptp_init(struct iwl_mvm *mvm);
+void iwl_mvm_ptp_remove(struct iwl_mvm *mvm);
+#endif
 #endif
 
 /* NAN */
@@ -2321,4 +2370,50 @@ enum iwl_location_cipher iwl_mvm_cipher_to_location_cipher(u32 cipher)
 		return IWL_LOCATION_CIPHER_INVALID;
 	}
 }
+
+static inline int iwl_mvm_mei_get_ownership(struct iwl_mvm *mvm)
+{
+	if (mvm->mei_registered)
+		return iwl_mei_get_ownership();
+	return 0;
+}
+
+static inline void iwl_mvm_mei_tx_copy_to_csme(struct iwl_mvm *mvm,
+					       struct sk_buff *skb,
+					       unsigned int ivlen)
+{
+	if (mvm->mei_registered)
+		iwl_mei_tx_copy_to_csme(skb, ivlen);
+}
+
+static inline void iwl_mvm_mei_host_associated(struct iwl_mvm *mvm,
+					       const struct iwl_mei_conn_info *conn_info,
+					       const struct iwl_mei_colloc_info *colloc_info)
+{
+	if (mvm->mei_registered)
+		iwl_mei_host_associated(conn_info, colloc_info);
+}
+
+static inline void iwl_mvm_mei_host_disassociated(struct iwl_mvm *mvm, u8 type)
+{
+	if (mvm->mei_registered)
+		iwl_mei_host_disassociated(type);
+}
+
+static inline void iwl_mvm_mei_device_down(struct iwl_mvm *mvm)
+{
+	if (mvm->mei_registered)
+		iwl_mei_device_down();
+}
+
+static inline void iwl_mvm_mei_set_sw_rfkill_state(struct iwl_mvm *mvm, bool sw_rfkill)
+{
+	if (mvm->mei_registered)
+		iwl_mei_set_rfkill_state(iwl_mvm_is_radio_killed(mvm), sw_rfkill);
+}
+
+void iwl_mvm_send_roaming_forbidden_event(struct iwl_mvm *mvm,
+					  struct ieee80211_vif *vif,
+					  bool forbidden);
+
 #endif /* __IWL_MVM_H__ */

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #include "xvt.h"
 #include "fw/dbg.h"
@@ -70,6 +70,10 @@ static ssize_t iwl_dbgfs_fw_restart_write(struct iwl_xvt *xvt, char *buf,
 
 	mutex_lock(&xvt->mutex);
 
+	if (xvt->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000) {
+		iwl_force_nmi(xvt->trans);
+		return count;
+	}
 	/* Take the return value, though failure is expected, for compilation */
 	ret = iwl_xvt_send_cmd_pdu(xvt, REPLY_ERROR, 0, 0, NULL);
 

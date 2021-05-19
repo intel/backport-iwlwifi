@@ -57,7 +57,7 @@ dbg_ver_table[IWL_DBG_TLV_TYPE_NUM] = {
 	[IWL_DBG_TLV_TYPE_DEBUG_INFO]	= {.min_ver = 1, .max_ver = 1,},
 	[IWL_DBG_TLV_TYPE_BUF_ALLOC]	= {.min_ver = 1, .max_ver = 1,},
 	[IWL_DBG_TLV_TYPE_HCMD]		= {.min_ver = 1, .max_ver = 1,},
-	[IWL_DBG_TLV_TYPE_REGION]	= {.min_ver = 1, .max_ver = 1,},
+	[IWL_DBG_TLV_TYPE_REGION]	= {.min_ver = 1, .max_ver = 2,},
 	[IWL_DBG_TLV_TYPE_TRIGGER]	= {.min_ver = 1, .max_ver = 1,},
 };
 
@@ -177,10 +177,18 @@ static int iwl_dbg_tlv_alloc_region(struct iwl_trans *trans,
 	u32 type = le32_to_cpu(reg->type);
 	u32 tlv_len = sizeof(*tlv) + le32_to_cpu(tlv->length);
 
+	/*
+	 * The higher part of the ID in version 2 is irrelevant for
+	 * us, so mask it out.
+	 */
+	if (le32_to_cpu(reg->hdr.version) == 2)
+		id &= IWL_FW_INI_REGION_V2_MASK;
+
 	if (le32_to_cpu(tlv->length) < sizeof(*reg))
 		return -EINVAL;
 
-	/* For safe using a string from FW make sure we have a
+	/*
+	 * For safe using a string from FW make sure we have a
 	 * null terminator
 	 */
 	reg->name[IWL_FW_INI_MAX_NAME - 1] = 0;

@@ -7,7 +7,7 @@
  * Copyright 2007-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright (C) 2015 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 - 2020 Intel Corporation
+ * Copyright (C) 2018 - 2021 Intel Corporation
  */
 
 #ifndef MAC80211_H
@@ -526,6 +526,7 @@ struct ieee80211_fils_discovery {
  * @twt_responder: does this BSS support TWT requester (relevant for managed
  *	mode only, set if the AP advertises TWT responder role)
  * @twt_protected: does this BSS support protected TWT frames
+ * @twt_broadcast: does this BSS support broadcast TWT
  * @assoc: association status
  * @ibss_joined: indicates whether this station is part of an IBSS
  *	or not
@@ -621,7 +622,8 @@ struct ieee80211_fils_discovery {
  *	nontransmitted BSSIDs
  * @profile_periodicity: the least number of beacon frames need to be received
  *	in order to discover all the nontransmitted BSSIDs in the set.
- * @he_oper: HE operation information of the AP we are connected to
+ * @he_oper: HE operation information of the BSS (AP/Mesh) or of the AP we are
+ *	connected to (STA)
  * @he_obss_pd: OBSS Packet Detection parameters.
  * @he_bss_color: BSS coloring settings, if BSS supports HE
  * @fils_discovery: FILS discovery configuration
@@ -634,15 +636,14 @@ struct ieee80211_fils_discovery {
 struct ieee80211_bss_conf {
 	const u8 *bssid;
 	u8 htc_trig_based_pkt_ext;
-	bool multi_sta_back_32bit;
 	bool uora_exists;
-	bool ack_enabled;
 	u8 uora_ocw_range;
 	u16 frame_time_rts_th;
 	bool he_support;
 	bool twt_requester;
 	bool twt_responder;
 	bool twt_protected;
+	bool twt_broadcast;
 	/* association related data */
 	bool assoc, ibss_joined;
 	bool ibss_creator;
@@ -856,6 +857,9 @@ enum mac80211_tx_info_flags {
  *	it can be sent out.
  * @IEEE80211_TX_CTRL_NO_SEQNO: Do not overwrite the sequence number that
  *	has already been assigned to this frame.
+ * @IEEE80211_TX_CTRL_DONT_REORDER: This frame should not be reordered
+ *	relative to other frames that have this flag set, independent
+ *	of their QoS TID or other priority field values.
  *
  * These flags are used in tx_info->control.flags.
  */
@@ -868,6 +872,7 @@ enum mac80211_tx_control_flags {
 	IEEE80211_TX_CTRL_SKIP_MPATH_LOOKUP	= BIT(5),
 	IEEE80211_TX_INTCFL_NEED_TXPROCESSING	= BIT(6),
 	IEEE80211_TX_CTRL_NO_SEQNO		= BIT(7),
+	IEEE80211_TX_CTRL_DONT_REORDER		= BIT(8),
 };
 
 /*
@@ -4193,6 +4198,8 @@ struct ieee80211_ops {
 				   struct ieee80211_vif *vif);
 	void (*sta_set_4addr)(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			      struct ieee80211_sta *sta, bool enabled);
+	int (*set_sar_specs)(struct ieee80211_hw *hw,
+			     const struct cfg80211_sar_specs *sar);
 };
 
 /**

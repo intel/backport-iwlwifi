@@ -22,6 +22,7 @@
 #include "fw/api/commands.h"
 #include "fw/api/cmdhdr.h"
 #include "fw/img.h"
+#include "mei/iwl-mei.h"
 
 /* NVM offsets (in words) definitions */
 enum nvm_offsets {
@@ -108,7 +109,7 @@ static const u16 iwl_uhb_nvm_channels[] = {
 #define IWL_NVM_NUM_CHANNELS_EXT	ARRAY_SIZE(iwl_ext_nvm_channels)
 #define IWL_NVM_NUM_CHANNELS_UHB	ARRAY_SIZE(iwl_uhb_nvm_channels)
 #define NUM_2GHZ_CHANNELS		14
-#define NUM_5GHZ_CHANNELS               37
+#define NUM_5GHZ_CHANNELS		37
 #define FIRST_2GHZ_HT_MINUS		5
 #define LAST_2GHZ_HT_PLUS		9
 #define N_HW_ADDR_MASK			0xF
@@ -739,7 +740,8 @@ static void
 iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
 			 struct ieee80211_supported_band *sband,
 			 struct ieee80211_sband_iftype_data *iftype_data,
-			 u8 tx_chains, u8 rx_chains)
+			 u8 tx_chains, u8 rx_chains,
+			 const struct iwl_fw *fw)
 {
 	bool is_ap = iftype_data->types_mask & BIT(NL80211_IFTYPE_AP);
 
@@ -753,7 +755,11 @@ iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
 		iftype_data->he_cap.he_cap_elem.mac_cap_info[3] |=
 			IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3;
 
+#ifdef CPTCFG_IWLWIFI_FPGA
+	if (is_ap)
+#else
 	if (is_ap && iwlwifi_mod_params.nvm_file)
+#endif
 		iftype_data->he_cap.he_cap_elem.phy_cap_info[0] |=
 			IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G;
 
@@ -788,12 +794,17 @@ iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
 				IEEE80211_HE_PHY_CAP9_RX_1024_QAM_LESS_THAN_242_TONE_RU;
 		break;
 	}
+
+	if (fw_has_capa(&fw->ucode_capa, IWL_UCODE_TLV_CAPA_BROADCAST_TWT))
+		iftype_data->he_cap.he_cap_elem.mac_cap_info[2] |=
+			IEEE80211_HE_MAC_CAP2_BCAST_TWT;
 }
 
 static void iwl_init_he_hw_capab(struct iwl_trans *trans,
 				 struct iwl_nvm_data *data,
 				 struct ieee80211_supported_band *sband,
-				 u8 tx_chains, u8 rx_chains)
+				 u8 tx_chains, u8 rx_chains,
+				 const struct iwl_fw *fw)
 {
 	struct ieee80211_sband_iftype_data *iftype_data;
 	int i;
@@ -827,7 +838,7 @@ static void iwl_init_he_hw_capab(struct iwl_trans *trans,
 
 	for (i = 0; i < sband->n_iftype_data; i++)
 		iwl_nvm_fixup_sband_iftd(trans, sband, &iftype_data[i],
-					 tx_chains, rx_chains);
+					 tx_chains, rx_chains, fw);
 
 #ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	iwl_init_he_6ghz_capa(trans, data, sband, tx_chains, rx_chains);
@@ -971,7 +982,7 @@ static void iwl_init_he_override(struct iwl_trans *trans,
 			}
 		}
 
-		if (trans->dbg_cfg.smps_disabled)
+		if (trans->dbg_cfg.he_smps_disabled)
 			iftype_data->he_cap.he_cap_elem.mac_cap_info[5] &=
 				~IEEE80211_HE_MAC_CAP5_HE_DYNAMIC_SM_PS;
 	}
@@ -981,7 +992,8 @@ static void iwl_init_he_override(struct iwl_trans *trans,
 static void iwl_init_sbands(struct iwl_trans *trans,
 			    struct iwl_nvm_data *data,
 			    const void *nvm_ch_flags, u8 tx_chains,
-			    u8 rx_chains, u32 sbands_flags, bool v4)
+			    u8 rx_chains, u32 sbands_flags, bool v4,
+			    const struct iwl_fw *fw)
 {
 	struct device *dev = trans->dev;
 	const struct iwl_cfg *cfg = trans->cfg;
@@ -1001,7 +1013,8 @@ static void iwl_init_sbands(struct iwl_trans *trans,
 			     tx_chains, rx_chains);
 
 	if (data->sku_cap_11ax_enable && !iwlwifi_mod_params.disable_11ax)
-		iwl_init_he_hw_capab(trans, data, sband, tx_chains, rx_chains);
+		iwl_init_he_hw_capab(trans, data, sband, tx_chains, rx_chains,
+				     fw);
 
 	sband = &data->bands[NL80211_BAND_5GHZ];
 	sband->band = NL80211_BAND_5GHZ;
@@ -1016,7 +1029,8 @@ static void iwl_init_sbands(struct iwl_trans *trans,
 				      tx_chains, rx_chains);
 
 	if (data->sku_cap_11ax_enable && !iwlwifi_mod_params.disable_11ax)
-		iwl_init_he_hw_capab(trans, data, sband, tx_chains, rx_chains);
+		iwl_init_he_hw_capab(trans, data, sband, tx_chains, rx_chains,
+				     fw);
 
 #ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	/* 6GHz band. */
@@ -1029,7 +1043,8 @@ static void iwl_init_sbands(struct iwl_trans *trans,
 					  NL80211_BAND_6GHZ);
 
 	if (data->sku_cap_11ax_enable && !iwlwifi_mod_params.disable_11ax)
-		iwl_init_he_hw_capab(trans, data, sband, tx_chains, rx_chains);
+		iwl_init_he_hw_capab(trans, data, sband, tx_chains, rx_chains,
+				     fw);
 	else
 		sband->n_channels = 0;
 #endif
@@ -1261,6 +1276,66 @@ iwl_nvm_no_wide_in_5ghz(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 }
 
 struct iwl_nvm_data *
+iwl_parse_mei_nvm_data(struct iwl_trans *trans, const struct iwl_cfg *cfg,
+		       const struct iwl_mei_nvm *mei_nvm,
+		       const struct iwl_fw *fw)
+{
+	struct iwl_nvm_data *data;
+	u32 sbands_flags = 0;
+	u8 rx_chains = fw->valid_rx_ant;
+	u8 tx_chains = fw->valid_rx_ant;
+
+	if (cfg->uhb_supported)
+		data = kzalloc(struct_size(data, channels,
+					   IWL_NVM_NUM_CHANNELS_UHB),
+					   GFP_KERNEL);
+	else
+		data = kzalloc(struct_size(data, channels,
+					   IWL_NVM_NUM_CHANNELS_EXT),
+					   GFP_KERNEL);
+	if (!data)
+		return NULL;
+
+	BUILD_BUG_ON(ARRAY_SIZE(mei_nvm->channels) !=
+		     IWL_NVM_NUM_CHANNELS_UHB);
+	data->nvm_version = mei_nvm->nvm_version;
+
+	iwl_set_radio_cfg(cfg, data, mei_nvm->radio_cfg);
+	if (data->valid_tx_ant)
+		tx_chains &= data->valid_tx_ant;
+	if (data->valid_rx_ant)
+		rx_chains &= data->valid_rx_ant;
+
+	data->sku_cap_mimo_disabled = false;
+	data->sku_cap_band_24ghz_enable = true;
+	data->sku_cap_band_52ghz_enable = true;
+	data->sku_cap_11n_enable =
+		!(iwlwifi_mod_params.disable_11n & IWL_DISABLE_HT_ALL);
+	data->sku_cap_11ac_enable = true;
+	data->sku_cap_11ax_enable =
+		mei_nvm->caps & MEI_NVM_CAPS_11AX_SUPPORT;
+
+	data->lar_enabled = mei_nvm->caps & MEI_NVM_CAPS_LARI_SUPPORT;
+
+	data->n_hw_addrs = mei_nvm->n_hw_addrs;
+	/* If no valid mac address was found - bail out */
+	if (iwl_set_hw_address(trans, cfg, data, NULL, NULL)) {
+		kfree(data);
+		return NULL;
+	}
+
+	if (data->lar_enabled &&
+	    fw_has_capa(&fw->ucode_capa, IWL_UCODE_TLV_CAPA_LAR_SUPPORT))
+		sbands_flags |= IWL_NVM_SBANDS_FLAGS_LAR;
+
+	iwl_init_sbands(trans, data, mei_nvm->channels, tx_chains, rx_chains,
+			sbands_flags, true, fw);
+
+	return data;
+}
+IWL_EXPORT_SYMBOL(iwl_parse_mei_nvm_data);
+
+struct iwl_nvm_data *
 iwl_parse_nvm_data(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 		   const struct iwl_fw *fw,
 		   const __be16 *nvm_hw, const __le16 *nvm_sw,
@@ -1361,7 +1436,7 @@ iwl_parse_nvm_data(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 		sbands_flags |= IWL_NVM_SBANDS_FLAGS_NO_WIDE_IN_5GHZ;
 
 	iwl_init_sbands(trans, data, ch_section, tx_chains, rx_chains,
-			sbands_flags, false);
+			sbands_flags, false, fw);
 	data->calib_version = 255;
 
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
@@ -1889,7 +1964,7 @@ struct iwl_nvm_data *iwl_get_nvm(struct iwl_trans *trans,
 	iwl_init_sbands(trans, nvm, channel_profile,
 			nvm->valid_tx_ant & fw->valid_tx_ant,
 			nvm->valid_rx_ant & fw->valid_rx_ant,
-			sbands_flags, v4);
+			sbands_flags, v4, fw);
 
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	iwl_init_he_override(trans, &nvm->bands[NL80211_BAND_2GHZ]);

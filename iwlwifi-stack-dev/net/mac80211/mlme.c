@@ -466,7 +466,6 @@ static int ieee80211_config_bw(struct ieee80211_sub_if_data *sdata,
 	struct cfg80211_chan_def chandef;
 	u16 ht_opmode;
 	u32 flags;
-	enum ieee80211_sta_rx_bandwidth new_sta_bw;
 	u32 vht_cap_info = 0;
 	int ret;
 
@@ -545,46 +544,13 @@ static int ieee80211_config_bw(struct ieee80211_sub_if_data *sdata,
 		return -EINVAL;
 	}
 
-	switch (chandef.width) {
-	case NL80211_CHAN_WIDTH_20_NOHT:
-	case NL80211_CHAN_WIDTH_20:
-		new_sta_bw = IEEE80211_STA_RX_BW_20;
-		break;
-	case NL80211_CHAN_WIDTH_40:
-		new_sta_bw = IEEE80211_STA_RX_BW_40;
-		break;
-	case NL80211_CHAN_WIDTH_80:
-		new_sta_bw = IEEE80211_STA_RX_BW_80;
-		break;
-	case NL80211_CHAN_WIDTH_80P80:
-	case NL80211_CHAN_WIDTH_160:
-		new_sta_bw = IEEE80211_STA_RX_BW_160;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	if (new_sta_bw > sta->cur_max_bandwidth)
-		new_sta_bw = sta->cur_max_bandwidth;
-
-	if (new_sta_bw < sta->sta.bandwidth) {
-		sta->sta.bandwidth = new_sta_bw;
-		rate_control_rate_update(local, sband, sta,
-					 IEEE80211_RC_BW_CHANGED);
-	}
-
 	ret = ieee80211_vif_change_bandwidth(sdata, &chandef, changed);
+
 	if (ret) {
 		sdata_info(sdata,
 			   "AP %pM changed bandwidth to incompatible one - disconnect\n",
 			   ifmgd->bssid);
 		return ret;
-	}
-
-	if (new_sta_bw > sta->sta.bandwidth) {
-		sta->sta.bandwidth = new_sta_bw;
-		rate_control_rate_update(local, sband, sta,
-					 IEEE80211_RC_BW_CHANGED);
 	}
 
 	return 0;
@@ -1278,10 +1244,6 @@ static void ieee80211_chswitch_work(struct work_struct *work)
 	 */
 
 	if (sdata->reserved_chanctx) {
-		struct ieee80211_supported_band *sband = NULL;
-		struct sta_info *mgd_sta = NULL;
-		enum ieee80211_sta_rx_bandwidth bw = IEEE80211_STA_RX_BW_20;
-
 		/*
 		 * with multi-vif csa driver may call ieee80211_csa_finish()
 		 * many times while waiting for other interfaces to use their
@@ -1289,48 +1251,6 @@ static void ieee80211_chswitch_work(struct work_struct *work)
 		 */
 		if (sdata->reserved_ready)
 			goto out;
-
-		if (sdata->vif.bss_conf.chandef.width !=
-		    sdata->csa_chandef.width) {
-			/*
-			 * For managed interface, we need to also update the AP
-			 * station bandwidth and align the rate scale algorithm
-			 * on the bandwidth change. Here we only consider the
-			 * bandwidth of the new channel definition (as channel
-			 * switch flow does not have the full HT/VHT/HE
-			 * information), assuming that if additional changes are
-			 * required they would be done as part of the processing
-			 * of the next beacon from the AP.
-			 */
-			switch (sdata->csa_chandef.width) {
-			case NL80211_CHAN_WIDTH_20_NOHT:
-			case NL80211_CHAN_WIDTH_20:
-			default:
-				bw = IEEE80211_STA_RX_BW_20;
-				break;
-			case NL80211_CHAN_WIDTH_40:
-				bw = IEEE80211_STA_RX_BW_40;
-				break;
-			case NL80211_CHAN_WIDTH_80:
-				bw = IEEE80211_STA_RX_BW_80;
-				break;
-			case NL80211_CHAN_WIDTH_80P80:
-			case NL80211_CHAN_WIDTH_160:
-				bw = IEEE80211_STA_RX_BW_160;
-				break;
-			}
-
-			mgd_sta = sta_info_get(sdata, ifmgd->bssid);
-			sband =
-				local->hw.wiphy->bands[sdata->csa_chandef.chan->band];
-		}
-
-		if (sdata->vif.bss_conf.chandef.width >
-		    sdata->csa_chandef.width) {
-			mgd_sta->sta.bandwidth = bw;
-			rate_control_rate_update(local, sband, mgd_sta,
-						 IEEE80211_RC_BW_CHANGED);
-		}
 
 		ret = ieee80211_vif_use_reserved_context(sdata);
 		if (ret) {
@@ -1340,13 +1260,6 @@ static void ieee80211_chswitch_work(struct work_struct *work)
 			ieee80211_queue_work(&sdata->local->hw,
 					     &ifmgd->csa_connection_drop_work);
 			goto out;
-		}
-
-		if (sdata->vif.bss_conf.chandef.width <
-		    sdata->csa_chandef.width) {
-			mgd_sta->sta.bandwidth = bw;
-			rate_control_rate_update(local, sband, mgd_sta,
-						 IEEE80211_RC_BW_CHANGED);
 		}
 
 		goto out;
@@ -2507,6 +2420,8 @@ static void ieee80211_set_disassoc(struct ieee80211_sub_if_data *sdata,
 	/* clear bssid only after building the needed mgmt frames */
 	eth_zero_addr(ifmgd->bssid);
 
+	sdata->vif.bss_conf.ssid_len = 0;
+
 	/* remove AP and TDLS peers */
 	sta_info_flush(sdata);
 
@@ -3414,6 +3329,21 @@ static int ieee80211_recalc_twt_req(struct ieee80211_sub_if_data *sdata,
 	return 0;
 }
 
+static bool ieee80211_twt_bcast_support(struct ieee80211_bss_conf *bss_conf,
+					struct ieee80211_supported_band *sband,
+					struct sta_info *sta)
+{
+	const struct ieee80211_sta_he_cap *own_he_cap =
+		ieee80211_get_he_sta_cap(sband);
+
+	return bss_conf->he_support &&
+		(sta->sta.he_cap.he_cap_elem.mac_cap_info[2] &
+			IEEE80211_HE_MAC_CAP2_BCAST_TWT) &&
+		own_he_cap &&
+		(own_he_cap->he_cap_elem.mac_cap_info[2] &
+			IEEE80211_HE_MAC_CAP2_BCAST_TWT);
+}
+
 static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 				    struct cfg80211_bss *cbss,
 				    struct ieee80211_mgmt *mgmt, size_t len,
@@ -3629,6 +3559,9 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 		bss_conf->twt_protected = false;
 	}
 
+	bss_conf->twt_broadcast =
+		ieee80211_twt_bcast_support(bss_conf, sband, sta);
+
 	if (bss_conf->he_support) {
 		bss_conf->he_bss_color.color =
 			le32_get_bits(elems->he_operation->he_oper_params,
@@ -3649,14 +3582,6 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
 		bss_conf->frame_time_rts_th =
 			le32_get_bits(elems->he_operation->he_oper_params,
 			      IEEE80211_HE_OPERATION_RTS_THRESHOLD_MASK);
-
-		bss_conf->multi_sta_back_32bit =
-			sta->sta.he_cap.he_cap_elem.mac_cap_info[2] &
-			IEEE80211_HE_MAC_CAP2_32BIT_BA_BITMAP;
-
-		bss_conf->ack_enabled =
-			sta->sta.he_cap.he_cap_elem.mac_cap_info[2] &
-			IEEE80211_HE_MAC_CAP2_ACK_EN;
 
 		bss_conf->uora_exists = !!elems->uora_element;
 		if (elems->uora_element)
@@ -5632,6 +5557,7 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_mgd_assoc_data *assoc_data;
 	const struct cfg80211_bss_ies *beacon_ies;
 	struct ieee80211_supported_band *sband;
+	struct ieee80211_bss_conf *bss_conf = &sdata->vif.bss_conf;
 	const u8 *ssidie, *ht_ie, *vht_ie;
 	int i, err;
 	bool override = false;
@@ -5649,6 +5575,8 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 	}
 	memcpy(assoc_data->ssid, ssidie + 2, ssidie[1]);
 	assoc_data->ssid_len = ssidie[1];
+	memcpy(bss_conf->ssid, assoc_data->ssid, assoc_data->ssid_len);
+	bss_conf->ssid_len = assoc_data->ssid_len;
 	rcu_read_unlock();
 
 	if (ifmgd->associated) {

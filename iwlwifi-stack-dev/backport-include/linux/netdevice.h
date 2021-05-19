@@ -410,6 +410,31 @@ void dev_fetch_sw_netstats(struct rtnl_link_stats64 *s,
 
 #define netif_rx_any_context LINUX_BACKPORT(netif_rx_any_context)
 int netif_rx_any_context(struct sk_buff *skb);
+
+static inline void dev_sw_netstats_rx_add(struct net_device *dev, unsigned int len)
+{
+	struct pcpu_sw_netstats *tstats = this_cpu_ptr(dev->tstats);
+
+	u64_stats_update_begin(&tstats->syncp);
+	tstats->rx_bytes += len;
+	tstats->rx_packets++;
+	u64_stats_update_end(&tstats->syncp);
+}
+
+#endif /* < 5.10 */
+
+#if LINUX_VERSION_IS_LESS(5,11,0)
+static inline void dev_sw_netstats_tx_add(struct net_device *dev,
+					  unsigned int packets,
+					  unsigned int len)
+{
+	struct pcpu_sw_netstats *tstats = this_cpu_ptr(dev->tstats);
+
+	u64_stats_update_begin(&tstats->syncp);
+	tstats->tx_bytes += len;
+	tstats->tx_packets += packets;
+	u64_stats_update_end(&tstats->syncp);
+}
 #endif /* < 5.10 */
 
 #endif /* __BACKPORT_NETDEVICE_H */

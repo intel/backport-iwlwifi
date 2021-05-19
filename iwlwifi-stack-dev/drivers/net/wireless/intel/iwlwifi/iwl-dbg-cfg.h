@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2013-2015, 2018-2020 Intel Corporation
+ * Copyright (C) 2013-2015, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  */
 #if !defined(__IWL_DBG_CFG_H__) || defined(DBG_CFG_REINCLUDE)
@@ -270,6 +270,8 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_BIN(he_phy_cap)
 	IWL_DBG_CFG_NODEF(u32, FW_DBG_DOMAIN)
 	IWL_DBG_CFG_FN(FW_DBG_PRESET, iwl_dbg_cfg_parse_fw_dbg_preset)
+	IWL_DBG_CFG_NODEF(bool, he_smps_disabled)
+	IWL_DBG_CFG_NODEF(bool, ht_dynamic_smps)
 #ifdef CPTCFG_IWLWIFI_DEBUG
 	IWL_MOD_PARAM(u32, debug_level)
 #endif /* CPTCFG_IWLWIFI_DEBUG */

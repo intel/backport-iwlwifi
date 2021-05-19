@@ -9,3 +9,4 @@ This is the top-level of Intel Wireless Source Documentation.
 	developers/index
 	fmac/index
 	mvm/index
+	mei/index

@@ -1,0 +1,22 @@
+@sar_specs@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,11,0)
+	.set_sar_specs = fn,
++#endif
+...
+};
+
+@@
+identifier sar_specs.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,11,0)
+fn(...)
+{
+...
+}
++#endif
+

@@ -10,6 +10,7 @@
 #include <linux/seq_file.h>
 #ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 #include "api/dhc.h"
+#include "dhc.h"
 #endif
 #include "api/rs.h"
 
@@ -432,8 +433,9 @@ static ssize_t iwl_dbgfs_tpc_stats_read(struct iwl_fw_runtime *fwrt,
 		.data[0] = &dhc_cmd,
 		.len[0] = sizeof(dhc_cmd),
 	};
-	struct iwl_dhc_cmd_resp *resp;
 	struct iwl_tpc_stats *stats;
+	unsigned int resp_len = 0;
+	u32 status;
 	int ret = 0;
 
 	iwl_fw_build_dhc_tlc_cmd(&dhc_cmd, IWL_TLC_DEBUG_TPC_STATS, 0);
@@ -450,25 +452,21 @@ static ssize_t iwl_dbgfs_tpc_stats_read(struct iwl_fw_runtime *fwrt,
 		goto err;
 	}
 
-	if (iwl_rx_packet_payload_len(hcmd.resp_pkt) !=
-	    sizeof(*resp) + sizeof(*stats)) {
+	status = iwl_dhc_resp_status(fwrt->fw, hcmd.resp_pkt);
+	if (status != 1) {
+		IWL_ERR(fwrt, "response status is not success: %d\n", status);
+		ret = -EINVAL;
+		goto err;
+	}
+
+	stats = iwl_dhc_resp_data(fwrt->fw, hcmd.resp_pkt, &resp_len);
+	if (IS_ERR(stats) || resp_len != sizeof(*stats)) {
 		IWL_ERR(fwrt,
 			"Invalid size for TPC stats request response (%u instead of %zd)\n",
-			iwl_rx_packet_payload_len(hcmd.resp_pkt),
-			sizeof(*resp) + sizeof(*stats));
+			resp_len, sizeof(*stats));
 		ret = -EINVAL;
 		goto err;
 	}
-
-	resp = (struct iwl_dhc_cmd_resp *)hcmd.resp_pkt->data;
-	if (le32_to_cpu(resp->status) != 1) {
-		IWL_ERR(fwrt, "response status is not success: %d\n",
-			resp->status);
-		ret = -EINVAL;
-		goto err;
-	}
-
-	stats = (struct iwl_tpc_stats *)resp->data;
 
 	return scnprintf(buf, size,
 			 "tpc stats: no-tpc %u, step1 %u, step2 %u, step3 %u, step4 %u, step5 %u\n",
@@ -503,11 +501,10 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 		.data = { &cmd, &cmd_data},
 		.len = { sizeof(cmd), sizeof(cmd_data) },
 	};
-	struct iwl_dhc_cmd_resp *resp;
 	struct iwl_ps_report *ps_report;
 	int ret = 0;
-
-	u32 report_size;
+	u32 status;
+	unsigned int report_size = 0;
 
 	ret = iwl_trans_send_cmd(fwrt->trans, &hcmd);
 	if (ret) {
@@ -522,28 +519,22 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 		goto err;
 	}
 
-	resp = (struct iwl_dhc_cmd_resp *)hcmd.resp_pkt->data;
-	if (le32_to_cpu(resp->status) != 1) {
-		IWL_ERR(fwrt, "response status is not success: %d\n",
-			resp->status);
+	status = iwl_dhc_resp_status(fwrt->fw, hcmd.resp_pkt);
+	if (status != 1) {
+		IWL_ERR(fwrt, "response status is not success: %d\n", status);
 		ret = -EINVAL;
 		goto err;
 	}
 
-	report_size = iwl_rx_packet_payload_len(hcmd.resp_pkt) -
-		offsetof(struct iwl_dhc_cmd_resp, data);
-
-	if (report_size > sizeof(*ps_report)) {
+	ps_report = iwl_dhc_resp_data(fwrt->fw, hcmd.resp_pkt, &report_size);
+	if (IS_ERR(ps_report) || report_size > sizeof(*ps_report)) {
 		IWL_ERR(fwrt,
 			"ps report size is wrong! expected at most %zd, received %d\n",
 			sizeof(*ps_report), report_size);
 		goto err;
 	}
 
-	ret = offsetof(struct iwl_ps_report, ps_flags);
 	ret = scnprintf(buf, size, "power-save report\n");
-
-	ps_report = (void *)resp->data;
 
 #define PRINT_PS_REPORT_32(_f)						\
 	({ BUILD_BUG_ON(sizeof(ps_report->_f) != 4);			\
@@ -595,16 +586,155 @@ static ssize_t iwl_dbgfs_ps_report_umac_read
 
 FWRT_DEBUGFS_READ_FILE_OPS(ps_report_umac, 842);
 
-static ssize_t iwl_dbgfs_ps_report_lmac_read
+static ssize_t iwl_dbgfs_send_ps_test_write(struct iwl_fw_runtime *fwrt,
+					    struct iwl_ps_test_req *ps_test_req)
+{
+	int ret_val = 0;
+
+	struct iwl_dhc_cmd *dhc_cmd;
+	struct iwl_host_cmd hcmd = {
+		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, LEGACY_GROUP, 0),
+		.flags = CMD_WANT_SKB,
+	};
+	/* allocate the maximal amount of memory that can be sent */
+	dhc_cmd = kzalloc(sizeof(*dhc_cmd) + sizeof(*ps_test_req),
+			  GFP_KERNEL);
+	if (!dhc_cmd)
+		return -ENOMEM;
+
+	dhc_cmd->length = cpu_to_le32(sizeof(*ps_test_req) >> 2);
+	dhc_cmd->index_and_mask =
+			cpu_to_le32(DHC_AUTO_UMAC_POWER_SAVE_TESTS_REQ |
+				    DHC_TABLE_AUTOMATION |
+				    DHC_TARGET_UMAC);
+
+	memcpy((void *)dhc_cmd->data,
+	       (void *)ps_test_req,
+	       sizeof(*ps_test_req));
+
+	hcmd.len[0] = sizeof(*ps_test_req) + sizeof(*dhc_cmd);
+	hcmd.data[0] = dhc_cmd;
+
+	ret_val = iwl_trans_send_cmd(fwrt->trans, &hcmd);
+
+	if (ret_val) {
+		IWL_ERR(fwrt,
+			"Failed to send power-save tests request command: %d\n", ret_val);
+		goto err;
+	}
+
+	return ret_val;
+
+err:
+	return ret_val ?: -EIO;
+}
+
+static ssize_t iwl_dbgfs_ps_test_req_write(struct iwl_fw_runtime *fwrt,
+					   char *buf, size_t count)
+{
+	int ret;
+	struct iwl_ps_test_req cmd_data;
+
+	if (sscanf(buf, "%x %x %x %x %x %x",
+		   &cmd_data.flags,
+		   &cmd_data.test_case,
+		   &cmd_data.test_param1,
+		   &cmd_data.test_param2,
+		   &cmd_data.test_param3,
+		   &cmd_data.test_param4) != 6)
+		return -EINVAL;
+
+	ret = iwl_dbgfs_send_ps_test_write(fwrt, &cmd_data);
+
+	return ret ?: count;
+}
+
+FWRT_DEBUGFS_WRITE_FILE_OPS(ps_test_req, 44);
+
+static ssize_t iwl_dbgfs_ps_test_response_read
+				(struct iwl_fw_runtime *fwrt,
+				size_t size, char *buf, int mac_mask)
+{
+	__le32 cmd_data;
+
+	int ret = 0;
+	u32 status;
+	struct iwl_ps_test_res *ps_test_res;
+	unsigned int rsp_size = 0;
+
+	struct iwl_dhc_cmd cmd = {
+		.length = cpu_to_le32(1),
+		.index_and_mask = cpu_to_le32(DHC_TABLE_AUTOMATION |
+			mac_mask |
+			DHC_AUTO_UMAC_POWER_SAVE_TESTS_RES),
+	};
+
+	struct iwl_host_cmd hcmd = {
+		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, LEGACY_GROUP, 0),
+		.flags = CMD_WANT_SKB,
+		.data = { &cmd, &cmd_data},
+		.len = { sizeof(cmd), sizeof(cmd_data) },
+	};
+
+	ret = iwl_trans_send_cmd(fwrt->trans, &hcmd);
+	if (ret) {
+		IWL_ERR(fwrt,
+			"Failed to send power-save test response command: %d\n", ret);
+		goto err;
+	}
+
+	if (!hcmd.resp_pkt) {
+		IWL_ERR(fwrt,
+			"Response expected\n");
+		goto err;
+	}
+
+	status = iwl_dhc_resp_status(fwrt->fw, hcmd.resp_pkt);
+	if (status != 1) {
+		IWL_ERR(fwrt, "response status is not success: %d\n", status);
+		ret = -EINVAL;
+		goto err;
+	}
+
+	ps_test_res = iwl_dhc_resp_data(fwrt->fw, hcmd.resp_pkt, &rsp_size);
+	if (IS_ERR(ps_test_res) || rsp_size > sizeof(*ps_test_res)) {
+		IWL_ERR(fwrt,
+			"ps test response size is wrong! expected at most %zd, received %d\n",
+			sizeof(*ps_test_res), rsp_size);
+		goto err;
+	}
+
+	ret = scnprintf(buf, size, "power-save test response\n");
+
+#define PRINT_PS_TEST_RSP_32(_f)						\
+	({ BUILD_BUG_ON(sizeof(ps_test_res->_f) != 4);			\
+	   offsetofend(typeof(*ps_test_res), _f) <= rsp_size ?	\
+			   scnprintf(buf + ret, size - ret, #_f " %u\n",	\
+				 le32_to_cpu(ps_test_res->_f)) :		\
+			   0; })
+
+	ret += PRINT_PS_TEST_RSP_32(test_res1);
+	ret += PRINT_PS_TEST_RSP_32(test_res2);
+	ret += PRINT_PS_TEST_RSP_32(test_res3);
+	ret += PRINT_PS_TEST_RSP_32(test_res4);
+
+#undef PRINT_PS_TEST_RSP_32
+
+	return ret;
+
+err:
+	return ret ?: -EIO;
+}
+
+static ssize_t iwl_dbgfs_ps_test_res_read
 				(struct iwl_fw_runtime *fwrt,
 				size_t size,
 				char *buf)
 {
-	/* LMAC value is 0 for backwards compatibility */
-	return iwl_dbgfs_ps_report_read(fwrt, size, buf, 0);
+	return iwl_dbgfs_ps_test_response_read(fwrt, size, buf, DHC_TARGET_UMAC);
 }
 
-FWRT_DEBUGFS_READ_FILE_OPS(ps_report_lmac, 268);
+FWRT_DEBUGFS_READ_FILE_OPS(ps_test_res, 80);
 
 #endif
 
@@ -729,7 +859,8 @@ void iwl_fwrt_dbgfs_register(struct iwl_fw_runtime *fwrt,
 		FWRT_DEBUGFS_ADD_FILE(tpc_stats, dbgfs_dir, 0400);
 	}
 	FWRT_DEBUGFS_ADD_FILE(ps_report_umac, dbgfs_dir, 0400);
-	FWRT_DEBUGFS_ADD_FILE(ps_report_lmac, dbgfs_dir, 0400);
+	FWRT_DEBUGFS_ADD_FILE(ps_test_res, dbgfs_dir, 0400);
+	FWRT_DEBUGFS_ADD_FILE(ps_test_req, dbgfs_dir, 0600);
 	FWRT_DEBUGFS_ADD_FILE(send_dhc, dbgfs_dir, 0200);
 #endif
 }

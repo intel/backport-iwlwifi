@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #ifndef __iwl_fw_api_dhc_h__
 #define __iwl_fw_api_dhc_h__
@@ -45,7 +45,6 @@ enum iwl_dhc_lmac_tools_table {
  * @DHC_AUTO_LMAC_SAD_RETURN_PREF_ANTS: get preferred antenna for each
  *	context where SAD is enabled
  * @DHC_AUTO_LMAC_PYFI_TIMING: override PyFi timing
- * @DHC_AUTO_LMAC_REPORT_POWER_STATISTICS: get power statistics report
  * @DHC_MAX_AUTO_LMAC_REQUEST: the size of the Automation table in lmac
  */
 enum iwl_dhc_lmac_automation_table {
@@ -54,7 +53,6 @@ enum iwl_dhc_lmac_automation_table {
 	DHC_AUTO_LMAC_PHY_ENABLE_CRC_CHECK       = 2,
 	DHC_AUTO_LMAC_SAD_RETURN_PREF_ANTS       = 3,
 	DHC_AUTO_LMAC_PYFI_TIMING                = 4,
-	DHC_AUTO_LMAC_REPORT_POWER_STATISTICS    = 5,
 	DHC_MAX_AUTO_LMAC_REQUEST                = 6,
 };
 
@@ -69,6 +67,8 @@ enum iwl_dhc_lmac_automation_table {
  *	dwell scan fine tune report (received as payload in DHN)
  * @DHC_AUTO_UMAC_CONFIGURE_POWER_FLAGS: configure power flags DW
  * @DHC_AUTO_UMAC_REPORT_POWER_STATISTICS: get power statistics report
+ * @DHC_AUTO_UMAC_POWER_SAVE_TESTS_REQ: run ps test
+ * @DHC_AUTO_UMAC_POWER_SAVE_TESTS_RES: ask for the ps test response
  * @DHC_MAX_AUTO_UMAC_REQUEST: the size of the Automation table in umac
  */
 enum iwl_dhc_umac_automation_table {
@@ -78,7 +78,9 @@ enum iwl_dhc_umac_automation_table {
 	DHC_AUTO_UMAC_ADAPTIVE_DWELL_SCAN_FINE_TUNE_ENABLE_REPORT = 3,
 	DHC_AUTO_UMAC_CONFIGURE_POWER_FLAGS  = 4,
 	DHC_AUTO_UMAC_REPORT_POWER_STATISTICS  = 5,
-	DHC_MAX_AUTO_UMAC_REQUEST = 6,
+	DHC_AUTO_UMAC_POWER_SAVE_TESTS_REQ = 16,
+	DHC_AUTO_UMAC_POWER_SAVE_TESTS_RES = 18,
+	DHC_MAX_AUTO_UMAC_REQUEST = 19,
 };
 
 /**
@@ -147,14 +149,26 @@ struct iwl_dhc_cmd {
 } __packed; /* DHC_CMD_API_S */
 
 /**
+ * struct iwl_dhc_cmd_resp_v1 - debug host command response
+ * @status: status of the command
+ * @data: the response data
+ */
+struct iwl_dhc_cmd_resp_v1 {
+	__le32 status;
+	__le32 data[0];
+} __packed; /* DHC_RESP_API_S_VER_1 */
+
+/**
  * struct iwl_dhc_cmd_resp - debug host command response
  * @status: status of the command
+ * @descriptor: command descriptor (index_and_mask) returned
  * @data: the response data
  */
 struct iwl_dhc_cmd_resp {
 	__le32 status;
+	__le32 descriptor;
 	__le32 data[0];
-} __packed;
+} __packed; /* DHC_RESP_API_S_VER_2 */
 
 /**
  * struct iwl_dhc_profile_cmd - profiling command.
@@ -514,6 +528,38 @@ struct iwl_ps_config {
 	__le32 pwr_flags_msk;
 	__le32 param1;
 } __packed; /* DHC_PS_CONFIG_API_S */
+
+/**
+ * struct iwl_ps_test_req {
+ * @flags:      ps test flags
+ * @testCase:   ps test case to run
+ * @test_param1: generic test param 1
+ * @test_param2: generic test param 2
+ * @test_param3: generic test param 3
+ * @test_param4: generic test param 4
+ */
+struct iwl_ps_test_req {
+	__le32 flags;
+	__le32 test_case;
+	__le32 test_param1;
+	__le32 test_param2;
+	__le32 test_param3;
+	__le32 test_param4;
+} __packed; /* PS_TEST_REQ_API_S */
+
+/**
+ * struct iwl_ps_test_res {
+ * @test_res1: generic test result 1
+ * @test_res2: generic test result 2
+ * @test_res3: generic test result 3
+ * @test_res4: generic test result 4
+ */
+struct iwl_ps_test_res {
+	__le32 test_res1;
+	__le32 test_res2;
+	__le32 test_res3;
+	__le32 test_res4;
+} __packed; /* PS_TEST_RES_API_S */
 
 /**
  * struct iwl_dhn_hdr - the header of the Debug Host Notification (DHN)
