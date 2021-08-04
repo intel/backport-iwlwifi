@@ -32,10 +32,6 @@ static u8 rs_fw_set_active_chains(u8 chains)
 		fw_chains |= IWL_TLC_MNG_CHAIN_A_MSK;
 	if (chains & ANT_B)
 		fw_chains |= IWL_TLC_MNG_CHAIN_B_MSK;
-	if (chains & ANT_C)
-		WARN(false,
-		     "tlc offload doesn't support antenna C. chains: 0x%x\n",
-		     chains);
 
 	return fw_chains;
 }
@@ -359,7 +355,7 @@ out:
 	rcu_read_unlock();
 }
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 int iwl_rs_send_dhc(struct iwl_mvm *mvm, struct iwl_lq_sta_rs_fw *lq_sta,
 		    u32 type, u32 data)
 {
@@ -390,10 +386,9 @@ int iwl_rs_send_dhc(struct iwl_mvm *mvm, struct iwl_lq_sta_rs_fw *lq_sta,
 	kfree(dhc_cmd);
 	return ret;
 }
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
-#if defined(CPTCFG_MAC80211_DEBUGFS) && \
-	defined(CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED)
+#if defined(CPTCFG_MAC80211_DEBUGFS) && defined(CPTCFG_IWLWIFI_DHC_PRIVATE)
 int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta, u32 ampdu_size)
 {
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
@@ -510,7 +505,7 @@ void rs_fw_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 		cfg_cmd.ht_rates[IWL_TLC_NSS_2][IWL_TLC_HT_BW_NONE_160] = 0;
 #endif
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	if (iwlwifi_mod_params.disable_11n & IWL_DISABLE_HT_TXAGG)
 		iwl_rs_dhc_set_ampdu_size(sta, 1);
 #endif

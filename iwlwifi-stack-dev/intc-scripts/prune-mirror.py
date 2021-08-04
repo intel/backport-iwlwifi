@@ -42,6 +42,15 @@ def prune_one(config, args):
                     ignore=shutil.ignore_patterns('.git', 'version'))
     shutil.move(git_tmp, os.path.join(config.output_tree, '.git'))
 
+    # HACK HACK HACK because we missed MEI being bad ...
+    cfgpath = os.path.join(config.output_tree, 'defconfigs', args.defconfig)
+    with open(cfgpath, 'rb') as cfgfile:
+        cfgdata = cfgfile.read()
+    if not b'MEI' in cfgdata:
+        cfgdata = cfgdata.rstrip() + b'\n# CPTCFG_IWLMEI is not set\n# CPTCFG_IWLWIFI_MEI is not set\n'
+        with open(cfgpath, 'wb') as cfgfilew:
+            cfgfilew.write(cfgdata)
+
     prune_cmd = ['./intc-scripts/prune.py']
     if args.noverify:
         prune_cmd.append('--noverify')

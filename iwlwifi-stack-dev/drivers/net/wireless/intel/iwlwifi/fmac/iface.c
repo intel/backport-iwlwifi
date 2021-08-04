@@ -95,6 +95,7 @@ static int iwl_fmac_dev_open(struct net_device *dev)
 	};
 	int ret, i;
 
+	wiphy_lock(wiphy_from_fmac(fmac));
 	mutex_lock(&fmac->mutex);
 
 	ret = iwl_fmac_nl_to_fmac_type(vif->wdev.iftype);
@@ -160,6 +161,7 @@ out:
 	if (!atomic_read(&fmac->open_count))
 		iwl_fmac_stop_device(fmac);
 	mutex_unlock(&fmac->mutex);
+	wiphy_unlock(wiphy_from_fmac(fmac));
 
 	for (i = 0; !ret && i < AC_NUM; i++)
 		iwl_fmac_wake_ac_queue(fmac, &vif->wdev, i);
@@ -482,7 +484,9 @@ struct net_device *iwl_fmac_create_netdev(struct iwl_fmac *fmac,
 
 	vif->user_power_level = fmac->user_power_level;
 
-	ret = register_netdevice(dev);
+	wiphy_lock(wiphy_from_fmac(fmac));
+	ret = cfg80211_register_netdevice(dev);
+	wiphy_unlock(wiphy_from_fmac(fmac));
 	if (ret) {
 		iwl_fmac_free_netdev(dev);
 		return ERR_PTR(ret);
@@ -494,7 +498,7 @@ struct net_device *iwl_fmac_create_netdev(struct iwl_fmac *fmac,
 void iwl_fmac_destroy_vif(struct iwl_fmac_vif *vif)
 {
 	if (vif->wdev.netdev) {
-		unregister_netdevice(vif->wdev.netdev);
+		cfg80211_unregister_netdevice(vif->wdev.netdev);
 		hrtimer_cancel(&vif->amsdu_timer);
 	} else {
 		cfg80211_unregister_wdev(&vif->wdev);

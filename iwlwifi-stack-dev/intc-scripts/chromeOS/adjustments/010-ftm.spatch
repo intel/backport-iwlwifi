@@ -92,6 +92,12 @@ struct cfg80211_pmsr_request_peer *peer;
 +ftm_lmr_feedback(peer)
 
 @@
+struct cfg80211_pmsr_request_peer *peer;
+@@
+-peer->ftm.bss_color
++ftm_bss_color(peer)
+
+@@
 identifier capa;
 expression e, f;
 @@

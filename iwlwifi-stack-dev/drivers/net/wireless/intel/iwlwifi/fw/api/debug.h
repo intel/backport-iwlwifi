@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2005-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -42,7 +42,7 @@ enum iwl_debug_cmds {
 	 * &struct iwl_buf_alloc_cmd
 	 */
 	BUFFER_ALLOCATION = 0x8,
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	/**
 	 * @DEBUG_HOST_NTF:
 	 * &struct iwl_adwell_fine_tune_metrics_report or

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2010-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2010-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
@@ -9,6 +9,7 @@
 
 #include <linux/types.h>
 #include <linux/if_ether.h>
+#include "fw/pnvm.h"
 
 /*
  * Testmode GNL family command.
@@ -117,6 +118,7 @@ enum {
 	IWL_XVT_CMD_TRIGGER_NMI,
 	IWL_XVT_CMD_FW_TLV_GET_LEN,
 	IWL_XVT_CMD_FW_TLV_GET_DATA,
+	IWL_XVT_CMD_PNVM_GET_EXTERNAL_FILE_NAME,
 
 	/* Driver notifications */
 	IWL_XVT_CMD_SEND_REPLY_ALIVE = XVT_CMD_NOTIF_BASE,
@@ -834,6 +836,14 @@ struct iwl_xvt_get_fw_tlv_data_request {
 struct iwl_xvt_fw_tlv_data_response {
 	u32 bytes_len;
 	u8 data[0];
+} __packed __aligned(4);
+
+/**
+ * struct iwl_xvt_pnvm_external_file_name - pnvm file name
+ * @path: pnvm file system name
+*/
+struct iwl_xvt_pnvm_external_file_name {
+	u8 name[MAX_PNVM_NAME];
 } __packed __aligned(4);
 
 #endif

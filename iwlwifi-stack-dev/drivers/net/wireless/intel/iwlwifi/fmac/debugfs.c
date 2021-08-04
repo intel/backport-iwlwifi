@@ -245,7 +245,7 @@ static ssize_t iwl_dbgfs_fw_dbg_collect_write(struct iwl_fmac *fmac,
 
 FMAC_DEBUGFS_WRITE_FILE_OPS(fw_dbg_collect, 64);
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 static ssize_t iwl_dbgfs_debug_profile_write(struct iwl_fmac *fmac,
 					     char *buf, size_t count)
 {
@@ -432,13 +432,13 @@ void iwl_fmac_dbgfs_add_sta(struct iwl_fmac *fmac, struct iwl_fmac_sta *sta)
 	if (!sta->dbgfs_dir)
 		return;
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	debugfs_create_file("rate_scale_table", S_IWUSR, sta->dbgfs_dir,
 			    sta, &iwl_dbgfs_rs_table_ops);
 
 	debugfs_create_file("ampdu", S_IWUSR, sta->dbgfs_dir,
 				    sta, &iwl_dbgfs_ampdu_ops);
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 }
 
 void iwl_fmac_dbgfs_del_sta(struct iwl_fmac *fmac, struct iwl_fmac_sta *sta)
@@ -693,12 +693,10 @@ static ssize_t iwl_dbgfs_fw_restart_write(struct iwl_fmac *fmac,
 		return -EIO;
 	}
 
-	if (fmac->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000) {
-		iwl_force_nmi(fmac->trans);
-		return count;
-	}
+	iwl_fmac_send_cmd_pdu(fmac,
+			      WIDE_ID(LONG_GROUP, REPLY_ERROR),
+			      0, 0, NULL);
 
-	iwl_fmac_send_cmd_pdu(fmac, REPLY_ERROR, 0, 0, NULL);
 	mutex_unlock(&fmac->mutex);
 
 	return count;
@@ -775,9 +773,9 @@ void iwl_fmac_dbgfs_init(struct iwl_fmac *fmac, struct dentry *dbgfs_dir)
 	FMAC_DEBUGFS_ADD_FILE(fw_dbg_collect, S_IWUSR);
 	FMAC_DEBUGFS_ADD_FILE(send_echo_cmd, S_IWUSR);
 	FMAC_DEBUGFS_ADD_FILE(fw_nmi, S_IWUSR);
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	FMAC_DEBUGFS_ADD_FILE(debug_profile, S_IWUSR);
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 	FMAC_DEBUGFS_ADD_FILE(ctdp_budget, S_IRUSR);
 	FMAC_DEBUGFS_ADD_FILE(stop_ctdp, S_IWUSR);
 	FMAC_DEBUGFS_ADD_FILE(nic_temp, S_IRUSR);

@@ -304,6 +304,7 @@ static int iwl_mvm_load_ucode_wait_alive(struct iwl_mvm *mvm,
 	if (ret) {
 		struct iwl_trans *trans = mvm->trans;
 
+		/* SecBoot info */
 		if (trans->trans_cfg->device_family >=
 					IWL_DEVICE_FAMILY_22000) {
 			IWL_ERR(mvm,
@@ -311,6 +312,17 @@ static int iwl_mvm_load_ucode_wait_alive(struct iwl_mvm *mvm,
 				iwl_read_umac_prph(trans, UMAG_SB_CPU_1_STATUS),
 				iwl_read_umac_prph(trans,
 						   UMAG_SB_CPU_2_STATUS));
+		} else if (trans->trans_cfg->device_family >=
+			   IWL_DEVICE_FAMILY_8000) {
+			IWL_ERR(mvm,
+				"SecBoot CPU1 Status: 0x%x, CPU2 Status: 0x%x\n",
+				iwl_read_prph(trans, SB_CPU_1_STATUS),
+				iwl_read_prph(trans, SB_CPU_2_STATUS));
+		}
+
+		/* LMAC/UMAC PC info */
+		if (trans->trans_cfg->device_family >=
+					IWL_DEVICE_FAMILY_9000) {
 			IWL_ERR(mvm, "UMAC PC: 0x%x\n",
 				iwl_read_umac_prph(trans,
 						   UREG_UMAC_CURRENT_PC));
@@ -321,12 +333,6 @@ static int iwl_mvm_load_ucode_wait_alive(struct iwl_mvm *mvm,
 				IWL_ERR(mvm, "LMAC2 PC: 0x%x\n",
 					iwl_read_umac_prph(trans,
 						UREG_LMAC2_CURRENT_PC));
-		} else if (trans->trans_cfg->device_family >=
-			   IWL_DEVICE_FAMILY_8000) {
-			IWL_ERR(mvm,
-				"SecBoot CPU1 Status: 0x%x, CPU2 Status: 0x%x\n",
-				iwl_read_prph(trans, SB_CPU_1_STATUS),
-				iwl_read_prph(trans, SB_CPU_2_STATUS));
 		}
 
 		if (ret == -ETIMEDOUT)
@@ -851,7 +857,8 @@ int iwl_mvm_sar_select_profile(struct iwl_mvm *mvm, int prof_a, int prof_b)
 	/* all structs have the same common part, add it */
 	len += sizeof(cmd.common);
 
-	ret = iwl_sar_select_profile(&mvm->fwrt, per_chain, ACPI_SAR_NUM_TABLES,
+	ret = iwl_sar_select_profile(&mvm->fwrt, per_chain,
+				     IWL_NUM_CHAIN_TABLES,
 				     n_subbands, prof_a, prof_b);
 
 	/* return on error or if the profile is disabled (positive number) */
@@ -1167,16 +1174,7 @@ static const struct dmi_system_id dmi_ppag_approved_list[] = {
 
 static int iwl_mvm_ppag_init(struct iwl_mvm *mvm)
 {
-	int ret;
-
-	ret = iwl_mvm_get_ppag_table(mvm);
-	if (ret < 0) {
-		IWL_DEBUG_RADIO(mvm,
-				"PPAG BIOS table invalid or unavailable. (%d)\n",
-				ret);
-		return 0;
-	}
-
+	/* no need to read the table, done in INIT stage */
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	if (dmi_match(DMI_SYS_VENDOR, mvm->trans->dbg_cfg.ppag_allowed)) {
 		IWL_DEBUG_RADIO(mvm,
@@ -1309,12 +1307,65 @@ static void iwl_mvm_lari_cfg(struct iwl_mvm *mvm)
 					ret);
 	}
 }
+
+void iwl_mvm_get_acpi_tables(struct iwl_mvm *mvm)
+{
+	int ret;
+
+	/* read PPAG table */
+	ret = iwl_mvm_get_ppag_table(mvm);
+	if (ret < 0) {
+		IWL_DEBUG_RADIO(mvm,
+				"PPAG BIOS table invalid or unavailable. (%d)\n",
+				ret);
+	}
+
+	/* read SAR tables */
+	ret = iwl_sar_get_wrds_table(&mvm->fwrt);
+	if (ret < 0) {
+		IWL_DEBUG_RADIO(mvm,
+				"WRDS SAR BIOS table invalid or unavailable. (%d)\n",
+				ret);
+		/*
+		 * If not available, don't fail and don't bother with EWRD and
+		 * WGDS */
+
+		if (!iwl_sar_get_wgds_table(&mvm->fwrt)) {
+			/*
+			 * If basic SAR is not available, we check for WGDS,
+			 * which should *not* be available either.  If it is
+			 * available, issue an error, because we can't use SAR
+			 * Geo without basic SAR.
+			 */
+			IWL_ERR(mvm, "BIOS contains WGDS but no WRDS\n");
+		}
+
+	} else {
+		ret = iwl_sar_get_ewrd_table(&mvm->fwrt);
+		/* if EWRD is not available, we can still use
+		* WRDS, so don't fail */
+		if (ret < 0)
+			IWL_DEBUG_RADIO(mvm,
+					"EWRD SAR BIOS table invalid or unavailable. (%d)\n",
+					ret);
+
+		/* read geo SAR table */
+		if (iwl_sar_geo_support(&mvm->fwrt)) {
+			ret = iwl_sar_get_wgds_table(&mvm->fwrt);
+			if (ret < 0)
+				IWL_DEBUG_RADIO(mvm,
+						"Geo SAR BIOS table invalid or unavailable. (%d)\n",
+						ret);
+				/* we don't fail if the table is not available */
+		}
+	}
+}
 #else /* CONFIG_ACPI */
 
 inline int iwl_mvm_sar_select_profile(struct iwl_mvm *mvm,
 				      int prof_a, int prof_b)
 {
-	return -ENOENT;
+	return 1;
 }
 
 inline int iwl_mvm_get_sar_geo_profile(struct iwl_mvm *mvm)
@@ -1348,6 +1399,10 @@ static void iwl_mvm_lari_cfg(struct iwl_mvm *mvm)
 static u8 iwl_mvm_eval_dsm_rfi(struct iwl_mvm *mvm)
 {
 	return DSM_VALUE_RFI_DISABLE;
+}
+
+void iwl_mvm_get_acpi_tables(struct iwl_mvm *mvm)
+{
 }
 #endif /* CONFIG_ACPI */
 
@@ -1404,27 +1459,6 @@ void iwl_mvm_send_recovery_cmd(struct iwl_mvm *mvm, u32 flags)
 
 static int iwl_mvm_sar_init(struct iwl_mvm *mvm)
 {
-	int ret;
-
-	ret = iwl_sar_get_wrds_table(&mvm->fwrt);
-	if (ret < 0) {
-		IWL_DEBUG_RADIO(mvm,
-				"WRDS SAR BIOS table invalid or unavailable. (%d)\n",
-				ret);
-		/*
-		 * If not available, don't fail and don't bother with EWRD.
-		 * Return 1 to tell that we can't use WGDS either.
-		 */
-		return 1;
-	}
-
-	ret = iwl_sar_get_ewrd_table(&mvm->fwrt);
-	/* if EWRD is not available, we can still use WRDS, so don't fail */
-	if (ret < 0)
-		IWL_DEBUG_RADIO(mvm,
-				"EWRD SAR BIOS table invalid or unavailable. (%d)\n",
-				ret);
-
 #if defined(CPTCFG_IWLMVM_VENDOR_CMDS) && defined(CONFIG_ACPI)
 	/*
 	 * if no profile was chosen by the user yet, choose profile 1 (WRDS) as
@@ -1722,6 +1756,9 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 #endif
 #endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
 
+	if (test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status))
+		iwl_mvm_send_recovery_cmd(mvm, ERROR_RECOVERY_UPDATE_DB);
+
 	if (iwl_acpi_get_eckv(mvm->dev, &mvm->ext_clock_valid))
 		IWL_DEBUG_INFO(mvm, "ECKV table doesn't exist in BIOS\n");
 
@@ -1729,26 +1766,10 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 	if (ret)
 		goto error;
 
-	if (test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status))
-		iwl_mvm_send_recovery_cmd(mvm, ERROR_RECOVERY_UPDATE_DB);
-
-	if (iwl_acpi_get_eckv(mvm->dev, &mvm->ext_clock_valid))
-		IWL_DEBUG_INFO(mvm, "ECKV table doesn't exist in BIOS\n");
-
 	ret = iwl_mvm_sar_init(mvm);
-	if (ret == 0) {
+	if (ret == 0)
 		ret = iwl_mvm_sar_geo_init(mvm);
-	} else if (ret == -ENOENT && !iwl_sar_get_wgds_table(&mvm->fwrt)) {
-		/*
-		 * If basic SAR is not available, we check for WGDS,
-		 * which should *not* be available either.  If it is
-		 * available, issue an error, because we can't use SAR
-		 * Geo without basic SAR.
-		 */
-		IWL_ERR(mvm, "BIOS contains WGDS but no WRDS\n");
-	}
-
-	if (ret < 0)
+	else if (ret < 0)
 		goto error;
 
 	iwl_mvm_tas_init(mvm);

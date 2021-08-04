@@ -142,7 +142,7 @@ index 90855455a8dd..7d98a2893a65 100644
  			      IEEE80211_HE_OPERATION_RTS_THRESHOLD_MASK);
  		changed |= BSS_CHANGED_HE_OBSS_PD;
  
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(5,4,0)
  		if (params->he_bss_color.enabled)
 +#endif
  			changed |= BSS_CHANGED_HE_BSS_COLOR;
@@ -156,7 +156,7 @@ index 90855455a8dd..7d98a2893a65 100644
  	sdata->vif.bss_conf.twt_responder = params->twt_responder;
  	sdata->vif.bss_conf.he_obss_pd = params->he_obss_pd;
 +#endif
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(5,4,0)
  	sdata->vif.bss_conf.he_bss_color = params->he_bss_color;
 +#endif
 +#if CFG80211_VERSION >= KERNEL_VERSION(5,10,0)
@@ -266,6 +266,23 @@ index 90855455a8dd..7d98a2893a65 100644
  
  	return 0;
  }
+@@ -2411,7 +2411,16 @@ static int ieee80211_suspend(struct wiphy *wiphy,
+ 
+ static int ieee80211_resume(struct wiphy *wiphy)
+ {
++#if CFG80211_VERSION < KERNEL_VERSION(5,12,0)
++	int ret = __ieee80211_resume(wiphy_priv(wiphy));
++
++	if (ret)
++		cfg80211_shutdown_all_interfaces(wiphy);
++
++	return ret;
++#else
+ 	return __ieee80211_resume(wiphy_priv(wiphy));
++#endif
+ }
+ #else
+ #define ieee80211_suspend NULL
 @@ -3900,6 +3940,7 @@ static int ieee80211_set_multicast_to_unicast(struct wiphy *wiphy,
  	return 0;
  }
@@ -440,7 +457,19 @@ index c9038bed4a3a..b92ef350cbb4 100644
  	return 0;
  }
  
-@@ -1133,10 +1137,12 @@ skip_rates:
+@@ -842,7 +842,11 @@ static void ieee80211_send_assoc(struct ieee80211_sub_if_data *sdata)
+ 			assoc_data->ie_len + /* extra IEs */
+ 			(assoc_data->fils_kek_len ? 16 /* AES-SIV */ : 0) +
+ 			9 + /* WMM */
++#if CFG80211_VERSION >= KERNEL_VERSION(5,14,0)
+ 			(iftd ? iftd->vendor_elems.len : 0),
++#else
++			8, /* special Intel vendor element */
++#endif
+ 			GFP_KERNEL);
+ 	if (!skb)
+ 		return;
+@@ -1110,13 +1118,26 @@ skip_rates:
  		pos = ieee80211_add_wmm_info_ie(skb_put(skb, 9), qos_info);
  	}
  
@@ -451,13 +480,27 @@ index c9038bed4a3a..b92ef350cbb4 100644
  	}
 +#endif
  
++#if CFG80211_VERSION >= KERNEL_VERSION(5,14,0)
+ 	if (iftd && iftd->vendor_elems.data && iftd->vendor_elems.len)
+ 		skb_put_data(skb, iftd->vendor_elems.data, iftd->vendor_elems.len);
++#else
++	if (iftd) {
++		/* iftd assigned means HE is supported, so we want this */
++		static const u8 iwl_vendor_elem[] = {
++			0xdd, 0x06, 0x00, 0x17, 0x35, 0x08, 0x03, 0x00,
++		};
++
++		skb_put_data(skb, iwl_vendor_elem, sizeof(iwl_vendor_elem));
++	}
++#endif
+ 
  	/* add any remaining custom (i.e. vendor specific here) IEs */
  	if (assoc_data->ie_len) {
 @@ -3638,13 +3644,19 @@ static bool ieee80211_assoc_success(struct ieee80211_sub_if_data *sdata,
  		bss_conf->he_bss_color.partial =
  			le32_get_bits(elems->he_operation->he_oper_params,
  				      IEEE80211_HE_OPERATION_PARTIAL_BSS_COLOR);
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,7,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(5,4,0)
  		bss_conf->he_bss_color.enabled =
  			!le32_get_bits(elems->he_operation->he_oper_params,
  				       IEEE80211_HE_OPERATION_BSS_COLOR_DISABLED);
@@ -966,6 +1009,22 @@ index 380523ac625b..e1e82c3b61be 100644
  }
  
  void ieee80211_set_wmm_default(struct ieee80211_sub_if_data *sdata,
+@@ -1946,6 +1946,7 @@ static int ieee80211_build_preq_ies_band(struct ieee80211_sub_if_data *sdata,
+ 			goto out_err;
+ 	}
+ 
++#if CFG80211_VERSION >= KERNEL_VERSION(5,4,0)
+ 	if (cfg80211_any_usable_channels(local->hw.wiphy,
+ 					 BIT(NL80211_BAND_6GHZ),
+ 					 IEEE80211_CHAN_NO_HE)) {
+@@ -1962,6 +1963,7 @@ static int ieee80211_build_preq_ies_band(struct ieee80211_sub_if_data *sdata,
+ 			pos = ieee80211_write_he_6ghz_cap(pos, cap, end);
+ 		}
+ 	}
++#endif
+ 
+ 	/*
+ 	 * If adding more here, adjust code in main.c
 @@ -2578,7 +2602,10 @@ int ieee80211_reconfig(struct ieee80211_local *local)
  		 * scan plan was currently running (and some scan plans may have
  		 * already finished).
@@ -978,6 +1037,23 @@ index 380523ac625b..e1e82c3b61be 100644
  		    __ieee80211_request_sched_scan_start(sched_scan_sdata,
  							 sched_scan_req)) {
  			RCU_INIT_POINTER(local->sched_scan_sdata, NULL);
+@@ -2961,12 +2961,16 @@ void ieee80211_ie_build_he_6ghz_cap(struct ieee80211_sub_if_data *sdata,
+ 	u8 *pos;
+ 	u16 cap;
+ 
++#if CFG80211_VERSION >= KERNEL_VERSION(5,4,0)
+ 	if (!cfg80211_any_usable_channels(sdata->local->hw.wiphy,
+ 					  BIT(NL80211_BAND_6GHZ),
+ 					  IEEE80211_CHAN_NO_HE))
+ 		return;
+ 
+ 	sband = sdata->local->hw.wiphy->bands[NL80211_BAND_6GHZ];
++#else
++	return;
++#endif
+ 
+ 	iftd = ieee80211_get_sband_iftype_data(sband, iftype);
+ 	if (!iftd)
 @@ -3455,6 +3482,7 @@ bool ieee80211_chandef_he_6ghz_oper(struct ieee80211_sub_if_data *sdata,
  	return true;
  }
@@ -1026,3 +1102,167 @@ index 380523ac625b..e1e82c3b61be 100644
  
  void ieee80211_add_aid_request_ie(struct ieee80211_sub_if_data *sdata,
  				  struct sk_buff *skb)
+diff --git a/net/mac80211/iface.c b/net/mac80211/iface.c
+index ad4418400d0f..9727ca71fad1 100644
+--- a/net/mac80211/iface.c
++++ b/net/mac80211/iface.c
+@@ -357,9 +357,13 @@ static int ieee80211_open(struct net_device *dev)
+ 	if (err)
+ 		return err;
+ 
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(sdata->local->hw.wiphy);
++#endif
+ 	err = ieee80211_do_open(&sdata->wdev, true);
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(sdata->local->hw.wiphy);
++#endif
+ 
+ 	return err;
+ }
+@@ -640,9 +644,13 @@ static int ieee80211_stop(struct net_device *dev)
+ {
+ 	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
+ 
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(sdata->local->hw.wiphy);
++#endif
+ 	ieee80211_do_stop(sdata, true);
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(sdata->local->hw.wiphy);
++#endif
+ 
+ 	return 0;
+ }
+@@ -2154,13 +2162,17 @@ void ieee80211_remove_interfaces(struct ieee80211_local *local)
+ 
+ 	unregister_netdevice_many(&unreg_list);
+ 
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(local->hw.wiphy);
++#endif
+ 	list_for_each_entry_safe(sdata, tmp, &wdev_list, list) {
+ 		list_del(&sdata->list);
+ 		cfg80211_unregister_wdev(&sdata->wdev);
+ 		kfree(sdata);
+ 	}
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(local->hw.wiphy);
++#endif
+ }
+ 
+ static int netdev_notify(struct notifier_block *nb,
+diff --git a/net/mac80211/main.c b/net/mac80211/main.c
+index 50a8d15ef31f..39bb1512ce94 100644
+--- a/net/mac80211/main.c
++++ b/net/mac80211/main.c
+@@ -264,7 +264,9 @@ static void ieee80211_restart_work(struct work_struct *work)
+ 
+ 	/* we might do interface manipulations, so need both */
+ 	rtnl_lock();
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(local->hw.wiphy);
++#endif
+ 
+ 	WARN(test_bit(SCAN_HW_SCANNING, &local->scanning),
+ 	     "%s called with hardware scan in progress\n", __func__);
+@@ -303,7 +305,9 @@ static void ieee80211_restart_work(struct work_struct *work)
+ 	synchronize_net();
+ 
+ 	ret = ieee80211_reconfig(local);
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(local->hw.wiphy);
++#endif
+ 
+ 	if (ret)
+ 		cfg80211_shutdown_all_interfaces(local->hw.wiphy);
+@@ -1309,7 +1313,9 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
+ 	rate_control_add_debugfs(local);
+ 
+ 	rtnl_lock();
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(hw->wiphy);
++#endif
+ 
+ 	/* add one default STA interface if supported */
+ 	if (local->hw.wiphy->interface_modes & BIT(NL80211_IFTYPE_STATION) &&
+@@ -1323,7 +1329,9 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
+ 				   "Failed to add default virtual iface\n");
+ 	}
+ 
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(hw->wiphy);
++#endif
+ 	rtnl_unlock();
+ 
+ #ifdef CONFIG_INET
+diff --git a/net/mac80211/tdls.c b/net/mac80211/tdls.c
+index f91d02b81b92..055ecad4a068 100644
+--- a/net/mac80211/tdls.c
++++ b/net/mac80211/tdls.c
+@@ -1979,7 +1979,11 @@ void ieee80211_tdls_chsw_work(struct work_struct *wk)
+ 	struct sk_buff *skb;
+ 	struct ieee80211_tdls_data *tf;
+ 
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(local->hw.wiphy);
++#else
++	rtnl_lock();
++#endif
+ 	while ((skb = skb_dequeue(&local->skb_queue_tdls_chsw))) {
+ 		tf = (struct ieee80211_tdls_data *)skb->data;
+ 		list_for_each_entry(sdata, &local->interfaces, list) {
+@@ -1994,7 +1998,11 @@ void ieee80211_tdls_chsw_work(struct work_struct *wk)
+ 
+ 		kfree_skb(skb);
+ 	}
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(local->hw.wiphy);
++#else
++	rtnl_unlock();
++#endif
+ }
+ 
+ void ieee80211_tdls_handle_disconnect(struct ieee80211_sub_if_data *sdata,
+diff --git a/net/mac80211/util.c b/net/mac80211/util.c
+index a37c307add1f..d12c95efd1ae 100644
+--- a/net/mac80211/util.c
++++ b/net/mac80211/util.c
+@@ -3861,10 +3861,17 @@ void ieee80211_dfs_radar_detected_work(struct work_struct *work)
+ 	}
+ 	mutex_unlock(&local->chanctx_mtx);
+ 
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(local->hw.wiphy);
++#else
++	rtnl_lock();
++#endif
+ 	ieee80211_dfs_cac_cancel(local);
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(local->hw.wiphy);
+-
++#else
++	rtnl_unlock();
++#endif
+ 	if (num_chanctx > 1)
+ 		/* XXX: multi-channel is not supported yet */
+ 		WARN_ON(1);
+diff --git a/net/mac80211/debugfs.c b/net/mac80211/debugfs.c
+index 28a40b800077..27cbaecf9f5d 100644
+--- a/net/mac80211/debugfs.c
++++ b/net/mac80211/debugfs.c
+@@ -395,10 +395,14 @@ static ssize_t reset_write(struct file *file, const char __user *user_buf,
+ 	int ret;
+ 
+ 	rtnl_lock();
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(local->hw.wiphy);
++#endif
+ 	__ieee80211_suspend(&local->hw, NULL);
+ 	ret = __ieee80211_resume(&local->hw);
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(local->hw.wiphy);
++#endif
+ 
+ 	if (ret)
+ 		cfg80211_shutdown_all_interfaces(local->hw.wiphy);
