@@ -238,11 +238,6 @@ u8 iwl_mvm_next_antenna(struct iwl_mvm *mvm, u8 valid, u8 last_idx)
 	return last_idx;
 }
 
-void iwl_mvm_dump_nic_error_log(struct iwl_mvm *mvm)
-{
-	iwl_fwrt_dump_error_logs(&mvm->fwrt);
-}
-
 int iwl_mvm_reconfig_scd(struct iwl_mvm *mvm, int queue, int fifo, int sta_id,
 			 int tid, int frame_limit, u16 ssn)
 {
@@ -415,6 +410,9 @@ bool iwl_mvm_rx_diversity_allowed(struct iwl_mvm *mvm,
 	};
 
 	lockdep_assert_held(&mvm->mutex);
+
+	if (iwlmvm_mod_params.power_scheme != IWL_POWER_SCHEME_CAM)
+		return false;
 
 	if (num_of_ant(iwl_mvm_get_valid_rx_ant(mvm)) == 1)
 		return false;

@@ -401,9 +401,9 @@ static int iwl_fmac_config_prev_regdom(struct iwl_fmac *fmac)
 {
 	int ret;
 	struct ieee80211_regdomain *regd;
-	const struct ieee80211_regdomain *r =
-				rtnl_dereference(wiphy_from_fmac(fmac)->regd);
+	const struct ieee80211_regdomain *r;
 
+	r = get_wiphy_regdom(wiphy_from_fmac(fmac));
 	if (!r)
 		return -ENOENT;
 
@@ -412,7 +412,7 @@ static int iwl_fmac_config_prev_regdom(struct iwl_fmac *fmac)
 	if (IS_ERR_OR_NULL(regd))
 		return -EIO;
 
-	ret = regulatory_set_wiphy_regd_sync_rtnl(wiphy_from_fmac(fmac), regd);
+	ret = regulatory_set_wiphy_regd_sync(wiphy_from_fmac(fmac), regd);
 
 	kfree(regd);
 	return ret;
@@ -513,7 +513,7 @@ static int iwl_fmac_config_regulatory(struct iwl_fmac *fmac)
 	if (IS_ERR_OR_NULL(regd))
 		goto cleanup;
 
-	ret = regulatory_set_wiphy_regd_sync_rtnl(wiphy_from_fmac(fmac), regd);
+	ret = regulatory_set_wiphy_regd_sync(wiphy_from_fmac(fmac), regd);
 	if (ret) {
 		IWL_ERR(fmac, "Could not set regdom to cfg80211\n");
 		goto cleanup;

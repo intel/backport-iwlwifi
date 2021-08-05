@@ -16,7 +16,7 @@
 #include "fw/api/datapath.h"
 #include "fw/api/rs.h"
 #include "fw/api/fmac-version.h"
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 #include "fw/api/dhc.h"
 #endif
 

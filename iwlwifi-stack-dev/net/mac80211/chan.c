@@ -1221,7 +1221,7 @@ ieee80211_vif_use_reserved_assign(struct ieee80211_sub_if_data *sdata)
 	if (WARN_ON(!chandef))
 		return -EINVAL;
 
-	ieee80211_change_chanctx(local, new_ctx, old_ctx, chandef);
+	ieee80211_change_chanctx(local, new_ctx, new_ctx, chandef);
 
 	list_del(&sdata->reserved_chanctx_list);
 	sdata->reserved_chanctx = NULL;

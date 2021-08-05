@@ -70,12 +70,10 @@ static ssize_t iwl_dbgfs_fw_restart_write(struct iwl_xvt *xvt, char *buf,
 
 	mutex_lock(&xvt->mutex);
 
-	if (xvt->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000) {
-		iwl_force_nmi(xvt->trans);
-		return count;
-	}
 	/* Take the return value, though failure is expected, for compilation */
-	ret = iwl_xvt_send_cmd_pdu(xvt, REPLY_ERROR, 0, 0, NULL);
+	ret = iwl_xvt_send_cmd_pdu(xvt,
+				   WIDE_ID(LONG_GROUP, REPLY_ERROR),
+				   0, 0, NULL);
 
 	mutex_unlock(&xvt->mutex);
 

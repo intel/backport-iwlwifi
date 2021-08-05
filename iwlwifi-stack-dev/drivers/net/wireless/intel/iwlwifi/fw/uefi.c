@@ -242,14 +242,14 @@ void *iwl_uefi_get_reduced_power(struct iwl_trans *trans, size_t *len)
 	err = efivar_entry_get(reduce_power_efivar, NULL, &package_size, package);
 	if (err) {
 		IWL_DEBUG_FW(trans,
-			     "Reduced Power UEFI variable not found %d (len %zd)\n",
+			     "Reduced Power UEFI variable not found %d (len %lu)\n",
 			     err, package_size);
 		kfree(package);
 		data = ERR_PTR(err);
 		goto out;
 	}
 
-	IWL_DEBUG_FW(trans, "Read reduced power from UEFI with size %zd\n",
+	IWL_DEBUG_FW(trans, "Read reduced power from UEFI with size %lu\n",
 		     package_size);
 	*len = package_size;
 

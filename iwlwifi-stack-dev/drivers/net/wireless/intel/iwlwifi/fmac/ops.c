@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #define pr_fmt(fmt) "iwlfmac: "fmt
 #include <linux/module.h>
@@ -909,7 +909,7 @@ void iwl_fmac_remove_mcast_sta(struct iwl_fmac *fmac,
 	mc_sta->encryption = false;
 }
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 /* A stub notification handler to receive the profiling report.
  * The notification handler is empty because the report is processed by
  * trace-cmd and not by the driver
@@ -919,7 +919,7 @@ static void iwl_fmac_rx_dhc(struct iwl_fmac *fmac,
 {
 	IWL_DEBUG_INFO(fmac, "profiling notification received\n");
 }
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 void iwl_fmac_nic_restart(struct iwl_fmac *fmac)
 {
@@ -1205,10 +1205,10 @@ static const struct iwl_rx_handlers iwl_fmac_rx_handlers[] = {
 #endif
 	RX_HANDLER_GRP(PHY_OPS_GROUP, CT_KILL_NOTIFICATION,
 		       iwl_fmac_ct_kill_notif, RX_HANDLER_SYNC),
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	RX_HANDLER_GRP(DEBUG_GROUP, DEBUG_HOST_NTF,
 		       iwl_fmac_rx_dhc, RX_HANDLER_SYNC),
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 	RX_HANDLER_GRP(FMAC_GROUP, FMAC_EXTERNAL_AUTH_REQUEST,
 		       iwl_fmac_external_auth_request,
 		       RX_HANDLER_ASYNC_LOCKED),
@@ -1239,9 +1239,7 @@ static const struct iwl_hcmd_names iwl_fmac_legacy_names[] = {
 	HCMD_NAME(REPLY_RX_MPDU_CMD),
 	HCMD_NAME(FRAME_RELEASE),
 	HCMD_NAME(BA_NOTIF),
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 	HCMD_NAME(DEBUG_HOST_COMMAND),
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
 	HCMD_NAME(LDBG_CONFIG_CMD),
 	HCMD_NAME(DEBUG_LOG_MSG),
 };
@@ -1282,9 +1280,9 @@ static const struct iwl_hcmd_names iwl_fmac_regulatory_and_nvm_names[] = {
 static const struct iwl_hcmd_names iwl_fmac_debug_names[] = {
 	HCMD_NAME(DBGC_SUSPEND_RESUME),
 	HCMD_NAME(BUFFER_ALLOCATION),
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	HCMD_NAME(DEBUG_HOST_NTF),
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 	HCMD_NAME(MFU_ASSERT_DUMP_NTF),
 };
 
@@ -1856,7 +1854,7 @@ static void iwl_fmac_free_skb(struct iwl_op_mode *op_mode, struct sk_buff *skb)
 	dev_kfree_skb_any(skb);
 }
 
-static void iwl_fmac_nic_error(struct iwl_op_mode *op_mode)
+static void iwl_fmac_nic_error(struct iwl_op_mode *op_mode, bool sync)
 {
 	struct iwl_fmac *fmac = iwl_fmac_from_opmode(op_mode);
 	struct wiphy *wiphy = wiphy_from_fmac(fmac);
@@ -1872,7 +1870,7 @@ static void iwl_fmac_nic_error(struct iwl_op_mode *op_mode)
 
 	iwl_fmac_dump_nic_error_log(fmac);
 
-	iwl_fw_error_collect(&fmac->fwrt);
+	iwl_fw_error_collect(&fmac->fwrt, sync);
 
 	schedule_work(&fmac->restart_wk);
 }
@@ -1985,8 +1983,10 @@ static void iwl_op_mode_fmac_stop(struct iwl_op_mode *op_mode)
 	rtnl_lock();
 	fmac->shutdown = true;
 	cfg80211_shutdown_all_interfaces(wiphy);
+	wiphy_lock(wiphy);
 	list_for_each_entry_safe(wdev, tmp, &wiphy->wdev_list, list)
 		iwl_fmac_destroy_vif(vif_from_wdev(wdev));
+	wiphy_unlock(wiphy);
 	rtnl_unlock();
 
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE

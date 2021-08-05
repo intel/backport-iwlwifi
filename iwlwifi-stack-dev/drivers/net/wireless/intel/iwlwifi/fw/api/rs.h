@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2017 Intel Deutschland GmbH
  */
 #ifndef __iwl_fw_api_rs_h__
@@ -184,28 +184,43 @@ struct iwl_tlc_update_notif {
 	__le32 amsdu_enabled;
 } __packed; /* TLC_MNG_UPDATE_NTFY_API_S_VER_2 */
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC
 /**
  * enum iwl_tlc_debug_types - debug options
- * @IWL_TLC_DEBUG_FIXED_RATE: set fixed rate for rate scaling
- * @IWL_TLC_DEBUG_AGG_DURATION_LIM: time limit for a BA session, in usec
- * @IWL_TLC_DEBUG_AGG_FRAME_CNT_LIM: set max number of frames in an aggregation
- * @IWL_TLC_DEBUG_TPC_ENABLED: enable or disable tpc
- * @IWL_TLC_DEBUG_TPC_STATS: get number of frames Tx'ed in each tpc step
- * @IWL_TLC_DEBUG_RTS_DISABLE: disable RTS (bool true/false).
- * @IWL_TLC_DEBUG_TYPES_NUM: number of types. Used to define the max type id
- *                           in %struct iwl_dhc_tlc_cmd
  */
 enum iwl_tlc_debug_types {
+	/* @IWL_TLC_DEBUG_FIXED_RATE: set fixed rate for rate scaling */
 	IWL_TLC_DEBUG_FIXED_RATE,
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+	/*
+	 * @IWL_TLC_DEBUG_AGG_DURATION_LIM: time limit for a BA
+	 * session, in usec
+	 */
 	IWL_TLC_DEBUG_AGG_DURATION_LIM,
+	/*
+	 * @IWL_TLC_DEBUG_AGG_FRAME_CNT_LIM: set max number of frames
+	 * in an aggregation
+	 */
 	IWL_TLC_DEBUG_AGG_FRAME_CNT_LIM,
+	/* @IWL_TLC_DEBUG_TPC_ENABLED: enable or disable tpc */
 	IWL_TLC_DEBUG_TPC_ENABLED,
+	/*
+	 * @IWL_TLC_DEBUG_TPC_STATS: get number of frames Tx'ed in each
+	 * tpc step
+	 */
 	IWL_TLC_DEBUG_TPC_STATS,
+	/* @IWL_TLC_DEBUG_RTS_DISABLE: disable RTS (bool true/false). */
 	IWL_TLC_DEBUG_RTS_DISABLE,
+	/*
+	 * @IWL_TLC_DEBUG_TYPES_NUM: number of types. Used to define the max
+	 * type id in %struct iwl_dhc_tlc_cmd
+	 */
 	IWL_TLC_DEBUG_TYPES_NUM,
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 }; /* TLC_MNG_DEBUG_TYPES_API_E */
+#endif /* CPTCFG_IWLWIFI_DHC */
 
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 #define MAX_DATA_IN_DHC_TLC_CMD 10
 
 /**
@@ -233,7 +248,7 @@ struct iwl_tpc_stats {
 	__le32 no_tpc;
 	__le32 step[5];
 } __packed;
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 /*
  * These serve as indexes into
@@ -423,12 +438,9 @@ enum {
 #define RATE_MCS_ANT_POS		14
 #define RATE_MCS_ANT_A_MSK		(1 << RATE_MCS_ANT_POS)
 #define RATE_MCS_ANT_B_MSK		(2 << RATE_MCS_ANT_POS)
-#define RATE_MCS_ANT_C_MSK		(4 << RATE_MCS_ANT_POS)
 #define RATE_MCS_ANT_AB_MSK		(RATE_MCS_ANT_A_MSK | \
 					 RATE_MCS_ANT_B_MSK)
-#define RATE_MCS_ANT_ABC_MSK		(RATE_MCS_ANT_AB_MSK | \
-					 RATE_MCS_ANT_C_MSK)
-#define RATE_MCS_ANT_MSK		RATE_MCS_ANT_ABC_MSK
+#define RATE_MCS_ANT_MSK		RATE_MCS_ANT_AB_MSK
 
 /* Bit 17: (0) SS, (1) SS*2 */
 #define RATE_MCS_STBC_POS		17

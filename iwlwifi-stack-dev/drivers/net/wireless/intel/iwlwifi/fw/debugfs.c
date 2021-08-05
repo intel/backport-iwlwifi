@@ -8,9 +8,9 @@
 #include "debugfs.h"
 #include "dbg.h"
 #include <linux/seq_file.h>
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 #include "api/dhc.h"
-#include "dhc.h"
+#include "dhc-priv.h"
 #endif
 #include "api/rs.h"
 
@@ -296,7 +296,7 @@ out:
 
 FWRT_DEBUGFS_WRITE_FILE_OPS(send_hcmd, 512);
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 struct iwl_dhc_write_data {
 	__be32 length;
 	__be32 index_and_mask;
@@ -852,7 +852,7 @@ void iwl_fwrt_dbgfs_register(struct iwl_fw_runtime *fwrt,
 	FWRT_DEBUGFS_ADD_FILE(send_hcmd, dbgfs_dir, 0200);
 	FWRT_DEBUGFS_ADD_FILE(enabled_severities, dbgfs_dir, 0200);
 	FWRT_DEBUGFS_ADD_FILE(fw_dbg_domain, dbgfs_dir, 0400);
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	if (fw_has_capa(&fwrt->fw->ucode_capa,
 			IWL_UCODE_TLV_CAPA_TLC_OFFLOAD)) {
 		FWRT_DEBUGFS_ADD_FILE(tpc_enable, dbgfs_dir, 0600);

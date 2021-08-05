@@ -7,8 +7,9 @@
 #include "iwl-debug.h"
 #include <linux/timekeeping.h>
 
-int iwl_mvm_phc_get_crosstimestamp(struct ptp_clock_info *ptp,
-				   struct system_device_crosststamp *xtstamp)
+static int
+iwl_mvm_phc_get_crosstimestamp(struct ptp_clock_info *ptp,
+			       struct system_device_crosststamp *xtstamp)
 {
 	struct iwl_mvm *mvm = container_of(ptp, struct iwl_mvm,
 					   ptp_data.ptp_clock_info);
