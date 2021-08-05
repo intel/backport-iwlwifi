@@ -437,7 +437,9 @@ class GitMirror(object):
                         continue
 
                     if last_failure:
-                        last_failure_shortlog = git.shortlog(last_failure, commit.tree_id)
+                        last_failure_shortlog = git.shortlog(last_failure.tree_id + '~1',
+                                                             commit.tree_id,
+                                                             tree=input_work_dir)
                     else:
                         last_failure_shortlog = None
 

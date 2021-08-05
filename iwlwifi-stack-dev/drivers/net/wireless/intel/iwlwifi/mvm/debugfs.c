@@ -382,7 +382,6 @@ static ssize_t iwl_dbgfs_sar_geo_profile_read(struct file *file,
 	int pos = 0;
 	int bufsz = sizeof(buf);
 	int tbl_idx;
-	u8 *value;
 
 	if (!iwl_mvm_firmware_running(mvm))
 		return -EIO;
@@ -398,16 +397,18 @@ static ssize_t iwl_dbgfs_sar_geo_profile_read(struct file *file,
 		pos = scnprintf(buf, bufsz,
 				"SAR geographic profile disabled\n");
 	} else {
-		value = &mvm->fwrt.geo_profiles[tbl_idx - 1].values[0];
-
 		pos += scnprintf(buf + pos, bufsz - pos,
 				 "Use geographic profile %d\n", tbl_idx);
 		pos += scnprintf(buf + pos, bufsz - pos,
 				 "2.4GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
-				 value[1], value[2], value[0]);
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[0].chains[0],
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[0].chains[1],
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[0].max);
 		pos += scnprintf(buf + pos, bufsz - pos,
 				 "5.2GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
-				 value[4], value[5], value[3]);
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[1].chains[0],
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[1].chains[1],
+				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[1].max);
 	}
 	mutex_unlock(&mvm->mutex);
 
@@ -471,10 +472,9 @@ static ssize_t iwl_dbgfs_rs_data_read(struct file *file, char __user *user_buf,
 			  "A-MPDU size limit %d\n",
 			  lq_sta->pers.dbg_agg_frame_count_lim);
 	desc += scnprintf(buff + desc, bufsz - desc,
-			  "valid_tx_ant %s%s%s\n",
+			  "valid_tx_ant %s%s\n",
 		(iwl_mvm_get_valid_tx_ant(mvm) & ANT_A) ? "ANT_A," : "",
-		(iwl_mvm_get_valid_tx_ant(mvm) & ANT_B) ? "ANT_B," : "",
-		(iwl_mvm_get_valid_tx_ant(mvm) & ANT_C) ? "ANT_C" : "");
+		(iwl_mvm_get_valid_tx_ant(mvm) & ANT_B) ? "ANT_B," : "");
 	desc += scnprintf(buff + desc, bufsz - desc,
 			  "last tx rate=0x%X ",
 			  lq_sta->last_rate_n_flags);
@@ -490,7 +490,7 @@ static ssize_t iwl_dbgfs_rs_data_read(struct file *file, char __user *user_buf,
 	return ret;
 }
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 static ssize_t iwl_dbgfs_send_ps_config_dhc(struct iwl_mvm *mvm,
 					    struct iwl_ps_config *ps_cfg_cmd)
 {
@@ -528,7 +528,9 @@ static ssize_t iwl_dbgfs_send_ps_config_dhc(struct iwl_mvm *mvm,
 
 	return ret;
 }
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
+#ifdef CPTCFG_IWLWIFI_DHC
 static void iwl_rs_set_fixed_rate(struct iwl_mvm *mvm,
 				  struct iwl_lq_sta_rs_fw *lq_sta)
 {
@@ -549,19 +551,6 @@ static void iwl_rs_set_fixed_rate(struct iwl_mvm *mvm,
 		       lq_sta->pers.sta_id, pretty_rate);
 }
 
-static void iwl_rs_disable_rts(struct iwl_mvm *mvm,
-			       struct iwl_lq_sta_rs_fw *lq_sta,
-			       u16 sta_id, bool rts_disable)
-{
-	if (iwl_rs_send_dhc(mvm, lq_sta,
-			    IWL_TLC_DEBUG_RTS_DISABLE,
-			    rts_disable))
-		return;
-
-	IWL_DEBUG_RATE(mvm, "sta_id %d rts disable 0x%X\n",
-		       sta_id, rts_disable);
-}
-
 static ssize_t iwl_dbgfs_fixed_rate_write(struct ieee80211_sta *sta,
 					  char *buf, size_t count,
 					  loff_t *ppos)
@@ -578,6 +567,21 @@ static ssize_t iwl_dbgfs_fixed_rate_write(struct ieee80211_sta *sta,
 
 	iwl_rs_set_fixed_rate(mvm, lq_sta);
 	return count;
+}
+#endif /* CPTCFG_IWLWIFI_DHC */
+
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+static void iwl_rs_disable_rts(struct iwl_mvm *mvm,
+			       struct iwl_lq_sta_rs_fw *lq_sta,
+			       u16 sta_id, bool rts_disable)
+{
+	if (iwl_rs_send_dhc(mvm, lq_sta,
+			    IWL_TLC_DEBUG_RTS_DISABLE,
+			    rts_disable))
+		return;
+
+	IWL_DEBUG_RATE(mvm, "sta_id %d rts disable 0x%X\n",
+		       sta_id, rts_disable);
 }
 
 static ssize_t iwl_dbgfs_disable_rts_write(struct ieee80211_sta *sta,
@@ -635,7 +639,7 @@ static ssize_t iwl_dbgfs_ampdu_size_write(struct ieee80211_sta *sta,
 	iwl_rs_dhc_set_ampdu_size(sta, ampdu_size);
 	return count;
 }
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 static ssize_t iwl_dbgfs_amsdu_len_write(struct ieee80211_sta *sta,
 					 char *buf, size_t count,
@@ -1287,11 +1291,6 @@ static ssize_t iwl_dbgfs_fw_restart_write(struct iwl_mvm *mvm, char *buf,
 	if (!iwl_mvm_firmware_running(mvm))
 		return -EIO;
 
-	if (mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000) {
-		iwl_force_nmi(mvm->trans);
-		return count;
-	}
-
 	mutex_lock(&mvm->mutex);
 
 	/* allow one more restart that we're provoking here */
@@ -1299,7 +1298,9 @@ static ssize_t iwl_dbgfs_fw_restart_write(struct iwl_mvm *mvm, char *buf,
 		mvm->fw_restart++;
 
 	/* take the return value to make compiler happy - it will fail anyway */
-	ret = iwl_mvm_send_cmd_pdu(mvm, REPLY_ERROR, 0, 0, NULL);
+	ret = iwl_mvm_send_cmd_pdu(mvm,
+				   WIDE_ID(LONG_GROUP, REPLY_ERROR),
+				   0, 0, NULL);
 
 	mutex_unlock(&mvm->mutex);
 
@@ -1333,8 +1334,6 @@ iwl_dbgfs_scan_ant_rxchain_read(struct file *file,
 		pos += scnprintf(buf + pos, bufsz - pos, "A");
 	if (mvm->scan_rx_ant & ANT_B)
 		pos += scnprintf(buf + pos, bufsz - pos, "B");
-	if (mvm->scan_rx_ant & ANT_C)
-		pos += scnprintf(buf + pos, bufsz - pos, "C");
 	pos += scnprintf(buf + pos, bufsz - pos, " (%hhx)\n", mvm->scan_rx_ant);
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
@@ -2313,7 +2312,7 @@ static ssize_t iwl_dbgfs_csi_addresses_write(struct iwl_mvm *mvm, char *buf,
 }
 #endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 static ssize_t iwl_dbgfs_debug_profile_write(struct iwl_mvm *mvm, char *buf,
 					     size_t count, loff_t *ppos)
 {
@@ -2464,7 +2463,7 @@ static ssize_t iwl_dbgfs_ps_config_write(struct iwl_mvm *mvm,
 	return ret ?: count;
 }
 
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 static ssize_t
 iwl_dbgfs_ltr_config_write(struct iwl_mvm *mvm,
@@ -2627,8 +2626,10 @@ MVM_DEBUGFS_READ_WRITE_FILE_OPS(bcast_filters_macs, 256);
 MVM_DEBUGFS_READ_FILE_OPS(sar_geo_profile);
 #endif
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(fixed_rate, 64);
+#endif
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(ampdu_size, 64);
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(disable_rts, 8);
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(tlc_dhc, 64);
@@ -2637,7 +2638,7 @@ MVM_DEBUGFS_WRITE_FILE_OPS(enable_adwell_fine_tune_report, 32);
 MVM_DEBUGFS_WRITE_FILE_OPS(enable_adwell_channel_dwell_report, 32);
 MVM_DEBUGFS_WRITE_FILE_OPS(disable_tx_fifo_mask, 16);
 MVM_DEBUGFS_WRITE_FILE_OPS(ps_config, 32);
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 MVM_DEBUGFS_READ_WRITE_STA_FILE_OPS(amsdu_len, 16);
 
 #ifdef CPTCFG_IWLMVM_AX_SOFTAP_TESTMODE
@@ -2794,8 +2795,10 @@ void iwl_mvm_sta_add_debugfs(struct ieee80211_hw *hw,
 
 	if (iwl_mvm_has_tlc_offload(mvm)) {
 		MVM_DEBUGFS_ADD_STA_FILE(rs_data, dir, 0400);
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC
 		MVM_DEBUGFS_ADD_STA_FILE(fixed_rate, dir, 0200);
+#endif
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 		MVM_DEBUGFS_ADD_STA_FILE(ampdu_size, dir, 0400);
 		MVM_DEBUGFS_ADD_STA_FILE(disable_rts, dir, 0400);
 		MVM_DEBUGFS_ADD_STA_FILE(tlc_dhc, dir, 0400);
@@ -2849,7 +2852,7 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm)
 
 	if (mvm->fw->phy_integration_ver)
 		MVM_DEBUGFS_ADD_FILE(phy_integration_ver, mvm->debugfs_dir, 0400);
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	MVM_DEBUGFS_ADD_FILE(debug_profile, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(enable_adwell_fine_tune_report,
 			     mvm->debugfs_dir, 0200);

@@ -93,7 +93,7 @@ enum {
 };
 
 /* Protects the table contents, i.e. the ops pointer & drv list */
-static struct mutex iwlwifi_opmode_table_mtx;
+static DEFINE_MUTEX(iwlwifi_opmode_table_mtx);
 static struct iwlwifi_opmode_table {
 	const char *name;			/* name: iwldvm, iwlmvm, etc */
 	const struct iwl_op_mode_ops *ops;	/* pointer to op_mode ops */
@@ -811,7 +811,7 @@ static int iwl_parse_tlv_firmware(struct iwl_drv *drv,
 				bool *usniffer_images)
 {
 	struct iwl_tlv_ucode_header *ucode = (void *)ucode_raw->data;
-	struct iwl_ucode_tlv *tlv;
+	const struct iwl_ucode_tlv *tlv;
 	size_t len = ucode_raw->size;
 	const u8 *data;
 	u32 tlv_len;
@@ -1405,11 +1405,6 @@ fw_dbg_conf:
 			drv->trans->dbg.umac_error_event_table =
 				le32_to_cpu(dbg_ptrs->error_info_addr) &
 				~FW_ADDR_CACHE_CONTROL;
-#ifdef CPTCFG_IWLWIFI_VIRTIO
-			if (!strcmp(drv->trans->dev->driver->name, "iwlwifi-virtio"))
-				drv->trans->dbg.umac_error_event_table =
-					le32_to_cpu(dbg_ptrs->error_info_addr);
-#endif
 			drv->trans->dbg.error_event_table_tlv_status |=
 				IWL_ERROR_EVENT_TABLE_UMAC;
 			break;
@@ -1426,13 +1421,19 @@ fw_dbg_conf:
 			drv->trans->dbg.lmac_error_event_table[0] =
 				le32_to_cpu(dbg_ptrs->error_event_table_ptr) &
 				~FW_ADDR_CACHE_CONTROL;
-#ifdef CPTCFG_IWLWIFI_VIRTIO
-			if (!strcmp(drv->trans->dev->driver->name, "iwlwifi-virtio"))
-				drv->trans->dbg.lmac_error_event_table[0] =
-					le32_to_cpu(dbg_ptrs->error_event_table_ptr);
-#endif
 			drv->trans->dbg.error_event_table_tlv_status |=
 				IWL_ERROR_EVENT_TABLE_LMAC1;
+			break;
+			}
+		case IWL_UCODE_TLV_TCM_DEBUG_ADDRS: {
+			struct iwl_fw_tcm_error_addr *ptr = (void *)tlv_data;
+
+			if (tlv_len != sizeof(*ptr))
+				goto invalid_tlv_len;
+			drv->trans->dbg.tcm_error_event_table =
+				le32_to_cpu(ptr->addr) & ~FW_ADDR_CACHE_CONTROL;
+			drv->trans->dbg.error_event_table_tlv_status |=
+				IWL_ERROR_EVENT_TABLE_TCM;
 			break;
 			}
 		case IWL_UCODE_TLV_TYPE_DEBUG_INFO:
@@ -2130,8 +2131,6 @@ static int __init iwl_drv_init(void)
 {
 	int i, err;
 
-	mutex_init(&iwlwifi_opmode_table_mtx);
-
 	for (i = 0; i < ARRAY_SIZE(iwlwifi_opmode_table); i++)
 		INIT_LIST_HEAD(&iwlwifi_opmode_table[i].drv);
 
@@ -2159,14 +2158,6 @@ static int __init iwl_drv_init(void)
 	if (err)
 		goto cleanup_debugfs;
 
-#ifdef CPTCFG_IWLWIFI_VIRTIO
-	err = iwl_virtio_register_driver();
-	if (err) {
-		iwl_pci_unregister_driver();
-		goto cleanup_debugfs;
-	}
-#endif
-
 	return 0;
 
 cleanup_debugfs:
@@ -2187,10 +2178,6 @@ module_init(iwl_drv_init);
 static void __exit iwl_drv_exit(void)
 {
 	iwl_pci_unregister_driver();
-
-#ifdef CPTCFG_IWLWIFI_VIRTIO
-	iwl_virtio_unregister_driver();
-#endif
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	debugfs_remove_recursive(iwl_dbgfs_root);

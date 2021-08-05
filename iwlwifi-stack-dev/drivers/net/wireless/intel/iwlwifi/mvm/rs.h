@@ -3,7 +3,7 @@
  *
  * Copyright(c) 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2017 Intel Deutschland GmbH
- * Copyright (C) 2003 - 2014, 2018 - 2020 Intel Corporation
+ * Copyright (C) 2003 - 2014, 2018 - 2021 Intel Corporation
  *
  * Contact Information:
  *  Intel Linux Wireless <linuxwifi@intel.com>
@@ -449,7 +449,7 @@ void iwl_mvm_tlc_update_notif(struct iwl_mvm *mvm,
 
 u16 rs_fw_get_max_amsdu_len(struct ieee80211_sta *sta);
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 int iwl_rs_send_dhc(struct iwl_mvm *mvm, struct iwl_lq_sta_rs_fw *lq_sta,
 		    u32 type, u32 data);
 #else
@@ -459,10 +459,9 @@ static inline int iwl_rs_send_dhc(struct iwl_mvm *mvm,
 {
 	return -EINVAL;
 }
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
-#if defined(CPTCFG_MAC80211_DEBUGFS) && \
-	defined(CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED)
+#if defined(CPTCFG_MAC80211_DEBUGFS) && defined(CPTCFG_IWLWIFI_DHC_PRIVATE)
 int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta, u32 ampdu_size);
 #else
 static inline int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta,

@@ -695,7 +695,7 @@ static ssize_t iwl_dbgfs_quota_min_read(struct file *file,
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC
 static ssize_t iwl_dbgfs_twt_setup_write(struct ieee80211_vif *vif, char *buf,
 					 size_t count, loff_t *ppos)
 {
@@ -773,7 +773,9 @@ static ssize_t iwl_dbgfs_twt_setup_write(struct ieee80211_vif *vif, char *buf,
 
 	return ret ?: count;
 }
+#endif
 
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 static ssize_t iwl_dbgfs_htc_omi_write(struct ieee80211_vif *vif, char *buf,
 				       size_t count, loff_t *ppos)
 {
@@ -843,7 +845,7 @@ static ssize_t iwl_dbgfs_twt_info_frame_write(struct ieee80211_vif *vif, char *b
 
 	return ret ?: count;
 }
-#endif /* CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 #define MVM_DEBUGFS_WRITE_FILE_OPS(name, bufsz) \
 	_MVM_DEBUGFS_WRITE_FILE_OPS(name, bufsz, struct ieee80211_vif)
@@ -864,8 +866,10 @@ MVM_DEBUGFS_READ_WRITE_FILE_OPS(uapsd_misbehaving, 20);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(rx_phyinfo, 10);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(quota_min, 32);
 MVM_DEBUGFS_READ_FILE_OPS(os_device_timediff);
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC
 MVM_DEBUGFS_WRITE_FILE_OPS(twt_setup, 256);
+#endif
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 MVM_DEBUGFS_WRITE_FILE_OPS(htc_omi, 32);
 MVM_DEBUGFS_WRITE_FILE_OPS(twt_info_frame, 32);
 #endif
@@ -914,8 +918,10 @@ void iwl_mvm_vif_dbgfs_register(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	    mvmvif == mvm->bf_allowed_vif)
 		MVM_DEBUGFS_ADD_FILE_VIF(bf_params, mvmvif->dbgfs_dir, 0600);
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC
 	MVM_DEBUGFS_ADD_FILE_VIF(twt_setup, mvmvif->dbgfs_dir, S_IWUSR);
+#endif
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	MVM_DEBUGFS_ADD_FILE_VIF(htc_omi, mvmvif->dbgfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE_VIF(twt_info_frame, mvmvif->dbgfs_dir, 0200);
 #endif

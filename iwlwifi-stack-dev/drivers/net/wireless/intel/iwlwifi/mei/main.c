@@ -181,9 +181,9 @@ struct iwl_mei_filters {
  *	CSME.
  */
 struct iwl_mei {
-	struct wait_queue_head get_nvm_wq;
+	wait_queue_head_t get_nvm_wq;
 	struct work_struct send_csa_msg_wk;
-	struct wait_queue_head get_ownership_wq;
+	wait_queue_head_t get_ownership_wq;
 	struct iwl_mei_shared_mem_ptrs shared_mem;
 	struct mei_cl_device *cldev;
 	struct iwl_mei_nvm *nvm;
@@ -200,7 +200,7 @@ struct iwl_mei {
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 	struct dentry *dbgfs_dir;
-	struct wait_queue_head debugfs_wq;
+	wait_queue_head_t debugfs_wq;
 	bool ping_pending;
 #endif
 };

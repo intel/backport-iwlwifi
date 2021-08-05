@@ -126,6 +126,15 @@
  * @IWL_MVM_VENDOR_CMD_ROAMING_FORBIDDEN_EVENT: notifies if roaming is allowed.
  *	contains a &IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN and a
  *	&IWL_MVM_VENDOR_ATTR_VIF_ADDR attribute.
+ * @IWL_MVM_VENDOR_CMD_PPAG_GET_TABLE: retrieves the PPAG table.
+ *	Contains a &IWL_MVM_VENDOR_ATTR_PPAG_TABLE and a
+ *	&IWL_MVM_VENDOR_ATTR_PPAG_NUM_SUB_BANDS attribute.
+ * @IWL_MVM_VENDOR_CMD_SAR_GET_TABLE: retrieves the full SAR table.
+ *	Contains a &IWL_MVM_VENDOR_ATTR_SAR_TABLE and a
+ *	&IWL_MVM_VENDOR_ATTR_SAR_VER attributes.
+ * @IWL_MVM_VENDOR_CMD_GEO_SAR_GET_TABLE: retrieves the full GEO SAR table.
+ *	Contains a &IWL_MVM_VENDOR_ATTR_SAR_TABLE and a
+ *	&IWL_MVM_VENDOR_ATTR_GEO_SAR_VER attributes.
  */
 
 enum iwl_mvm_vendor_cmd {
@@ -180,6 +189,9 @@ enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP			= 0x30,
 	IWL_MVM_VENDOR_CMD_HOST_SET_SW_RFKILL_STATE		= 0x31,
 	IWL_MVM_VENDOR_CMD_ROAMING_FORBIDDEN_EVENT		= 0x32,
+	IWL_MVM_VENDOR_CMD_PPAG_GET_TABLE                       = 0x33,
+	IWL_MVM_VENDOR_CMD_SAR_GET_TABLE                        = 0x34,
+	IWL_MVM_VENDOR_CMD_GEO_SAR_GET_TABLE                    = 0x35,
 };
 
 /**
@@ -868,6 +880,21 @@ enum iwl_vendor_sw_rfkill_state {
  *	collocated AP. Relevant for 6GHz AP info.
  * @IWL_MVM_VENDOR_ATTR_COLLOC_ADDR: MAC address of a collocated AP.
  *	Relevant for 6GHz AP info.
+ * @IWL_MVM_VENDOR_ATTR_PPAG_TABLE: nested attribute. Contains a binary
+ *	attribute for each chain, each of them contains the ppag
+ *	values for all sub-bands.
+ * @IWL_MVM_VENDOR_ATTR_PPAG_NUM_SUB_BANDS: u32 attribute. The number of
+ *	sub-bands that we have in the ppag table.
+ * @IWL_MVM_VENDOR_ATTR_SAR_TABLE: nested attribute. Contains a nested
+ *	attribute for each profile, each of them contains binary attribute
+ *	for each chain.
+ * @IWL_MVM_VENDOR_ATTR_SAR_VER: u32 attribute. Contains the SAR table version.
+ * @IWL_MVM_VENDOR_ATTR_GEO_SAR_TABLE: nested attribute. Contains a
+ *	nested attribute for each profile, each of them contains
+ *	a nested attribute for each band. See &enum
+ *	iwl_vendor_sar_per_chain_geo_table.
+ * @IWL_MVM_VNDOR_ATTR_GEO_SAR_VER: u32 attribute. Contains the GEO SAR
+ *	table version
  *
  * @NUM_IWL_MVM_VENDOR_ATTR: number of vendor attributes
  * @MAX_IWL_MVM_VENDOR_ATTR: highest vendor attribute number
@@ -982,6 +1009,12 @@ enum iwl_mvm_vendor_attr {
 	IWL_MVM_VENDOR_ATTR_BAND				= 0x69,
 	IWL_MVM_VENDOR_ATTR_COLLOC_CHANNEL			= 0x70,
 	IWL_MVM_VENDOR_ATTR_COLLOC_ADDR				= 0x71,
+	IWL_MVM_VENDOR_ATTR_PPAG_TABLE                          = 0x72,
+	IWL_MVM_VENDOR_ATTR_PPAG_NUM_SUB_BANDS                  = 0x73,
+	IWL_MVM_VENDOR_ATTR_SAR_TABLE                           = 0x74,
+	IWL_MVM_VENDOR_ATTR_SAR_VER                             = 0x75,
+	IWL_MVM_VENDOR_ATTR_GEO_SAR_TABLE                       = 0x76,
+	IWL_MVM_VENDOR_ATTR_GEO_SAR_VER                         = 0x77,
 
 	NUM_IWL_MVM_VENDOR_ATTR,
 	MAX_IWL_MVM_VENDOR_ATTR = NUM_IWL_MVM_VENDOR_ATTR - 1,

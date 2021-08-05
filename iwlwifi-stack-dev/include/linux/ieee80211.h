@@ -2179,6 +2179,8 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 #define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_RESERVED		0xc0
 #define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_MASK			0xc0
 
+#define IEEE80211_HE_PHY_CAP10_HE_MU_M1RU_MAX_LTF			0x01
+
 /* 802.11ax HE TX/RX MCS NSS Support  */
 #define IEEE80211_TX_RX_MCS_NSS_SUPP_HIGHEST_MCS_POS			(3)
 #define IEEE80211_TX_RX_MCS_NSS_SUPP_TX_BITMAP_POS			(6)
@@ -3864,9 +3866,6 @@ struct ieee80211_neighbor_ap_info {
 	u8 op_class;
 	u8 channel;
 } __packed;
-
-#define IEEE80211_MIN_AP_NEIGHBOR_INFO_SIZE \
-	sizeof(struct ieee80211_neighbor_ap_info)
 
 enum ieee80211_range_params_max_total_ltf {
 	IEEE80211_RANGE_PARAMS_MAX_TOTAL_LTF_4 = 0,

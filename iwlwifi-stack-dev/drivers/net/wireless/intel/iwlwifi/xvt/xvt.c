@@ -88,9 +88,7 @@ static const struct iwl_hcmd_names iwl_xvt_long_cmd_names[] = {
 	HCMD_NAME(GET_SET_PHY_DB_CMD),
 	HCMD_NAME(TX_ANT_CONFIGURATION_CMD),
 	HCMD_NAME(REPLY_SF_CFG_CMD),
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
 	HCMD_NAME(DEBUG_HOST_COMMAND),
-#endif
 };
 
 /* Please keep this array *SORTED* by hex value.
@@ -641,7 +639,7 @@ static void iwl_xvt_nic_config(struct iwl_op_mode *op_mode)
 				       ~APMG_PS_CTRL_EARLY_PWR_OFF_RESET_DIS);
 }
 
-static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode)
+static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode, bool sync)
 {
 	struct iwl_xvt *xvt = IWL_OP_MODE_GET_XVT(op_mode);
 	void *p_table;
@@ -690,7 +688,7 @@ static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode)
 		kfree(p_table_umac);
 	}
 
-	iwl_fw_error_collect(&xvt->fwrt);
+	iwl_fw_error_collect(&xvt->fwrt, sync);
 }
 
 static bool iwl_xvt_set_hw_rfkill_state(struct iwl_op_mode *op_mode, bool state)
@@ -916,7 +914,7 @@ int iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b)
 	/* all structs have the same common part, add it */
 	len += sizeof(cmd.common);
 
-	if (iwl_sar_select_profile(&xvt->fwrt, per_chain, ACPI_SAR_NUM_TABLES,
+	if (iwl_sar_select_profile(&xvt->fwrt, per_chain, IWL_NUM_CHAIN_TABLES,
 				   n_subbands, prof_a, prof_b))
 		return -ENOENT;
 

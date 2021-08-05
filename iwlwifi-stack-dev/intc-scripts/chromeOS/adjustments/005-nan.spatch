@@ -272,8 +272,8 @@ expression E;
 struct cfg80211_nan_conf *conf;
 expression E;
 @@
--conf->bands |= BIT(E);
-+ieee80211_nan_set_band(conf, E);
+-conf->bands |= BIT(E)
++ieee80211_nan_set_band(conf, E)
 
 @@
 struct cfg80211_nan_conf new_conf;

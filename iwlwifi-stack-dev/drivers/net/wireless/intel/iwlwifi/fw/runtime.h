@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #ifndef __iwl_fw_runtime_h__
 #define __iwl_fw_runtime_h__
@@ -152,6 +152,7 @@ struct iwl_fw_runtime {
 	u8 sar_chain_b_profile;
 	struct iwl_geo_profile geo_profiles[ACPI_NUM_GEO_PROFILES];
 	u32 geo_rev;
+	bool geo_enabled;
 	union iwl_ppag_table_cmd ppag_table;
 	u32 ppag_ver;
 #endif

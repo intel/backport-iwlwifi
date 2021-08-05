@@ -24,7 +24,7 @@ static bool iwl_pnvm_complete_fn(struct iwl_notif_wait_data *notif_wait,
 	struct iwl_pnvm_init_complete_ntfy *pnvm_ntf = (void *)pkt->data;
 
 	IWL_DEBUG_FW(trans,
-		     "PNVM complete notification received with status %d\n",
+		     "PNVM complete notification received with status 0x%0x\n",
 		     le32_to_cpu(pnvm_ntf->status));
 
 	return true;
@@ -37,6 +37,7 @@ static int iwl_pnvm_handle_section(struct iwl_trans *trans, const u8 *data,
 	u32 sha1 = 0;
 	u16 mac_type = 0, rf_id = 0;
 	u8 *pnvm_data = NULL, *tmp;
+	bool hw_match = false;
 	u32 size = 0;
 	int ret;
 
@@ -83,6 +84,9 @@ static int iwl_pnvm_handle_section(struct iwl_trans *trans, const u8 *data,
 				break;
 			}
 
+			if (hw_match)
+				break;
+
 			mac_type = le16_to_cpup((__le16 *)data);
 			rf_id = le16_to_cpup((__le16 *)(data + sizeof(__le16)));
 
@@ -90,30 +94,9 @@ static int iwl_pnvm_handle_section(struct iwl_trans *trans, const u8 *data,
 				     "Got IWL_UCODE_TLV_HW_TYPE mac_type 0x%0x rf_id 0x%0x\n",
 				     mac_type, rf_id);
 
-			if (mac_type != CSR_HW_REV_TYPE(trans->hw_rev) ||
-			    rf_id != CSR_HW_RFID_TYPE(trans->hw_rf_id)) {
-				/*
-				 * Workaround: SOF needs to use the section
-				 *  marked as SO, so check if that's the case,
-				 * still making sure the rf_id matches.
-				 */
-				if (mac_type == IWL_CFG_MAC_TYPE_SO &&
-				    CSR_HW_REV_TYPE(trans->hw_rev) == IWL_CFG_MAC_TYPE_SOF &&
-				    rf_id == CSR_HW_RFID_TYPE(trans->hw_rf_id)) {
-					IWL_DEBUG_FW(trans,
-						     "mac_type 0x%0x is equivalent to mac_type 0x%0x, accept PNVM section.\n",
-						     CSR_HW_REV_TYPE(trans->hw_rev),
-						     mac_type);
-					break;
-				}
-
-				IWL_DEBUG_FW(trans,
-					     "HW mismatch, skipping PNVM section, mac_type 0x%0x, rf_id 0x%0x.\n",
-					     CSR_HW_REV_TYPE(trans->hw_rev), trans->hw_rf_id);
-				ret = -ENOENT;
-				goto out;
-			}
-
+			if (mac_type == CSR_HW_REV_TYPE(trans->hw_rev) &&
+			    rf_id == CSR_HW_RFID_TYPE(trans->hw_rf_id))
+				hw_match = true;
 			break;
 		case IWL_UCODE_TLV_SEC_RT: {
 			struct iwl_pnvm_section *section = (void *)data;
@@ -164,6 +147,15 @@ static int iwl_pnvm_handle_section(struct iwl_trans *trans, const u8 *data,
 	}
 
 done:
+	if (!hw_match) {
+		IWL_DEBUG_FW(trans,
+			     "HW mismatch, skipping PNVM section (need mac_type 0x%x rf_id 0x%x)\n",
+			     CSR_HW_REV_TYPE(trans->hw_rev),
+			     CSR_HW_RFID_TYPE(trans->hw_rf_id));
+		ret = -ENOENT;
+		goto out;
+	}
+
 	if (!size) {
 		IWL_DEBUG_FW(trans, "Empty PNVM, skipping.\n");
 		ret = -ENOENT;
@@ -238,19 +230,10 @@ static int iwl_pnvm_parse(struct iwl_trans *trans, const u8 *data,
 static int iwl_pnvm_get_from_fs(struct iwl_trans *trans, u8 **data, size_t *len)
 {
 	const struct firmware *pnvm;
-	char pnvm_name[64];
+	char pnvm_name[MAX_PNVM_NAME];
 	int ret;
 
-	/*
-	 * The prefix unfortunately includes a hyphen at the end, so
-	 * don't add the dot here...
-	 */
-	snprintf(pnvm_name, sizeof(pnvm_name), "%spnvm",
-		 trans->cfg->fw_name_pre);
-
-	/* ...but replace the hyphen with the dot here. */
-	if (strlen(trans->cfg->fw_name_pre) < sizeof(pnvm_name))
-		pnvm_name[strlen(trans->cfg->fw_name_pre) - 1] = '.';
+	iwl_pnvm_get_fs_name(trans, pnvm_name, sizeof(pnvm_name));
 
 	ret = firmware_request_nowarn(&pnvm, pnvm_name, trans->dev);
 	if (ret) {
@@ -260,12 +243,17 @@ static int iwl_pnvm_get_from_fs(struct iwl_trans *trans, u8 **data, size_t *len)
 	}
 
 	*data = kmemdup(pnvm->data, pnvm->size, GFP_KERNEL);
-	if (!*data)
-		return -ENOMEM;
+	if (!*data) {
+		ret = -ENOMEM;
+		goto release;
+	}
 
 	*len = pnvm->size;
+	ret = 0;
 
-	return 0;
+release:
+	release_firmware(pnvm);
+	return ret;
 }
 
 int iwl_pnvm_load(struct iwl_trans *trans,

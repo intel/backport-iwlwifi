@@ -77,4 +77,6 @@
 #define CPTCFG_IWLMVM_VENDOR_CMDS 1
 #endif
 
+#define CPTCFG_IWLWIFI_DHC 1
+
 #endif

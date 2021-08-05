@@ -158,7 +158,7 @@ static void iwl_mvm_adjust_quota_for_noa(struct iwl_mvm *mvm,
 #endif
 }
 
-#ifdef CPTCFG_IWLWIFI_DEBUG_HOST_CMD_ENABLED
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 /*
  * Enforce a maximum quota to vif's binding
  * Set vif to NULL to cancel a previous enforcement

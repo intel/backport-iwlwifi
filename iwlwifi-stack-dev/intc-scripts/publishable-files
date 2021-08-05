@@ -62,6 +62,7 @@ drivers/net/wireless/intel/iwlwifi/fw/api/context.h
 drivers/net/wireless/intel/iwlwifi/fw/api/d3.h
 drivers/net/wireless/intel/iwlwifi/fw/api/datapath.h
 drivers/net/wireless/intel/iwlwifi/fw/api/debug.h
+drivers/net/wireless/intel/iwlwifi/fw/api/dhc.h
 drivers/net/wireless/intel/iwlwifi/fw/api/filter.h
 drivers/net/wireless/intel/iwlwifi/fw/api/led.h
 drivers/net/wireless/intel/iwlwifi/fw/api/mac-cfg.h

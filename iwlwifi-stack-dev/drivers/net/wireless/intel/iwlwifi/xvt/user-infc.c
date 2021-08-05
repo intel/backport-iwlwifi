@@ -28,6 +28,7 @@
 #include "fw/dbg.h"
 #include "fw/acpi.h"
 #include "fw/img.h"
+#include "fw/pnvm.h"
 
 #define XVT_UCODE_CALIB_TIMEOUT (CPTCFG_IWL_TIMEOUT_FACTOR * HZ)
 #define XVT_SCU_BASE	(0xe6a00000)
@@ -2095,6 +2096,24 @@ static int iwl_xvt_handle_get_fw_tlv_data(struct iwl_xvt *xvt,
 	return 0;
 }
 
+static int iwl_xvt_handle_pnvm_get_file_name(struct iwl_xvt *xvt,
+					     struct iwl_tm_data *data_in,
+					     struct iwl_tm_data *data_out)
+{
+	struct iwl_xvt_pnvm_external_file_name *pnvm_name_resp;
+
+	pnvm_name_resp = kmalloc(sizeof(*pnvm_name_resp), GFP_KERNEL);
+	if (!pnvm_name_resp)
+		return -ENOMEM;
+
+	iwl_pnvm_get_fs_name(xvt->trans, pnvm_name_resp->name, sizeof(pnvm_name_resp->name));
+
+	data_out->len = strlen(pnvm_name_resp->name) + 1;
+	data_out->data = pnvm_name_resp;
+
+	return 0;
+}
+
 int iwl_xvt_user_cmd_execute(struct iwl_testmode *testmode, u32 cmd,
 			     struct iwl_tm_data *data_in,
 			     struct iwl_tm_data *data_out, bool *supported_cmd)
@@ -2195,6 +2214,10 @@ int iwl_xvt_user_cmd_execute(struct iwl_testmode *testmode, u32 cmd,
 
 	case IWL_XVT_CMD_FW_TLV_GET_DATA:
 		ret = iwl_xvt_handle_get_fw_tlv_data(xvt, data_in, data_out);
+		break;
+
+	case IWL_XVT_CMD_PNVM_GET_EXTERNAL_FILE_NAME:
+		ret = iwl_xvt_handle_pnvm_get_file_name(xvt, data_in, data_out);
 		break;
 
 	default:

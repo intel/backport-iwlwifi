@@ -130,12 +130,12 @@ config IWLFMAC_9000_SUPPORT
 	  This option is mostly used for code pruning & documentation
 	  purposes.
 
-config IWLWIFI_DEBUG_HOST_CMD_ENABLED
-	bool
-	default y
+config IWLWIFI_DHC_PRIVATE
+	bool "enable *private* DHC commands"
+	select IWLWIFI_DHC
 	help
-	  This option enables the using of debug host command API.
-	  It's used for debug purposes and not intended for upstream
+	  This option enables the use of private debug host commands.  It's used
+	  for internal debugging purposes and not intended for upstream.
 
 config IWLWIFI_ATLAS_PLATFORM_WORKAROUND
 	bool "enable Atlas platform workaround code"
@@ -159,15 +159,7 @@ config IWLWIFI_SIMULATION
 	def_bool y
 	depends on UML
 
-config IWLWIFI_VIRTIO
-	def_bool y
-	depends on VIRTIO
-	depends on UML
-	select IWLWIFI_SIMULATION
-	# this means kernel is > 4.17, i.e. no 4.17 backports required
-	depends on !KERNEL_4_17
-
 config IWLMVM_PHC
 	def_bool y
-	# this means kernel is > 4.10, i.e. no 4.10 backports required
+	# this means kernel is >= 4.10, i.e. no 4.10 backports required
 	depends on !KERNEL_4_10
