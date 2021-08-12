@@ -443,7 +443,7 @@ static inline void nf_reset_ct(struct sk_buff *skb)
 	     (skb) = (next_skb), (next_skb) = (skb) ? (skb)->next : NULL)
 #endif
 
-#if LINUX_VERSION_IS_LESS(5,11,0)
+#if LINUX_VERSION_IS_LESS(5,10,54)
 static inline u64 skb_get_kcov_handle(struct sk_buff *skb)
 {
 	return 0;
