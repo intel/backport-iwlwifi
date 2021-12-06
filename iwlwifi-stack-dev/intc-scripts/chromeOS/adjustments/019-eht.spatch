@@ -1,0 +1,43 @@
+@@
+expression E;
+@@
+switch (E) {
++#if CFG80211_VERSION >= KERNEL_VERSION(9,9,9)
+case NL80211_CHAN_WIDTH_320:
++/* keep code in case of fall-through (spatch generated) */
++#endif
+}
+
+@@
+identifier iwl_he_eht_capa;
+@@
+struct ieee80211_sband_iftype_data iwl_he_eht_capa[] = {
+...,
+	{
++#if CFG80211_VERSION >= KERNEL_VERSION(9,9,9)
+		.eht_cap = {
+			...
+		},
++#endif
+	},
+...
+};
+
+@@
+expression obj, val;
+@@
+-obj->eht_cap.has_eht = val;
++cfg_eht_cap_set_has_eht(obj, val);
+
+@@
+expression obj;
+@@
+-obj->eht_cap.has_eht
++cfg_eht_cap_has_eht(obj)
+
+@@
+expression obj;
+identifier f;
+@@
+-obj->eht_cap.f
++cfg_eht_cap(obj)->f

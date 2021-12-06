@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  */
 #include "iwl-trans.h"
@@ -148,7 +148,7 @@ static int iwl_tm_get_dev_info(struct iwl_testmode *testmode,
 	dev_info->dev_id = testmode->trans->hw_id;
 	dev_info->fw_ver = testmode->fw->ucode_ver;
 	dev_info->vendor_id = PCI_VENDOR_ID_INTEL;
-	dev_info->silicon_step = CSR_HW_REV_STEP(testmode->trans->hw_rev);
+	dev_info->silicon_step = testmode->trans->hw_rev_step;
 
 	/* TODO: Assign real value when feature is implemented */
 	dev_info->build_ver = 0x00;

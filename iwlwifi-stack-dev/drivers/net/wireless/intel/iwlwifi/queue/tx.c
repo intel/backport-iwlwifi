@@ -1004,6 +1004,11 @@ static void iwl_txq_stuck_timer(struct timer_list *t)
 	struct iwl_txq *txq = from_timer(txq, t, stuck_timer);
 	struct iwl_trans *trans = txq->trans;
 
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+	if (test_bit(STATUS_DISABLE_STUCK_TIMER, &trans->status))
+		return;
+#endif
+
 	spin_lock(&txq->lock);
 	/* check if triggered erroneously */
 	if (txq->read_ptr == txq->write_ptr) {
@@ -1752,8 +1757,11 @@ static int iwl_trans_txq_send_hcmd_sync(struct iwl_trans *trans,
 	}
 
 	if (test_bit(STATUS_FW_ERROR, &trans->status)) {
-		IWL_ERR(trans, "FW error in SYNC CMD %s\n", cmd_str);
-		dump_stack();
+		if (!test_and_clear_bit(STATUS_SUPPRESS_CMD_ERROR_ONCE,
+					&trans->status)) {
+			IWL_ERR(trans, "FW error in SYNC CMD %s\n", cmd_str);
+			dump_stack();
+		}
 		ret = -EIO;
 		goto cancel;
 	}

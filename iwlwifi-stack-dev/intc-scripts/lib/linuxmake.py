@@ -27,7 +27,7 @@ def prune(d, dis):
     for l in mf:
         ignore = False
 
-        if '-$(CPTCFG_' in l:
+        if '-$(CPTCFG_' in l or '-$(CONFIG_' in l:
             _files = l.split('=')[1]
             _files = _files.split()
             files = set()

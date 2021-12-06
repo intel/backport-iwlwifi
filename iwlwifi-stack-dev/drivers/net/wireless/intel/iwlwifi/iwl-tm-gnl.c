@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2010-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2010-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2014 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -360,7 +360,7 @@ static int iwl_tm_gnl_get_sil_step(struct iwl_trans *trans,
 		return -ENOMEM;
 	data_out->len = sizeof(struct iwl_sil_step);
 	resp = (struct iwl_sil_step *)data_out->data;
-	resp->silicon_step = CSR_HW_REV_STEP(trans->hw_rev);
+	resp->silicon_step = trans->hw_rev_step;
 	return 0;
 }
 

@@ -79,9 +79,9 @@ drivers/net/wireless/intel/iwlwifi/fw/api/rs.h
 drivers/net/wireless/intel/iwlwifi/fw/api/rx.h
 drivers/net/wireless/intel/iwlwifi/fw/api/scan.h
 drivers/net/wireless/intel/iwlwifi/fw/api/sf.h
-drivers/net/wireless/intel/iwlwifi/fw/api/soc.h
 drivers/net/wireless/intel/iwlwifi/fw/api/sta.h
 drivers/net/wireless/intel/iwlwifi/fw/api/stats.h
+drivers/net/wireless/intel/iwlwifi/fw/api/system.h
 drivers/net/wireless/intel/iwlwifi/fw/api/tdls.h
 drivers/net/wireless/intel/iwlwifi/fw/api/time-event.h
 drivers/net/wireless/intel/iwlwifi/fw/api/location.h
@@ -111,6 +111,7 @@ drivers/net/wireless/intel/iwlwifi/fw/testmode.c
 drivers/net/wireless/intel/iwlwifi/fw/testmode.h
 drivers/net/wireless/intel/iwlwifi/fw/uefi.c
 drivers/net/wireless/intel/iwlwifi/fw/uefi.h
+drivers/net/wireless/intel/iwlwifi/fw/rs.c
 drivers/net/wireless/intel/iwlwifi/iwl-io.c
 drivers/net/wireless/intel/iwlwifi/iwl-io.h
 drivers/net/wireless/intel/iwlwifi/iwl-modparams.h
@@ -220,6 +221,7 @@ drivers/net/wireless/mac80211_hwsim.c
 drivers/net/wireless/mac80211_hwsim.h
 drivers/net/wireless/Makefile
 net/*
+.git
 .git/*
 include/*
 kconf/*

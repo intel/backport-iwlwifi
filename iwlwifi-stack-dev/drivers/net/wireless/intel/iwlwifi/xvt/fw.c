@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
 #include "iwl-trans.h"
@@ -55,6 +55,8 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	u32 rx_packet_payload_size = iwl_rx_packet_payload_len(pkt);
 	u16 status, flags;
 	u32 lmac_error_event_table, umac_error_event_table;
+	u32 version = iwl_fw_lookup_notif_ver(xvt->fw, LEGACY_GROUP,
+					      UCODE_ALIVE_NTFY, 0);
 
 	if (rx_packet_payload_size == sizeof(*palive2)) {
 
@@ -103,8 +105,8 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 				le32_to_cpu(lmac2_err_ptr);
 
 			IWL_DEBUG_FW(xvt, "Alive VER4\n");
-		} else if (iwl_fw_lookup_notif_ver(xvt->fw, LEGACY_GROUP,
-						   UCODE_ALIVE_NTFY, 0) == 5) {
+		} else if (version == 5 || version == 6) {
+			/* v5 and v6 are compatible (only IMR addition) */
 			__le32 lmac2_err_ptr;
 
 			palive5 = (void *)pkt->data;
@@ -122,7 +124,8 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 			xvt->trans->sku_id[2] = le32_to_cpu(palive5->sku_id.data[2]);
 
 			IWL_DEBUG_FW(xvt,
-				     "Alive VER5 - Got sku_id: 0x0%x 0x0%x 0x0%x\n",
+				     "Alive VER%d - Got sku_id: 0x0%x 0x0%x 0x0%x\n",
+				     version,
 				     xvt->trans->sku_id[0],
 				     xvt->trans->sku_id[1],
 				     xvt->trans->sku_id[2]);
@@ -333,6 +336,7 @@ int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type)
 		IWL_ERR(xvt, "Failed to start ucode: %d\n", ret);
 		iwl_fw_dbg_stop_sync(&xvt->fwrt);
 		iwl_trans_stop_device(xvt->trans);
+		return ret;
 	}
 
 	iwl_dbg_tlv_time_point(&xvt->fwrt, IWL_FW_INI_TIME_POINT_AFTER_ALIVE,

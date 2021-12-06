@@ -5,7 +5,7 @@
  * Copyright 2006-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2015  Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 
 #include <linux/ieee80211.h>
@@ -152,6 +152,8 @@ static int ieee80211_change_iface(struct wiphy *wiphy,
 				  struct vif_params *params)
 {
 	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
+	struct ieee80211_local *local = sdata->local;
+	struct sta_info *sta;
 	int ret;
 
 	ret = ieee80211_if_change_type(sdata, type);
@@ -162,7 +164,24 @@ static int ieee80211_change_iface(struct wiphy *wiphy,
 		RCU_INIT_POINTER(sdata->u.vlan.sta, NULL);
 		ieee80211_check_fast_rx_iface(sdata);
 	} else if (type == NL80211_IFTYPE_STATION && params->use_4addr >= 0) {
+		struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
+
+		if (params->use_4addr == ifmgd->use_4addr)
+			return 0;
+
 		sdata->u.mgd.use_4addr = params->use_4addr;
+		if (!ifmgd->associated)
+			return 0;
+
+		mutex_lock(&local->sta_mtx);
+		sta = sta_info_get(sdata, ifmgd->bssid);
+		if (sta)
+			drv_sta_set_4addr(local, sdata, &sta->sta,
+					  params->use_4addr);
+		mutex_unlock(&local->sta_mtx);
+
+		if (params->use_4addr)
+			ieee80211_send_4addr_nullfunc(local, sdata);
 	}
 
 	if (sdata->vif.type == NL80211_IFTYPE_MONITOR) {
@@ -1442,6 +1461,38 @@ static void sta_apply_mesh_params(struct ieee80211_local *local,
 #endif
 }
 
+static void sta_apply_airtime_params(struct ieee80211_local *local,
+				     struct sta_info *sta,
+				     struct station_parameters *params)
+{
+	u8 ac;
+
+	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
+		struct airtime_sched_info *air_sched = &local->airtime[ac];
+		struct airtime_info *air_info = &sta->airtime[ac];
+		struct txq_info *txqi;
+		u8 tid;
+
+		spin_lock_bh(&air_sched->lock);
+		for (tid = 0; tid < IEEE80211_NUM_TIDS + 1; tid++) {
+			if (air_info->weight == params->airtime_weight ||
+			    !sta->sta.txq[tid] ||
+			    ac != ieee80211_ac_from_tid(tid))
+				continue;
+
+			airtime_weight_set(air_info, params->airtime_weight);
+
+			txqi = to_txq_info(sta->sta.txq[tid]);
+			if (RB_EMPTY_NODE(&txqi->schedule_order))
+				continue;
+
+			ieee80211_update_airtime_weight(local, air_sched,
+							0, true);
+		}
+		spin_unlock_bh(&air_sched->lock);
+	}
+}
+
 static int sta_apply_parameters(struct ieee80211_local *local,
 				struct sta_info *sta,
 				struct station_parameters *params)
@@ -1486,7 +1537,7 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 		sta->sta.wme = set & BIT(NL80211_STA_FLAG_WME);
 
 	/* auth flags will be set later for TDLS,
-	 * and for unassociated stations that move to assocaited */
+	 * and for unassociated stations that move to associated */
 	if (!test_sta_flag(sta, WLAN_STA_TDLS_PEER) &&
 	    !((mask & BIT(NL80211_STA_FLAG_ASSOCIATED)) &&
 	      (set & BIT(NL80211_STA_FLAG_ASSOCIATED)))) {
@@ -1614,6 +1665,14 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 						  (void *)params->he_6ghz_capa,
 						  sta);
 
+	if (params->eht_capa)
+		ieee80211_eht_cap_ie_to_sta_eht_cap(sdata, sband,
+						    (u8 *)params->he_capa,
+						    params->he_capa_len,
+						    params->eht_capa,
+						    params->eht_capa_len,
+						    sta);
+
 	if (params->opmode_notif_used) {
 		/* returned value is only needed for rc update, but the
 		 * rc isn't initialized here yet, so ignore it
@@ -1629,7 +1688,8 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 		sta_apply_mesh_params(local, sta, params);
 
 	if (params->airtime_weight)
-		sta->airtime_weight = params->airtime_weight;
+		sta_apply_airtime_params(local, sta, params);
+
 
 	/* set the STA state after all sta info from usermode has been set */
 	if (test_sta_flag(sta, WLAN_STA_TDLS_PEER) ||
@@ -1698,15 +1758,7 @@ static int ieee80211_add_station(struct wiphy *wiphy, struct net_device *dev,
 	    test_sta_flag(sta, WLAN_STA_ASSOC))
 		rate_control_rate_init(sta);
 
-	err = sta_info_insert_rcu(sta);
-	if (err) {
-		rcu_read_unlock();
-		return err;
-	}
-
-	rcu_read_unlock();
-
-	return 0;
+	return sta_info_insert(sta);
 }
 
 static int ieee80211_del_station(struct wiphy *wiphy, struct net_device *dev,
@@ -3108,6 +3160,18 @@ void ieee80211_csa_finish(struct ieee80211_vif *vif)
 			     &sdata->csa_finalize_work);
 }
 EXPORT_SYMBOL(ieee80211_csa_finish);
+
+void ieee80211_channel_switch_disconnect(struct ieee80211_vif *vif, bool block_tx)
+{
+	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
+	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
+	struct ieee80211_local *local = sdata->local;
+
+	sdata->csa_block_tx = block_tx;
+	sdata_info(sdata, "channel switch failed, disconnecting\n");
+	ieee80211_queue_work(&local->hw, &ifmgd->csa_connection_drop_work);
+}
+EXPORT_SYMBOL(ieee80211_channel_switch_disconnect);
 
 static int ieee80211_set_after_csa_beacon(struct ieee80211_sub_if_data *sdata,
 					  u32 *changed)

@@ -530,7 +530,6 @@ static ssize_t iwl_dbgfs_send_ps_config_dhc(struct iwl_mvm *mvm,
 }
 #endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
-#ifdef CPTCFG_IWLWIFI_DHC
 static void iwl_rs_set_fixed_rate(struct iwl_mvm *mvm,
 				  struct iwl_lq_sta_rs_fw *lq_sta)
 {
@@ -545,8 +544,8 @@ static void iwl_rs_set_fixed_rate(struct iwl_mvm *mvm,
 		return;
 	}
 
-	rs_pretty_print_rate(pretty_rate, sizeof(pretty_rate),
-			     lq_sta->pers.dbg_fixed_rate);
+	rs_pretty_print_rate_v1(pretty_rate, sizeof(pretty_rate),
+				lq_sta->pers.dbg_fixed_rate);
 	IWL_DEBUG_RATE(mvm, "sta_id %d rate %s\n",
 		       lq_sta->pers.sta_id, pretty_rate);
 }
@@ -568,7 +567,6 @@ static ssize_t iwl_dbgfs_fixed_rate_write(struct ieee80211_sta *sta,
 	iwl_rs_set_fixed_rate(mvm, lq_sta);
 	return count;
 }
-#endif /* CPTCFG_IWLWIFI_DHC */
 
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 static void iwl_rs_disable_rts(struct iwl_mvm *mvm,
@@ -1260,8 +1258,8 @@ static ssize_t iwl_dbgfs_frame_stats_read(struct iwl_mvm *mvm,
 			continue;
 		pos += scnprintf(pos, endpos - pos, "Rate[%d]: ",
 				 (int)(ARRAY_SIZE(stats->last_rates) - i));
-		pos += rs_pretty_print_rate(pos, endpos - pos,
-					    stats->last_rates[idx]);
+		pos += rs_pretty_print_rate_v1(pos, endpos - pos,
+					       stats->last_rates[idx]);
 		if (pos < endpos - 1)
 			*pos++ = '\n';
 	}
@@ -1297,6 +1295,11 @@ static ssize_t iwl_dbgfs_fw_restart_write(struct iwl_mvm *mvm, char *buf,
 	if (mvm->fw_restart >= 0)
 		mvm->fw_restart++;
 
+	if (count == 6 && !strcmp(buf, "nolog\n")) {
+		set_bit(IWL_MVM_STATUS_SUPPRESS_ERROR_LOG_ONCE, &mvm->status);
+		set_bit(STATUS_SUPPRESS_CMD_ERROR_ONCE, &mvm->trans->status);
+	}
+
 	/* take the return value to make compiler happy - it will fail anyway */
 	ret = iwl_mvm_send_cmd_pdu(mvm,
 				   WIDE_ID(LONG_GROUP, REPLY_ERROR),
@@ -1312,6 +1315,9 @@ static ssize_t iwl_dbgfs_fw_nmi_write(struct iwl_mvm *mvm, char *buf,
 {
 	if (!iwl_mvm_firmware_running(mvm))
 		return -EIO;
+
+	if (count == 6 && !strcmp(buf, "nolog\n"))
+		set_bit(IWL_MVM_STATUS_SUPPRESS_ERROR_LOG_ONCE, &mvm->status);
 
 	iwl_force_nmi(mvm->trans);
 
@@ -1468,7 +1474,6 @@ static int _iwl_dbgfs_inject_beacon_ie(struct iwl_mvm *mvm, char *bin, int len)
 	struct ieee80211_tx_info *info;
 	struct iwl_mac_beacon_cmd beacon_cmd = {};
 	u8 rate;
-	u16 flags;
 	int i;
 
 	len /= 2;
@@ -1515,12 +1520,9 @@ static int _iwl_dbgfs_inject_beacon_ie(struct iwl_mvm *mvm, char *bin, int len)
 	mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	info = IEEE80211_SKB_CB(beacon);
 	rate = iwl_mvm_mac_ctxt_get_lowest_rate(info, vif);
-	flags = iwl_mvm_mac80211_idx_to_hwrate(rate);
 
-	if (rate == IWL_FIRST_CCK_RATE)
-		flags |= IWL_MAC_BEACON_CCK;
-
-	beacon_cmd.flags = cpu_to_le16(flags);
+	beacon_cmd.flags =
+		cpu_to_le16(iwl_mvm_mac_ctxt_get_beacon_flags(mvm->fw, rate));
 	beacon_cmd.byte_cnt = cpu_to_le16((u16)beacon->len);
 	beacon_cmd.template_id = cpu_to_le32((u32)mvmvif->id);
 
@@ -2439,6 +2441,8 @@ static ssize_t iwl_dbgfs_disable_tx_fifo_mask_write(struct iwl_mvm *mvm,
 
 	u32 index_and_mask = DHC_TOOLS_LMAC_TXF_FIFO_DISABLE;
 
+	set_bit(STATUS_DISABLE_STUCK_TIMER, &mvm->trans->status);
+
 	ret = iwl_dbgfs_send_dhc(mvm, buf, index_and_mask);
 
 	return ret ?: count;
@@ -2626,9 +2630,7 @@ MVM_DEBUGFS_READ_WRITE_FILE_OPS(bcast_filters_macs, 256);
 MVM_DEBUGFS_READ_FILE_OPS(sar_geo_profile);
 #endif
 
-#ifdef CPTCFG_IWLWIFI_DHC
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(fixed_rate, 64);
-#endif
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(ampdu_size, 64);
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(disable_rts, 8);
@@ -2795,9 +2797,7 @@ void iwl_mvm_sta_add_debugfs(struct ieee80211_hw *hw,
 
 	if (iwl_mvm_has_tlc_offload(mvm)) {
 		MVM_DEBUGFS_ADD_STA_FILE(rs_data, dir, 0400);
-#ifdef CPTCFG_IWLWIFI_DHC
 		MVM_DEBUGFS_ADD_STA_FILE(fixed_rate, dir, 0200);
-#endif
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 		MVM_DEBUGFS_ADD_STA_FILE(ampdu_size, dir, 0400);
 		MVM_DEBUGFS_ADD_STA_FILE(disable_rts, dir, 0400);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #include <linux/etherdevice.h>
 #include <net/cfg80211.h>
@@ -439,24 +439,24 @@ static int iwl_fmac_fill_rate_info(int rate, struct rate_info *rinfo)
 
 	memset(rinfo, 0, sizeof(*rinfo));
 
-	if (rate & RATE_MCS_HT_MSK) {
-		WARN_ON(rate & RATE_MCS_VHT_MSK);
+	if (rate & RATE_MCS_HT_MSK_V1) {
+		WARN_ON(rate & RATE_MCS_VHT_MSK_V1);
 		rinfo->flags |= RATE_INFO_FLAGS_MCS;
-		rinfo->mcs = rate & RATE_HT_MCS_INDEX_MSK;
-	} else if (rate & RATE_MCS_VHT_MSK) {
-		WARN_ON(rate & RATE_MCS_CCK_MSK);
+		rinfo->mcs = rate & RATE_HT_MCS_INDEX_MSK_V1;
+	} else if (rate & RATE_MCS_VHT_MSK_V1) {
+		WARN_ON(rate & RATE_MCS_CCK_MSK_V1);
 		rinfo->flags |= RATE_INFO_FLAGS_VHT_MCS;
 		rinfo->mcs = rate & RATE_VHT_MCS_RATE_CODE_MSK;
 		rinfo->nss = ((rate & RATE_VHT_MCS_NSS_MSK) >>
 			      RATE_VHT_MCS_NSS_POS) + 1;
-	} else if (rate & RATE_MCS_HE_MSK) {
+	} else if (rate & RATE_MCS_HE_MSK_V1) {
 		rinfo->flags |= RATE_INFO_FLAGS_HE_MCS;
 		rinfo->mcs = rate & RATE_VHT_MCS_RATE_CODE_MSK;
 		rinfo->nss = ((rate & RATE_VHT_MCS_NSS_MSK) >>
 			      RATE_VHT_MCS_NSS_POS) + 1;
 		rinfo->he_dcm = !!(rate & RATE_HE_DUAL_CARRIER_MODE_MSK);
 
-		switch ((rate & RATE_MCS_HE_GI_LTF_MSK) >>
+		switch ((rate & RATE_MCS_HE_GI_LTF_MSK_V1) >>
 			RATE_MCS_HE_GI_LTF_POS) {
 		case 0:
 		case 1:
@@ -469,10 +469,10 @@ static int iwl_fmac_fill_rate_info(int rate, struct rate_info *rinfo)
 			rinfo->he_gi = NL80211_RATE_INFO_HE_GI_3_2;
 			break;
 		}
-	} else if (rate & RATE_MCS_CCK_MSK) {
-		rinfo->legacy = (rate & RATE_LEGACY_RATE_MSK);
+	} else if (rate & RATE_MCS_CCK_MSK_V1) {
+		rinfo->legacy = (rate & RATE_LEGACY_RATE_MSK_V1);
 	} else {
-		switch (rate & RATE_LEGACY_RATE_MSK) {
+		switch (rate & RATE_LEGACY_RATE_MSK_V1) {
 		case 0xD:
 			rinfo->legacy = 60;
 			break;
@@ -503,25 +503,25 @@ static int iwl_fmac_fill_rate_info(int rate, struct rate_info *rinfo)
 		}
 	}
 
-	switch (rate & RATE_MCS_CHAN_WIDTH_MSK) {
+	switch (rate & RATE_MCS_CHAN_WIDTH_MSK_V1) {
 	case RATE_MCS_CHAN_WIDTH_20:
 		rinfo->bw = RATE_INFO_BW_20;
-		if (rate & RATE_MCS_HE_MSK)
+		if (rate & RATE_MCS_HE_MSK_V1)
 			rinfo->he_ru_alloc = NL80211_RATE_INFO_HE_RU_ALLOC_242;
 		break;
 	case RATE_MCS_CHAN_WIDTH_40:
 		rinfo->bw = RATE_INFO_BW_40;
-		if (rate & RATE_MCS_HE_MSK)
+		if (rate & RATE_MCS_HE_MSK_V1)
 			rinfo->he_ru_alloc = NL80211_RATE_INFO_HE_RU_ALLOC_484;
 		break;
 	case RATE_MCS_CHAN_WIDTH_80:
 		rinfo->bw = RATE_INFO_BW_80;
-		if (rate & RATE_MCS_HE_MSK)
+		if (rate & RATE_MCS_HE_MSK_V1)
 			rinfo->he_ru_alloc = NL80211_RATE_INFO_HE_RU_ALLOC_996;
 		break;
 	case RATE_MCS_CHAN_WIDTH_160:
 		rinfo->bw = RATE_INFO_BW_160;
-		if (rate & RATE_MCS_HE_MSK)
+		if (rate & RATE_MCS_HE_MSK_V1)
 			rinfo->he_ru_alloc =
 				NL80211_RATE_INFO_HE_RU_ALLOC_2x996;
 		break;
@@ -530,10 +530,10 @@ static int iwl_fmac_fill_rate_info(int rate, struct rate_info *rinfo)
 		return -EINVAL;
 	}
 
-	if ((rate & RATE_MCS_HE_TYPE_MSK) == RATE_MCS_HE_TYPE_MU)
+	if ((rate & RATE_MCS_HE_TYPE_MSK_V1) == RATE_MCS_HE_TYPE_MU_V1)
 		rinfo->bw = RATE_INFO_BW_HE_RU;
 
-	if (rate & RATE_MCS_SGI_MSK)
+	if (rate & RATE_MCS_SGI_MSK_V1)
 		rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
 
 	return 0;

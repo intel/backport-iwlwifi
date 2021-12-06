@@ -473,13 +473,11 @@ enum iwl_channel_flags {
 	IWL_CHANNEL_FLAG_PRE_SCAN_PASSIVE2ACTIVE	= BIT(3),
 };
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 enum iwl_uhb_chan_cfg_flags {
 	IWL_UHB_CHAN_CFG_FLAG_UNSOLICITED_PROBE_RES = BIT(24),
 	IWL_UHB_CHAN_CFG_FLAG_PSC_CHAN_NO_LISTEN    = BIT(25),
 	IWL_UHB_CHAN_CFG_FLAG_FORCE_PASSIVE         = BIT(26),
 };
-#endif
 /**
  * struct iwl_scan_dwell
  * @active:		default dwell time for active scan
@@ -643,6 +641,10 @@ enum iwl_umac_scan_general_flags2 {
  * @IWL_UMAC_SCAN_GEN_FLAGS_V2_6GHZ_PASSIVE_SCAN_FILTER_IN: in case
  *      &IWL_UMAC_SCAN_GEN_FLAGS_V2_6GHZ_PASSIVE_SCAN is enabled and scan is
  *      activated over 6GHz PSC channels, filter in beacons and probe responses.
+ * @IWL_UMAC_SCAN_GEN_FLAGS_V2_OCE: if set, send probe requests in a minimum
+ *      rate of 5.5Mpbs, filter in broadcast probe responses and set the max
+ *      channel time indication field in the FILS request parameters element
+ *      (if included by the driver in the probe request IEs).
  */
 enum iwl_umac_scan_general_flags_v2 {
 	IWL_UMAC_SCAN_GEN_FLAGS_V2_PERIODIC             = BIT(0),
@@ -660,6 +662,20 @@ enum iwl_umac_scan_general_flags_v2 {
 	IWL_UMAC_SCAN_GEN_FLAGS_V2_TRIGGER_UHB_SCAN     = BIT(12),
 	IWL_UMAC_SCAN_GEN_FLAGS_V2_6GHZ_PASSIVE_SCAN    = BIT(13),
 	IWL_UMAC_SCAN_GEN_FLAGS_V2_6GHZ_PASSIVE_SCAN_FILTER_IN = BIT(14),
+	IWL_UMAC_SCAN_GEN_FLAGS_V2_OCE                  = BIT(15),
+};
+
+/**
+ * enum iwl_umac_scan_general_params_flags2 - UMAC scan general flags2
+ *
+ * @IWL_UMAC_SCAN_GEN_PARAMS_FLAGS2_RESPECT_P2P_GO_LB: scan event scheduling
+ *     should be aware of a P2P GO operation on the 2GHz band.
+ * @IWL_UMAC_SCAN_GEN_PARAMS_FLAGS2_RESPECT_P2P_GO_HB: scan event scheduling
+ *     should be aware of a P2P GO operation on the 5GHz or 6GHz band.
+ */
+enum iwl_umac_scan_general_params_flags2 {
+	IWL_UMAC_SCAN_GEN_PARAMS_FLAGS2_RESPECT_P2P_GO_LB = BIT(0),
+	IWL_UMAC_SCAN_GEN_PARAMS_FLAGS2_RESPECT_P2P_GO_HB = BIT(1),
 };
 
 /**
@@ -944,8 +960,8 @@ struct iwl_scan_channel_params_v6 {
 } __packed; /* SCAN_CHANNEL_PARAMS_API_S_VER_6 */
 
 /**
- * struct iwl_scan_general_params_v10
- * @flags: &enum iwl_umac_scan_flags
+ * struct iwl_scan_general_params_v11
+ * @flags: &enum iwl_umac_scan_general_flags_v2
  * @reserved: reserved for future
  * @scan_start_mac_id: report the scan start TSF time according to this mac TSF
  * @active_dwell: dwell time for active scan per LMAC
@@ -955,7 +971,8 @@ struct iwl_scan_channel_params_v6 {
  *                        for 5GHz channels
  * @adwell_default_social_chn: adaptive dwell default number of
  *                             APs per social channel
- * @reserved1: reserved for future
+ * @flags2: for version 11 see &enum iwl_umac_scan_general_params_flags2.
+ *     Otherwise reserved.
  * @adwell_max_budget: the maximal number of TUs that adaptive dwell
  *                     can add to the total scan time
  * @max_out_of_time: max out of serving channel time, per LMAC
@@ -966,7 +983,7 @@ struct iwl_scan_channel_params_v6 {
  * @num_of_fragments: number of fragments needed for full fragmented
  *                    scan coverage.
  */
-struct iwl_scan_general_params_v10 {
+struct iwl_scan_general_params_v11 {
 	__le16 flags;
 	u8 reserved;
 	u8 scan_start_mac_id;
@@ -974,14 +991,14 @@ struct iwl_scan_general_params_v10 {
 	u8 adwell_default_2g;
 	u8 adwell_default_5g;
 	u8 adwell_default_social_chn;
-	u8 reserved1;
+	u8 flags2;
 	__le16 adwell_max_budget;
 	__le32 max_out_of_time[SCAN_TWO_LMACS];
 	__le32 suspend_time[SCAN_TWO_LMACS];
 	__le32 scan_priority;
 	u8 passive_dwell[SCAN_TWO_LMACS];
 	u8 num_of_fragments[SCAN_TWO_LMACS];
-} __packed; /* SCAN_GENERAL_PARAMS_API_S_VER_10 */
+} __packed; /* SCAN_GENERAL_PARAMS_API_S_VER_11 and *_VER_10 */
 
 /**
  * struct iwl_scan_periodic_parms_v1
@@ -997,31 +1014,31 @@ struct iwl_scan_periodic_parms_v1 {
 
 /**
  * struct iwl_scan_req_params_v12
- * @general_params: &struct iwl_scan_general_params_v10
+ * @general_params: &struct iwl_scan_general_params_v11
  * @channel_params: &struct iwl_scan_channel_params_v4
  * @periodic_params: &struct iwl_scan_periodic_parms_v1
  * @probe_params: &struct iwl_scan_probe_params_v3
  */
 struct iwl_scan_req_params_v12 {
-	struct iwl_scan_general_params_v10 general_params;
+	struct iwl_scan_general_params_v11 general_params;
 	struct iwl_scan_channel_params_v4 channel_params;
 	struct iwl_scan_periodic_parms_v1 periodic_params;
 	struct iwl_scan_probe_params_v3 probe_params;
 } __packed; /* SCAN_REQUEST_PARAMS_API_S_VER_12 */
 
 /**
- * struct iwl_scan_req_params_v14
- * @general_params: &struct iwl_scan_general_params_v10
+ * struct iwl_scan_req_params_v15
+ * @general_params: &struct iwl_scan_general_params_v11
  * @channel_params: &struct iwl_scan_channel_params_v6
  * @periodic_params: &struct iwl_scan_periodic_parms_v1
  * @probe_params: &struct iwl_scan_probe_params_v4
  */
-struct iwl_scan_req_params_v14 {
-	struct iwl_scan_general_params_v10 general_params;
+struct iwl_scan_req_params_v15 {
+	struct iwl_scan_general_params_v11 general_params;
 	struct iwl_scan_channel_params_v6 channel_params;
 	struct iwl_scan_periodic_parms_v1 periodic_params;
 	struct iwl_scan_probe_params_v4 probe_params;
-} __packed; /* SCAN_REQUEST_PARAMS_API_S_VER_14 */
+} __packed; /* SCAN_REQUEST_PARAMS_API_S_VER_15 and *_VER_14 */
 
 /**
  * struct iwl_scan_req_umac_v12
@@ -1036,16 +1053,16 @@ struct iwl_scan_req_umac_v12 {
 } __packed; /* SCAN_REQUEST_CMD_UMAC_API_S_VER_12 */
 
 /**
- * struct iwl_scan_req_umac_v14
+ * struct iwl_scan_req_umac_v15
  * @uid: scan id, &enum iwl_umac_scan_uid_offsets
  * @ooc_priority: out of channel priority - &enum iwl_scan_priority
  * @scan_params: scan parameters
  */
-struct iwl_scan_req_umac_v14 {
+struct iwl_scan_req_umac_v15 {
 	__le32 uid;
 	__le32 ooc_priority;
-	struct iwl_scan_req_params_v14 scan_params;
-} __packed; /* SCAN_REQUEST_CMD_UMAC_API_S_VER_14 */
+	struct iwl_scan_req_params_v15 scan_params;
+} __packed; /* SCAN_REQUEST_CMD_UMAC_API_S_VER_15 and *_VER_14 */
 
 /**
  * struct iwl_umac_scan_abort

@@ -113,9 +113,10 @@ config IWLWIFI_BCAST_FILTERING
 config IWLMEI
 	tristate "Enable V-PRO for WLAN"
 	depends on INTEL_MEI
+	depends on PM
 	depends on IWLMVM
 	depends on IWLMVM_VENDOR_CMDS
-	depends on WLAN_VENDOR_INTEL_MEI || !KERNEL_5_14
+	depends on WLAN_VENDOR_INTEL_MEI || !KERNEL_5_20
 	help
 	  Enable V-PRO. This allows to communicate with the CSME firmware.
 	  This is supported starting from Tiger Lake platforms and has been
@@ -124,12 +125,6 @@ config IWLMEI
 	  WiFi from working correctly.
 
 	  If unsure, say N.
-
-config IWLWIFI_DHC
-	bool "Enable debug host commands"
-	help
-	  This option enables the debug host command API.  It's used
-	  for debugging and validation purposes.
 
 menu "Debugging Options"
 

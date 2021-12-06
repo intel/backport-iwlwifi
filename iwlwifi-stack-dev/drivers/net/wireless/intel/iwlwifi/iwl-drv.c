@@ -28,6 +28,9 @@
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 #include "iwl-tm-gnl.h"
 #endif
+#ifdef CPTCFG_IWLWIFI_PLATFORM_MOCKUPS
+#include "fw/platform-mockups.h"
+#endif
 
 /******************************************************************************
  *
@@ -37,7 +40,6 @@
 
 #define DRV_DESCRIPTION	"Intel(R) Wireless WiFi driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
-MODULE_AUTHOR(DRV_AUTHOR);
 MODULE_LICENSE("GPL");
 
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
@@ -353,6 +355,9 @@ static void iwl_dealloc_ucode(struct iwl_drv *drv)
 
 	for (i = 0; i < IWL_UCODE_TYPE_MAX; i++)
 		iwl_free_fw_img(drv, drv->fw.img + i);
+
+	/* clear the data for the aborted load case */
+	memset(&drv->fw, 0, sizeof(drv->fw));
 }
 
 static int iwl_alloc_fw_desc(struct iwl_drv *drv, struct fw_desc *desc,
@@ -389,8 +394,8 @@ static int iwl_request_firmware(struct iwl_drv *drv, bool first)
 #endif
 
 	if (drv->trans->trans_cfg->device_family == IWL_DEVICE_FAMILY_9000 &&
-	    (CSR_HW_REV_STEP(drv->trans->hw_rev) != SILICON_B_STEP &&
-	     CSR_HW_REV_STEP(drv->trans->hw_rev) != SILICON_C_STEP)) {
+	    (drv->trans->hw_rev_step != SILICON_B_STEP &&
+	     drv->trans->hw_rev_step != SILICON_C_STEP)) {
 		IWL_ERR(drv,
 			"Only HW steps B and C are currently supported (0x%0x)\n",
 			drv->trans->hw_rev);
@@ -802,6 +807,103 @@ static int iwl_parse_v1_v2_firmware(struct iwl_drv *drv,
 	set_sec_offset(pieces, IWL_UCODE_INIT, IWL_UCODE_SECTION_DATA,
 		       IWLAGN_RTC_DATA_LOWER_BOUND);
 	return 0;
+}
+
+static void iwl_drv_set_dump_exclude(struct iwl_drv *drv,
+				     enum iwl_ucode_tlv_type tlv_type,
+				     const void *tlv_data, u32 tlv_len)
+{
+	const struct iwl_fw_dump_exclude *fw = tlv_data;
+	struct iwl_dump_exclude *excl;
+
+	if (tlv_len < sizeof(*fw))
+		return;
+
+	if (tlv_type == IWL_UCODE_TLV_SEC_TABLE_ADDR) {
+		excl = &drv->fw.dump_excl[0];
+
+		/* second time we find this, it's for WoWLAN */
+		if (excl->addr)
+			excl = &drv->fw.dump_excl_wowlan[0];
+	} else if (fw_has_capa(&drv->fw.ucode_capa,
+			       IWL_UCODE_TLV_CAPA_CNSLDTD_D3_D0_IMG)) {
+		/* IWL_UCODE_TLV_D3_KEK_KCK_ADDR is regular image */
+		excl = &drv->fw.dump_excl[0];
+	} else {
+		/* IWL_UCODE_TLV_D3_KEK_KCK_ADDR is WoWLAN image */
+		excl = &drv->fw.dump_excl_wowlan[0];
+	}
+
+	if (excl->addr)
+		excl++;
+
+	if (excl->addr) {
+		IWL_DEBUG_FW_INFO(drv, "found too many excludes in fw file\n");
+		return;
+	}
+
+	excl->addr = le32_to_cpu(fw->addr) & ~FW_ADDR_CACHE_CONTROL;
+	excl->size = le32_to_cpu(fw->size);
+}
+
+static void iwl_parse_dbg_tlv_assert_tables(struct iwl_drv *drv,
+					    const struct iwl_ucode_tlv *tlv)
+{
+	const struct iwl_fw_ini_region_tlv *region;
+	u32 length = le32_to_cpu(tlv->length);
+	u32 addr;
+
+	if (length < offsetof(typeof(*region), special_mem) +
+		     sizeof(region->special_mem))
+		return;
+
+	region = (void *)tlv->data;
+	addr = le32_to_cpu(region->special_mem.base_addr);
+	addr += le32_to_cpu(region->special_mem.offset);
+	addr &= ~FW_ADDR_CACHE_CONTROL;
+
+	if (region->type != IWL_FW_INI_REGION_SPECIAL_DEVICE_MEMORY)
+		return;
+
+	switch (region->sub_type) {
+	case IWL_FW_INI_REGION_DEVICE_MEMORY_SUBTYPE_UMAC_ERROR_TABLE:
+		drv->trans->dbg.umac_error_event_table = addr;
+		drv->trans->dbg.error_event_table_tlv_status |=
+			IWL_ERROR_EVENT_TABLE_UMAC;
+		break;
+	case IWL_FW_INI_REGION_DEVICE_MEMORY_SUBTYPE_LMAC_1_ERROR_TABLE:
+		drv->trans->dbg.lmac_error_event_table[0] = addr;
+		drv->trans->dbg.error_event_table_tlv_status |=
+			IWL_ERROR_EVENT_TABLE_LMAC1;
+		break;
+	case IWL_FW_INI_REGION_DEVICE_MEMORY_SUBTYPE_LMAC_2_ERROR_TABLE:
+		drv->trans->dbg.lmac_error_event_table[1] = addr;
+		drv->trans->dbg.error_event_table_tlv_status |=
+			IWL_ERROR_EVENT_TABLE_LMAC2;
+		break;
+	case IWL_FW_INI_REGION_DEVICE_MEMORY_SUBTYPE_TCM_1_ERROR_TABLE:
+		drv->trans->dbg.tcm_error_event_table[0] = addr;
+		drv->trans->dbg.error_event_table_tlv_status |=
+			IWL_ERROR_EVENT_TABLE_TCM1;
+		break;
+	case IWL_FW_INI_REGION_DEVICE_MEMORY_SUBTYPE_TCM_2_ERROR_TABLE:
+		drv->trans->dbg.tcm_error_event_table[1] = addr;
+		drv->trans->dbg.error_event_table_tlv_status |=
+			IWL_ERROR_EVENT_TABLE_TCM2;
+		break;
+	case IWL_FW_INI_REGION_DEVICE_MEMORY_SUBTYPE_RCM_1_ERROR_TABLE:
+		drv->trans->dbg.rcm_error_event_table[0] = addr;
+		drv->trans->dbg.error_event_table_tlv_status |=
+			IWL_ERROR_EVENT_TABLE_RCM1;
+		break;
+	case IWL_FW_INI_REGION_DEVICE_MEMORY_SUBTYPE_RCM_2_ERROR_TABLE:
+		drv->trans->dbg.rcm_error_event_table[1] = addr;
+		drv->trans->dbg.error_event_table_tlv_status |=
+			IWL_ERROR_EVENT_TABLE_RCM2;
+		break;
+	default:
+		break;
+	}
 }
 
 static int iwl_parse_tlv_firmware(struct iwl_drv *drv,
@@ -1425,22 +1527,14 @@ fw_dbg_conf:
 				IWL_ERROR_EVENT_TABLE_LMAC1;
 			break;
 			}
-		case IWL_UCODE_TLV_TCM_DEBUG_ADDRS: {
-			struct iwl_fw_tcm_error_addr *ptr = (void *)tlv_data;
-
-			if (tlv_len != sizeof(*ptr))
-				goto invalid_tlv_len;
-			drv->trans->dbg.tcm_error_event_table =
-				le32_to_cpu(ptr->addr) & ~FW_ADDR_CACHE_CONTROL;
-			drv->trans->dbg.error_event_table_tlv_status |=
-				IWL_ERROR_EVENT_TABLE_TCM;
-			break;
-			}
+		case IWL_UCODE_TLV_TYPE_REGIONS:
+			iwl_parse_dbg_tlv_assert_tables(drv, tlv);
+			fallthrough;
 		case IWL_UCODE_TLV_TYPE_DEBUG_INFO:
 		case IWL_UCODE_TLV_TYPE_BUFFER_ALLOCATION:
 		case IWL_UCODE_TLV_TYPE_HCMD:
-		case IWL_UCODE_TLV_TYPE_REGIONS:
 		case IWL_UCODE_TLV_TYPE_TRIGGERS:
+		case IWL_UCODE_TLV_TYPE_CONF_SET:
 			if (iwlwifi_mod_params.enable_ini)
 				iwl_dbg_tlv_alloc(drv->trans, tlv, false);
 			break;
@@ -1473,6 +1567,11 @@ fw_dbg_conf:
 			if (!drv->fw.phy_integration_ver)
 				return -ENOMEM;
 			drv->fw.phy_integration_ver_len = tlv_len;
+			break;
+		case IWL_UCODE_TLV_SEC_TABLE_ADDR:
+		case IWL_UCODE_TLV_D3_KEK_KCK_ADDR:
+			iwl_drv_set_dump_exclude(drv, tlv_type,
+						 tlv_data, tlv_len);
 			break;
 		default:
 			IWL_DEBUG_INFO(drv, "unknown TLV: %d\n", tlv_type);
@@ -1639,6 +1738,7 @@ static void iwl_req_fw_callback(const struct firmware *ucode_raw, void *context)
 	int i;
 	bool load_module = false;
 	bool usniffer_images = false;
+	bool failure = true;
 
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	const struct firmware *fw_dbg_config;
@@ -1940,6 +2040,7 @@ static void iwl_req_fw_callback(const struct firmware *ucode_raw, void *context)
 	 */
 	if (load_module)
 		request_module("%s", op->name);
+	failure = false;
 	goto free;
 
  try_again:
@@ -1955,6 +2056,9 @@ static void iwl_req_fw_callback(const struct firmware *ucode_raw, void *context)
 	complete(&drv->request_firmware_complete);
 	device_release_driver(drv->trans->dev);
  free:
+	if (failure)
+		iwl_dealloc_ucode(drv);
+
 	if (pieces) {
 		for (i = 0; i < ARRAY_SIZE(pieces->img); i++)
 			kfree(pieces->img[i].sec);
@@ -2134,6 +2238,10 @@ static int __init iwl_drv_init(void)
 	for (i = 0; i < ARRAY_SIZE(iwlwifi_opmode_table); i++)
 		INIT_LIST_HEAD(&iwlwifi_opmode_table[i].drv);
 
+#ifdef CPTCFG_IWLWIFI_PLATFORM_MOCKUPS
+	WARN_ON(iwl_platform_mockups_init());
+#endif
+
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	if (iwl_tm_gnl_init())
 		return -EFAULT;
@@ -2168,6 +2276,9 @@ cleanup_tm_gnl:
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	iwl_tm_gnl_exit();
 #endif
+#ifdef CPTCFG_IWLWIFI_PLATFORM_MOCKUPS
+	iwl_platform_mockups_free();
+#endif
 #ifdef CPTCFG_IWLWIFI_DEBUGFS
 	debugfs_remove_recursive(iwl_dbgfs_root);
 #endif
@@ -2190,6 +2301,9 @@ static void __exit iwl_drv_exit(void)
 
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	iwl_tm_gnl_exit();
+#endif
+#ifdef CPTCFG_IWLWIFI_PLATFORM_MOCKUPS
+	iwl_platform_mockups_free();
 #endif
 }
 module_exit(iwl_drv_exit);
@@ -2273,3 +2387,21 @@ module_param_named(remove_when_gone,
 		   iwlwifi_mod_params.remove_when_gone, bool, 0444);
 MODULE_PARM_DESC(remove_when_gone,
 		 "Remove dev from PCIe bus if it is deemed inaccessible (default: false)");
+
+module_param_named(disable_11be, iwlwifi_mod_params.disable_11be, bool, 0444);
+MODULE_PARM_DESC(disable_11be, "Disable EHT capabilities (default: false)");
+
+#ifdef CPTCFG_IWLWIFI_PLATFORM_MOCKUPS
+module_param_named(enable_acpi_mockups,
+		   iwlwifi_mod_params.enable_acpi_mockups, bool, 0444);
+MODULE_PARM_DESC(enable_acpi_mockups,
+		 "Enable ACPI mockups that reads the data from a file instead of the actual ACPI tables (default: false)");
+module_param_named(enable_efi_mockups,
+		   iwlwifi_mod_params.enable_efi_mockups, bool, 0444);
+MODULE_PARM_DESC(enable_efi_mockups,
+		 "Enable EFI mockups that reads the data from a file instead of the actual UEFI (default: false)");
+module_param_named(enable_dmi_mockups,
+		   iwlwifi_mod_params.enable_dmi_mockups, bool, 0444);
+MODULE_PARM_DESC(enable_dmi_mockups,
+		 "Enable DMI mockups that reads the data from a file instead of the actual SMBIOS (default: false)");
+#endif

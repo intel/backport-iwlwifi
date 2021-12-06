@@ -355,6 +355,7 @@ typedef bool;
 +#if CFG80211_VERSION < KERNEL_VERSION(5,8,0)
 +bool ieee80211_chandef_he_6ghz_oper(struct ieee80211_sub_if_data *sdata,
 +				    const struct ieee80211_he_operation *he_oper,
++				    const struct ieee80211_eht_operation *eht_oper,
 +				    struct cfg80211_chan_def *chandef)
 +{
 +return true;

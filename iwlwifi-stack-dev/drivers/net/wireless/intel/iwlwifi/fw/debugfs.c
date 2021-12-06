@@ -527,12 +527,8 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 	}
 
 	ps_report = iwl_dhc_resp_data(fwrt->fw, hcmd.resp_pkt, &report_size);
-	if (IS_ERR(ps_report) || report_size > sizeof(*ps_report)) {
-		IWL_ERR(fwrt,
-			"ps report size is wrong! expected at most %zd, received %d\n",
-			sizeof(*ps_report), report_size);
+	if (IS_ERR(ps_report))
 		goto err;
-	}
 
 	ret = scnprintf(buf, size, "power-save report\n");
 
@@ -569,6 +565,12 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 	ret += PRINT_PS_REPORT_32(total_page_faults);
 	ret += PRINT_PS_REPORT_32(sleep_abort_count);
 	ret += PRINT_PS_REPORT_32(max_active_duration);
+	ret += PRINT_PS_REPORT_16(max_pu_duration);
+	ret += PRINT_PS_REPORT_16(max_pd_duration);
+	ret += PRINT_PS_REPORT_16(max_phy_pu_duration[0]);
+	ret += PRINT_PS_REPORT_16(max_phy_pu_duration[1]);
+	ret += PRINT_PS_REPORT_16(max_phy_pd_duration[0]);
+	ret += PRINT_PS_REPORT_16(max_phy_pd_duration[1]);
 
 	return ret;
 

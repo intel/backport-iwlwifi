@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #ifndef __IWL_FMAC_H__
 #define __IWL_FMAC_H__
@@ -64,8 +64,8 @@ struct iwl_fmac_reorder_buffer {
 	int queue;
 	u16 last_amsdu;
 	u8 last_sub_index;
-	struct sk_buff_head entries[IEEE80211_MAX_AMPDU_BUF];
-	unsigned long reorder_time[IEEE80211_MAX_AMPDU_BUF];
+	struct sk_buff_head entries[IEEE80211_MAX_AMPDU_BUF_HE];
+	unsigned long reorder_time[IEEE80211_MAX_AMPDU_BUF_HE];
 	struct timer_list reorder_timer;
 	spinlock_t lock; /* protect reorder buffer internal state */
 } ____cacheline_aligned_in_smp;

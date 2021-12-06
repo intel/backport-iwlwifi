@@ -184,12 +184,40 @@ struct iwl_mei_nvm {
 };
 
 /**
+ * enum iwl_mei_pairwise_cipher - cipher for UCAST key
+ * @IWL_MEI_CIPHER_NONE: none
+ * @IWL_MEI_CIPHER_CCMP: ccmp
+ * @IWL_MEI_CIPHER_GCMP: gcmp
+ * @IWL_MEI_CIPHER_GCMP_256: gcmp 256
+ */
+enum iwl_mei_pairwise_cipher {
+	IWL_MEI_CIPHER_NONE	= 0,
+	IWL_MEI_CIPHER_CCMP	= 4,
+	IWL_MEI_CIPHER_GCMP	= 8,
+	IWL_MEI_CIPHER_GCMP_256 = 9,
+};
+
+/**
+ * enum iwl_mei_akm_auth - a combination of AKM and AUTH method
+ * @IWL_MEI_AKM_AUTH_OPEN: No encryption
+ * @IWL_MEI_AKM_AUTH_RSNA: 1X profile
+ * @IWL_MEI_AKM_AUTH_RSNA_PSK: PSK profile
+ * @IWL_MEI_AKM_AUTH_SAE: SAE profile
+ */
+enum iwl_mei_akm_auth {
+	IWL_MEI_AKM_AUTH_OPEN		= 0,
+	IWL_MEI_AKM_AUTH_RSNA		= 6,
+	IWL_MEI_AKM_AUTH_RSNA_PSK	= 7,
+	IWL_MEI_AKM_AUTH_SAE		= 9,
+};
+
+/**
  * struct iwl_mei_conn_info - connection info
  * @lp_state: link protection state
  * @auth_mode: authentication mode
  * @ssid_len: the length of SSID
  * @ssid: the SSID
- * @ucast_cipher: the cipher used for unicast packets
+ * @pairwise_cipher: the cipher used for unicast packets
  * @channel: the associated channel
  * @band: the associated band
  * @bssid: the BSSID
@@ -200,7 +228,7 @@ struct iwl_mei_conn_info {
 	u8 ssid_len;
 	u8 channel;
 	u8 band;
-	u8 ucast_cipher;
+	u8 pairwise_cipher;
 	u8 bssid[ETH_ALEN];
 	u8 ssid[IEEE80211_MAX_SSID_LEN];
 };
@@ -376,9 +404,8 @@ void iwl_mei_host_associated(const struct iwl_mei_conn_info *conn_info,
 
 /**
  * iwl_mei_host_disassociated() - must be called when iwlwifi disassociated.
- * @type: See &enum iwl_sap_notif_link_down_type.
  */
-void iwl_mei_host_disassociated(u8 type);
+void iwl_mei_host_disassociated(void);
 
 /**
  * iwl_mei_device_down() - must be called when the device is down
@@ -429,7 +456,7 @@ static inline void iwl_mei_host_associated(const struct iwl_mei_conn_info *conn_
 					   const struct iwl_mei_colloc_info *colloc_info)
 {}
 
-static inline void iwl_mei_host_disassociated(u8 type)
+static inline void iwl_mei_host_disassociated(void)
 {}
 
 static inline void iwl_mei_device_down(void)

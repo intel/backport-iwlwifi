@@ -2,10 +2,16 @@
 /*
  * Copyright(c) 2021 Intel Corporation
  */
+#ifndef __iwl_fw_uefi__
+#define __iwl_fw_uefi__
 
+#ifdef CPTCFG_IWLWIFI_PLATFORM_MOCKUPS
+#include "fw/platform-mockups.h"
+#endif /* CPTCFG_IWLWIFI_PLATFORM_MOCKUPS */
 
 #define IWL_UEFI_OEM_PNVM_NAME		L"UefiCnvWlanOemSignedPnvm"
 #define IWL_UEFI_REDUCED_POWER_NAME	L"UefiCnvWlanReducedPower"
+#define IWL_UEFI_SGOM_NAME		L"UefiCnvWlanSarGeoOffsetMapping"
 
 /*
  * TODO: we have these hardcoded values that the caller must pass,
@@ -15,6 +21,7 @@
  */
 #define IWL_HARDCODED_PNVM_SIZE		4096
 #define IWL_HARDCODED_REDUCE_POWER_SIZE	32768
+#define IWL_HARDCODED_SGOM_SIZE		339
 
 struct pnvm_sku_package {
 	u8 rev;
@@ -22,6 +29,11 @@ struct pnvm_sku_package {
 	u8 n_skus;
 	u32 reserved[2];
 	u8 data[];
+} __packed;
+
+struct uefi_cnv_wlan_sgom_data {
+	u8 revision;
+	u8 offset_map[IWL_HARDCODED_SGOM_SIZE - 1];
 } __packed;
 
 /*
@@ -45,3 +57,13 @@ void *iwl_uefi_get_reduced_power(struct iwl_trans *trans, size_t *len)
 	return ERR_PTR(-EOPNOTSUPP);
 }
 #endif /* CONFIG_EFI */
+
+#if defined(CONFIG_EFI) && defined(CONFIG_ACPI) && LINUX_VERSION_IS_GEQ(5,4,0)
+void iwl_uefi_get_sgom_table(struct iwl_trans *trans, struct iwl_fw_runtime *fwrt);
+#else
+static inline
+void iwl_uefi_get_sgom_table(struct iwl_trans *trans, struct iwl_fw_runtime *fwrt)
+{
+}
+#endif
+#endif /* __iwl_fw_uefi__ */

@@ -10,8 +10,15 @@ set -e
 
 UNIFDEF=$(which unifdef)
 
+if [ "$1" = "--simulation" ] ; then
+  SIMULATION=1
+  shift
+else
+  SIMULATION=0
+fi
+
 if [ -z "$1" ] || [ -z "$2" ] ; then
-	echo "Please run $0 /path/to/iwlwifi-stack-auto/ /path/to/kernel/"
+	echo "Please run $0 [--simulation] /path/to/iwlwifi-stack-auto/ /path/to/kernel/"
 	exit 2
 fi
 
@@ -166,3 +173,8 @@ for fn in $(find $kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/ -name '*
 	# while there are more arguments later.
 	sed  -i 's/\s*$//' $fn
 done
+
+if [ "$SIMULATION" = "1" ] ; then
+  sed -i 's/#define __IWL_CHROME_CONFIG/#define __IWL_CHROME_CONFIG\n#define CPTCFG_IWLWIFI_SIMULATION 1/' \
+    "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/hdrs/config.h"
+fi

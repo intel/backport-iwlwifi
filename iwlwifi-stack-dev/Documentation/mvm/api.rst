@@ -51,7 +51,7 @@ MVM Firmware API
 	internal
 .. kernel-doc:: drivers/net/wireless/intel/iwlwifi/fw/api/sf.h
 	internal
-.. kernel-doc:: drivers/net/wireless/intel/iwlwifi/fw/api/soc.h
+.. kernel-doc:: drivers/net/wireless/intel/iwlwifi/fw/api/system.h
 	internal
 .. kernel-doc:: drivers/net/wireless/intel/iwlwifi/fw/api/sta.h
 	internal

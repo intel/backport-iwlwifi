@@ -77,9 +77,9 @@ drivers/net/wireless/intel/iwlwifi/fw/api/rs.h
 drivers/net/wireless/intel/iwlwifi/fw/api/rx.h
 drivers/net/wireless/intel/iwlwifi/fw/api/scan.h
 drivers/net/wireless/intel/iwlwifi/fw/api/sf.h
-drivers/net/wireless/intel/iwlwifi/fw/api/soc.h
 drivers/net/wireless/intel/iwlwifi/fw/api/sta.h
 drivers/net/wireless/intel/iwlwifi/fw/api/stats.h
+drivers/net/wireless/intel/iwlwifi/fw/api/system.h
 drivers/net/wireless/intel/iwlwifi/fw/api/tdls.h
 drivers/net/wireless/intel/iwlwifi/fw/api/time-event.h
 drivers/net/wireless/intel/iwlwifi/fw/api/location.h

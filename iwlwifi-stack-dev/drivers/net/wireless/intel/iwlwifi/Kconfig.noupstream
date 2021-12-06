@@ -149,12 +149,6 @@ config IWLWIFI_FPGA
 	help
 	  The code that is related to fpga is not intended to ever go upstream.
 
-config IWLWIFI_WIFI_6_SUPPORT
-	bool "enable WiFi 6 code"
-	help
-	  The code that related to Wifi 6 is not intended to go upstream yet,
-	  still can enable it by this option
-
 config IWLWIFI_SIMULATION
 	def_bool y
 	depends on UML
@@ -163,3 +157,21 @@ config IWLMVM_PHC
 	def_bool y
 	# this means kernel is >= 4.10, i.e. no 4.10 backports required
 	depends on !KERNEL_4_10
+
+config IWLWIFI_PLATFORM_MOCKUPS
+	bool "enable ACPI testing mock-ups"
+	default y
+	# this means kernel is >= 4.13, i.e. no 4.13 backports required
+	# we need this because we override acpi_evaluate_dsm() which has
+	# different API in 3.14-4.13
+	depends on !KERNEL_4_13
+	help
+	  If enabled, the ACPI functions are substituted by mock-ups
+	  that can be controlled to return what we want in order to
+	  test ACPI-based features.
+
+config IWLWIFI_DONT_DUMP_FIFOS
+	bool "do not dump FIFO contents"
+	help
+	  If enabled, instruct the driver to not dump FIFO regions as
+	  they may contain PII.

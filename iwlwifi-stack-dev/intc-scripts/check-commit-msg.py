@@ -136,6 +136,10 @@ def _check_cc(v, req):
         print('branch "%s" doesn\'t exist' % v)
         return False
 
+def _check_hw(v, req):
+    print('no support for hw metadata, please remove hw=<> tag')
+    return False
+
 def _check_fixes(v, req):
     """fixes=<changeid|unknown>"""
     if v == "unknown":
@@ -170,7 +174,8 @@ def check_internal_names():
 		 'sdp', 'wilkins', 'wkp', 'stone', 'stp', 'lighthouse', 'lhp', 'oak', 'okp', r'(\b|_)sup(\b|_)',
                  'sunny', 'solar', 'typhoon',
 		 'cherrytrail', 'cht', 'broxton', 'bxt', 'sofia', 'brtns', 'brighton', 'btns', 'phoenix', 'gsd',
-		 'goldsand', 'google', 'fiber', 'asus', 'rockchip', 'quasar', 'qsr', 'icp', 'hrp', 'gfp', 'garfield']
+		 'goldsand', 'google', 'fiber', 'asus', 'rockchip', 'quasar', 'qsr', 'icp', 'hrp', 'gfp', 'garfield',
+		 'blazar', 'fmp', 'magnetar', 'mrp', ]
 
     def remove_whitelist(line):
         whitelist = ['GFP_KERNEL', 'GFP_ATOMIC']

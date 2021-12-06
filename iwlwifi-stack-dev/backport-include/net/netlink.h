@@ -737,6 +737,7 @@ int nla_validate_min_len_##n(const struct nlattr *attr,			\
 }
 
 MIN_LEN_VALIDATION(2)
+MIN_LEN_VALIDATION(10)
 MIN_LEN_VALIDATION(16)
 MIN_LEN_VALIDATION(42)
 

@@ -13,11 +13,6 @@
  *
  * The full GNU General Public License is included in this distribution in the
  * file called LICENSE.
- *
- * Contact Information:
- *  Intel Linux Wireless <linuxwifi@intel.com>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
  *****************************************************************************/
 #ifndef __IWL_CHROME_CONFIG
 #define __IWL_CHROME_CONFIG
@@ -68,15 +63,11 @@
 #define CFG80211_VERSION LINUX_VERSION_CODE
 #endif
 
-#if CFG80211_VERSION >= KERNEL_VERSION(5, 10, 0)
-#define CPTCFG_IWLWIFI_WIFI_6_SUPPORT 1
-#endif /* >= 5.10.0 */
-
 #if defined(CONFIG_IWL7000_VENDOR_CMDS) && \
 	(CFG80211_VERSION >= KERNEL_VERSION(3, 14, 0))
 #define CPTCFG_IWLMVM_VENDOR_CMDS 1
 #endif
 
-#define CPTCFG_IWLWIFI_DHC 1
+#define CPTCFG_IWLWIFI_DONT_DUMP_FIFOS 1
 
 #endif
