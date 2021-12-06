@@ -146,8 +146,13 @@ void iwl_mvm_temp_notif(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 	if (mvm->tz_device.tzone) {
 		struct iwl_mvm_thermal_device *tz_dev = &mvm->tz_device;
 
+#if LINUX_VERSION_IS_GEQ(4,10,0)
+		thermal_zone_device_update(tz_dev->tzone,
+					   THERMAL_TRIP_VIOLATED);
+#else
 		thermal_notify_framework(tz_dev->tzone,
 					 tz_dev->fw_trips_index[ths_crossed]);
+#endif
 	}
 #endif /* CONFIG_THERMAL */
 }

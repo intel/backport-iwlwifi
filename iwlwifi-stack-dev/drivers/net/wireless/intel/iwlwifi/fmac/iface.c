@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2019, 2021 Intel Corporation
  */
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
@@ -475,7 +475,7 @@ struct net_device *iwl_fmac_create_netdev(struct iwl_fmac *fmac,
 
 	if (!fw_has_capa(&fmac->fw->ucode_capa,
 			 IWL_UCODE_TLV_CAPA_CSUM_SUPPORT))
-		dev->features &= ~(IWL_TX_CSUM_NETIF_FLAGS | NETIF_F_RXCSUM);
+		dev->features &= ~IWL_CSUM_NETIF_FLAGS_MASK;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
 	if (fmac->trans->max_skb_frags)

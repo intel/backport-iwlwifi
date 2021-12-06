@@ -37,7 +37,7 @@ VERSIONS = [
     Version('chromeos-4.14'),
     Version('chromeos-4.19'),
     Version('chromeos-5.4', ['release/core49', 'release/core[5-9]*']),
-    Version('chromeos-5.10', ['release/core59', 'release/core[6-9][0-9]']),
+    Version('chromeos-5.10', ['release/core59', 'release/core[6-9]*']),
 ]
 
 def _create_chrome_driver(config, version):

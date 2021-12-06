@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
- * Copyright (C) 2018, 2020 Intel Corporation
+ * Copyright (C) 2018, 2020-2021 Intel Corporation
  */
 #include <linux/sort.h>
 
@@ -376,15 +376,19 @@ out:
 
 static void iwl_fmac_notify_thermal_framework_wk(struct work_struct *work)
 {
-	struct iwl_fmac_thermal_device *tz_dev;
-	u32 ths_crossed;
+	struct iwl_fmac_thermal_device *tz_dev =
+		container_of(work, struct iwl_fmac_thermal_device,
+			     notify_thermal_wk);
 
-	tz_dev = container_of(work, struct iwl_fmac_thermal_device,
-			      notify_thermal_wk);
+#if LINUX_VERSION_IS_GEQ(4,10,0)
+	thermal_zone_device_update(tz_dev->tzone, THERMAL_TRIP_VIOLATED);
+#else
+	u32 ths_crossed;
 
 	ths_crossed = tz_dev->ths_crossed;
 	thermal_notify_framework(tz_dev->tzone,
 				 tz_dev->fw_trips_index[ths_crossed]);
+#endif
 }
 
 void iwl_fmac_temp_notif(struct iwl_fmac *fmac, struct iwl_rx_cmd_buffer *rxb)

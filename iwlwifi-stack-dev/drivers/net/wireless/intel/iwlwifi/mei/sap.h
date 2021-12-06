@@ -335,17 +335,15 @@ enum iwl_sap_wifi_auth_type {
 /**
  * enum iwl_sap_wifi_cipher_alg
  * @SAP_WIFI_CIPHER_ALG_NONE: TBD
- * @SAP_WIFI_CIPHER_ALG_WEP: TBD
- * @SAP_WIFI_CIPHER_ALG_TKIP: TBD
  * @SAP_WIFI_CIPHER_ALG_CCMP: TBD
  * @SAP_WIFI_CIPHER_ALG_GCMP: TBD
+ * @SAP_WIFI_CIPHER_ALG_GCMP_256: TBD
  */
 enum iwl_sap_wifi_cipher_alg {
 	SAP_WIFI_CIPHER_ALG_NONE	= 0,
-	SAP_WIFI_CIPHER_ALG_WEP		= 1,
-	SAP_WIFI_CIPHER_ALG_TKIP	= 2,
 	SAP_WIFI_CIPHER_ALG_CCMP	= 4,
 	SAP_WIFI_CIPHER_ALG_GCMP	= 8,
+	SAP_WIFI_CIPHER_ALG_GCMP_256	= 9,
 };
 
 /**
@@ -353,7 +351,7 @@ enum iwl_sap_wifi_cipher_alg {
  * @ssid_len: The length of the SSID.
  * @ssid: The SSID.
  * @auth_mode: The authentication mode. See &enum iwl_sap_wifi_auth_type.
- * @ucast_cipher: The cipher used for unicast packets.
+ * @pairwise_cipher: The cipher used for unicast packets.
  *	See &enum iwl_sap_wifi_cipher_alg.
  * @channel: The channel on which we are associated.
  * @band: The band on which we are associated.
@@ -365,7 +363,7 @@ struct iwl_sap_notif_connection_info {
 	__le32 ssid_len;
 	u8 ssid[32];
 	__le32 auth_mode;
-	__le32 ucast_cipher;
+	__le32 pairwise_cipher;
 	u8 channel;
 	u8 band;
 	__le16 reserved;

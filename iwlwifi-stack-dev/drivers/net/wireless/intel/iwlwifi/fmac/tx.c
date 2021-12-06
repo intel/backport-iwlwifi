@@ -6,7 +6,7 @@
  * Copyright (C) 2007 Johannes Berg <johannes@sipsolutions.net>
  * Copyright (C) 2013-2014 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
@@ -1100,6 +1100,8 @@ static void iwl_fmac_set_tx_cmd_rate(struct iwl_fmac *fmac,
 				     struct iwl_tx_cmd *tx_cmd,
 				     struct iwl_fmac_tx_data *tx, __le16 fc)
 {
+	bool is_new_rate;
+
 	/* Set retry limit on RTS packets */
 	tx_cmd->rts_retry_limit = IWL_RTS_DFAULT_RETRY_LIMIT;
 
@@ -1124,12 +1126,18 @@ static void iwl_fmac_set_tx_cmd_rate(struct iwl_fmac *fmac,
 			min(tx_cmd->data_retry_limit, tx_cmd->rts_retry_limit);
 	}
 
+	is_new_rate = (iwl_fw_lookup_cmd_ver(fmac->fw, LEGACY_GROUP,
+					     TX_CMD, 0) > 8);
+
 	if (tx->flags & IWL_FMAC_SKB_INFO_FLAG_BAND_5 ||
 	    tx->flags & IWL_FMAC_SKB_INFO_FLAG_NO_CCK)
-		tx_cmd->rate_n_flags = cpu_to_le32(IWL_RATE_6M_PLCP);
+		tx_cmd->rate_n_flags = cpu_to_le32(IWL_RATE_6M_PLCP |
+						   (is_new_rate ?
+						   RATE_MCS_LEGACY_OFDM_MSK :
+						   0));
 	else
 		tx_cmd->rate_n_flags =
-			cpu_to_le32(IWL_RATE_1M_PLCP | RATE_MCS_CCK_MSK);
+			cpu_to_le32(IWL_RATE_1M_PLCP | RATE_MCS_CCK_MSK_V1);
 
 	/* TODO switch antenna */
 	tx_cmd->rate_n_flags |= cpu_to_le32(RATE_MCS_ANT_A_MSK);

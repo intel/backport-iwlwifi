@@ -255,7 +255,7 @@ def prune(defconfig, verify, basedir):
         else:
             os.unlink(rmf)
 
-    os.unlink(os.path.join(basedir, 'TODO-Quasar'))
+    os.unlink(os.path.join(basedir, 'shell.nix'))
 
     shutil.rmtree(os.path.join(basedir, 'Documentation'))
 

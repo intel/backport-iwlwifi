@@ -33,7 +33,6 @@
 
 #define DRV_DESCRIPTION	"Intel(R) wireless full-MAC driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
-MODULE_AUTHOR(DRV_AUTHOR);
 MODULE_LICENSE("GPL");
 
 static const struct iwl_op_mode_ops iwl_fmac_ops;
@@ -91,7 +90,7 @@ static void iwl_fmac_nic_config(struct iwl_op_mode *op_mode)
 {
 	struct iwl_fmac *fmac = iwl_fmac_from_opmode(op_mode);
 	u8 radio_cfg_type, radio_cfg_step, radio_cfg_dash;
-	u32 reg_val = 0;
+	u32 reg_val;
 	u32 phy_config = iwl_fmac_get_phy_config(fmac);
 
 	radio_cfg_type = (phy_config & FW_PHY_CFG_RADIO_TYPE) >>
@@ -102,10 +101,7 @@ static void iwl_fmac_nic_config(struct iwl_op_mode *op_mode)
 			 FW_PHY_CFG_RADIO_DASH_POS;
 
 	/* SKU control */
-	reg_val |= CSR_HW_REV_STEP(fmac->trans->hw_rev) <<
-				CSR_HW_IF_CONFIG_REG_POS_MAC_STEP;
-	reg_val |= CSR_HW_REV_DASH(fmac->trans->hw_rev) <<
-				CSR_HW_IF_CONFIG_REG_POS_MAC_DASH;
+	reg_val = CSR_HW_REV_STEP_DASH(fmac->trans->hw_rev);
 
 	/* radio configuration */
 	reg_val |= radio_cfg_type << CSR_HW_IF_CONFIG_REG_POS_PHY_TYPE;
@@ -116,8 +112,7 @@ static void iwl_fmac_nic_config(struct iwl_op_mode *op_mode)
 		 ~CSR_HW_IF_CONFIG_REG_MSK_PHY_TYPE);
 
 	iwl_trans_set_bits_mask(fmac->trans, CSR_HW_IF_CONFIG_REG,
-				CSR_HW_IF_CONFIG_REG_MSK_MAC_DASH |
-				CSR_HW_IF_CONFIG_REG_MSK_MAC_STEP |
+				CSR_HW_IF_CONFIG_REG_MSK_MAC_STEP_DASH |
 				CSR_HW_IF_CONFIG_REG_MSK_PHY_TYPE |
 				CSR_HW_IF_CONFIG_REG_MSK_PHY_STEP |
 				CSR_HW_IF_CONFIG_REG_MSK_PHY_DASH |
@@ -1431,7 +1426,7 @@ iwl_op_mode_fmac_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	fmac->cfg = cfg;
 
 	iwl_fw_runtime_init(&fmac->fwrt, trans, fw, &iwl_fmac_fwrt_ops,
-			    fmac, dbgfs_dir);
+			    fmac, NULL, NULL, dbgfs_dir);
 
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	fmac->internal_cmd_to_host = trans->dbg_cfg.intcmd_dbg;
@@ -1500,9 +1495,7 @@ iwl_op_mode_fmac_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	}
 
 	/* the hardware splits the A-MSDU */
-	if (fmac->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
-		trans_cfg.rx_buf_size = IWL_AMSDU_2K;
-	else if (fmac->trans->trans_cfg->mq_rx_supported)
+	if (fmac->trans->trans_cfg->mq_rx_supported)
 		trans_cfg.rx_buf_size = IWL_AMSDU_4K;
 
 	trans->wide_cmd_header = true;

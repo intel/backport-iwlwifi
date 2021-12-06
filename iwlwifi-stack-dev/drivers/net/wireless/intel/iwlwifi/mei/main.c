@@ -663,7 +663,7 @@ iwl_mei_handle_conn_status(struct mei_cl_device *cldev,
 		.channel = status->conn_info.channel,
 		.band = status->conn_info.band,
 		.auth_mode = le32_to_cpu(status->conn_info.auth_mode),
-		.ucast_cipher = le32_to_cpu(status->conn_info.ucast_cipher),
+		.pairwise_cipher = le32_to_cpu(status->conn_info.pairwise_cipher),
 	};
 
 	IWL_MEI_DEBUG(cldev,
@@ -1373,11 +1373,29 @@ void iwl_mei_host_associated(const struct iwl_mei_conn_info *conn_info,
 			.ssid_len = cpu_to_le32(conn_info->ssid_len),
 			.channel = conn_info->channel,
 			.band = conn_info->band,
-			.ucast_cipher = cpu_to_le32(conn_info->ucast_cipher),
+			.pairwise_cipher = cpu_to_le32(conn_info->pairwise_cipher),
 			.auth_mode = cpu_to_le32(conn_info->auth_mode),
 		},
 	};
 	struct iwl_mei *mei;
+
+	BUILD_BUG_ON((u32)IWL_MEI_AKM_AUTH_OPEN !=
+		     (u32)SAP_WIFI_AUTH_TYPE_OPEN);
+	BUILD_BUG_ON((u32)IWL_MEI_AKM_AUTH_RSNA !=
+		     (u32)SAP_WIFI_AUTH_TYPE_RSNA);
+	BUILD_BUG_ON((u32)IWL_MEI_AKM_AUTH_RSNA_PSK !=
+		     (u32)SAP_WIFI_AUTH_TYPE_RSNA_PSK);
+	BUILD_BUG_ON((u32)IWL_MEI_AKM_AUTH_SAE !=
+		     (u32)SAP_WIFI_AUTH_TYPE_SAE);
+
+	BUILD_BUG_ON((u32)IWL_MEI_CIPHER_NONE !=
+		     (u32)SAP_WIFI_CIPHER_ALG_NONE);
+	BUILD_BUG_ON((u32)IWL_MEI_CIPHER_CCMP !=
+		     (u32)SAP_WIFI_CIPHER_ALG_CCMP);
+	BUILD_BUG_ON((u32)IWL_MEI_CIPHER_GCMP !=
+		     (u32)SAP_WIFI_CIPHER_ALG_GCMP);
+	BUILD_BUG_ON((u32)IWL_MEI_CIPHER_GCMP_256 !=
+		     (u32)SAP_WIFI_CIPHER_ALG_GCMP_256);
 
 	if (WARN_ON(conn_info->ssid_len > ARRAY_SIZE(msg.conn_info.ssid)))
 		return;
@@ -1415,13 +1433,13 @@ out:
 }
 EXPORT_SYMBOL(iwl_mei_host_associated);
 
-void iwl_mei_host_disassociated(const u8 type)
+void iwl_mei_host_disassociated(void)
 {
 	struct iwl_mei *mei;
 	struct iwl_sap_notif_host_link_down msg = {
 		.hdr.type = cpu_to_le16(SAP_MSG_NOTIF_HOST_LINK_DOWN),
 		.hdr.len = cpu_to_le16(sizeof(msg) - sizeof(msg.hdr)),
-		.type = type,
+		.type = HOST_LINK_DOWN_TYPE_LONG,
 	};
 
 	mutex_lock(&iwl_mei_mutex);
@@ -1910,14 +1928,21 @@ static void iwl_mei_remove(struct mei_cl_device *cldev)
 		struct net_device *dev;
 
 		/*
+		 * First take rtnl and only then the mutex to avoid an ABBA
+		 * with iwl_mei_set_netdev()
+		 */
+		rtnl_lock();
+		mutex_lock(&iwl_mei_mutex);
+
+		/*
 		 * If we are suspending and the wifi driver hasn't removed it's netdev
 		 * yet, do it now. In any case, don't change the cache.netdev pointer.
 		 */
 		dev = rcu_dereference_protected(iwl_mei_cache.netdev,
 						lockdep_is_held(&iwl_mei_mutex));
 
-		rtnl_lock();
 		netdev_rx_handler_unregister(dev);
+		mutex_unlock(&iwl_mei_mutex);
 		rtnl_unlock();
 	}
 

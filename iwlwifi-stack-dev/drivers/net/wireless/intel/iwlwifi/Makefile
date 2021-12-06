@@ -10,7 +10,7 @@ iwlwifi-objs		+= iwl-dbg-tlv.o
 iwlwifi-objs		+= iwl-trans.o
 iwlwifi-objs		+= queue/tx.o
 
-iwlwifi-objs		+= fw/img.o fw/notif-wait.o
+iwlwifi-objs		+= fw/img.o fw/notif-wait.o fw/rs.o
 iwlwifi-objs		+= fw/dbg.o fw/pnvm.o fw/dump.o
 iwlwifi-$(CPTCFG_IWLMVM)	+= fw/paging.o fw/smem.o fw/init.o
 iwlwifi-$(CPTCFG_IWLFMAC)	+= fw/paging.o fw/smem.o fw/init.o
@@ -19,6 +19,10 @@ iwlwifi-$(CPTCFG_IWLWIFI_DEBUGFS) += fw/debugfs.o
 
 iwlwifi-$(CONFIG_ACPI)	+= fw/acpi.o
 iwlwifi-$(CONFIG_EFI)	+= fw/uefi.o
+
+# Mock-ups
+iwlwifi-$(CPTCFG_IWLWIFI_PLATFORM_MOCKUPS) += fw/acpi.o fw/uefi.o
+iwlwifi-$(CPTCFG_IWLWIFI_PLATFORM_MOCKUPS) += fw/platform-mockups.o
 
 # Bus
 iwlwifi-$(CONFIG_PCI) += pcie/drv.o pcie/rx.o pcie/tx.o pcie/trans.o

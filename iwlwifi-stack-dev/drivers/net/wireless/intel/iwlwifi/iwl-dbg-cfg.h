@@ -184,8 +184,13 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(u32, MVM_FTM_INITIATOR_SMOOTH_AGE_SEC)
 	IWL_DBG_CFG(bool, MVM_DISABLE_AP_FILS)
 	IWL_DBG_CFG_STR(ppag_allowed)
+	IWL_DBG_CFG_STR(tas_allowed)
 	IWL_DBG_CFG(u32, MVM_6GHZ_PASSIVE_SCAN_TIMEOUT)
 	IWL_DBG_CFG(u32, MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT)
+	IWL_DBG_CFG_NODEF(u32, system_features_control_1)
+	IWL_DBG_CFG_NODEF(u32, system_features_control_2)
+	IWL_DBG_CFG_NODEF(u32, system_features_control_3)
+	IWL_DBG_CFG_NODEF(u32, system_features_control_4)
 #endif /* CPTCFG_IWLMVM */
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
@@ -275,6 +280,7 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_FN(FW_DBG_PRESET, iwl_dbg_cfg_parse_fw_dbg_preset)
 	IWL_DBG_CFG_NODEF(bool, he_smps_disabled)
 	IWL_DBG_CFG_NODEF(bool, ht_dynamic_smps)
+	IWL_DBG_CFG_NODEF(bool, amsdu_in_ampdu_disabled)
 #ifdef CPTCFG_IWLWIFI_DEBUG
 	IWL_MOD_PARAM(u32, debug_level)
 #endif /* CPTCFG_IWLWIFI_DEBUG */

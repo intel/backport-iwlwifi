@@ -29,7 +29,7 @@ struct iwl_mei_conn_info {
 	u8 ssid_len;
 	u8 channel;
 	u8 band;
-	u8 ucast_cipher;
+	u8 pairwise_cipher;
 	u8 bssid[ETH_ALEN];
 	u8 ssid[IEEE80211_MAX_SSID_LEN];
 };
@@ -46,6 +46,20 @@ struct iwl_mei_ops {
 	void (*roaming_forbidden)(void *priv, bool forbidden);
 	void (*sap_connected)(void *priv);
 	void (*nic_stolen)(void *priv);
+};
+
+enum iwl_mei_pairwise_cipher {
+	IWL_MEI_CIPHER_NONE     = 0,
+	IWL_MEI_CIPHER_CCMP     = 4,
+	IWL_MEI_CIPHER_GCMP     = 8,
+	IWL_MEI_CIPHER_GCMP_256 = 9,
+};
+
+enum iwl_mei_akm_auth {
+	IWL_MEI_AKM_AUTH_OPEN           = 0,
+	IWL_MEI_AKM_AUTH_RSNA           = 6,
+	IWL_MEI_AKM_AUTH_RSNA_PSK       = 7,
+	IWL_MEI_AKM_AUTH_SAE            = 9,
 };
 
 static inline bool iwl_mei_is_connected(void)
@@ -90,7 +104,7 @@ static inline void iwl_mei_host_associated(const struct iwl_mei_conn_info *conn_
 					   const struct iwl_mei_colloc_info *colloc_info)
 {}
 
-static inline void iwl_mei_host_disassociated(u8 type)
+static inline void iwl_mei_host_disassociated(void)
 {}
 
 static inline void iwl_mei_device_down(void)

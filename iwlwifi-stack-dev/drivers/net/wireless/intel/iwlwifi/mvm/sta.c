@@ -87,6 +87,7 @@ int iwl_mvm_sta_send_to_fw(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	}
 
 	switch (sta->bandwidth) {
+	case IEEE80211_STA_RX_BW_320:
 	case IEEE80211_STA_RX_BW_160:
 		add_sta_cmd.station_flags |= cpu_to_le32(STA_FLG_FAT_EN_160MHZ);
 		fallthrough;
@@ -141,7 +142,6 @@ int iwl_mvm_sta_send_to_fw(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 		mpdu_dens = sta->ht_cap.ampdu_density;
 	}
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	if (mvm_sta->vif->bss_conf.chandef.chan->band == NL80211_BAND_6GHZ) {
 		add_sta_cmd.station_flags_msk |=
 			cpu_to_le32(STA_FLG_MAX_AGG_SIZE_MSK |
@@ -152,7 +152,6 @@ int iwl_mvm_sta_send_to_fw(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 		agg_size = le16_get_bits(sta->he_6ghz_capa.capa,
 				IEEE80211_HE_6GHZ_CAP_MAX_AMPDU_LEN_EXP);
 	} else
-#endif
 	if (sta->vht_cap.vht_supported) {
 		agg_size = sta->vht_cap.cap &
 			IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_MASK;
@@ -2686,6 +2685,16 @@ int iwl_mvm_sta_rx_agg(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 		RCU_INIT_POINTER(mvm->baid_map[baid], NULL);
 		kfree_rcu(baid_data, rcu_head);
 		IWL_DEBUG_HT(mvm, "BAID %d is free\n", baid);
+
+		/*
+		 * After we've deleted it, do another queue sync
+		 * so if an IWL_MVM_RXQ_NSSN_SYNC was concurrently
+		 * running it won't find a new session in the old
+		 * BAID. It can find the NULL pointer for the BAID,
+		 * but we must not have it find a different session.
+		 */
+		iwl_mvm_sync_rx_queues_internal(mvm, IWL_MVM_RXQ_EMPTY,
+						true, NULL, 0);
 	}
 	return 0;
 
@@ -3931,7 +3940,7 @@ void iwl_mvm_csa_client_absent(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 
 	mvmsta = iwl_mvm_sta_from_staid_rcu(mvm, mvmvif->ap_sta_id);
 
-	if (!WARN_ON(!mvmsta))
+	if (mvmsta)
 		iwl_mvm_sta_modify_disable_tx(mvm, mvmsta, true);
 
 	rcu_read_unlock();
@@ -3989,4 +3998,22 @@ int iwl_mvm_add_pasn_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 out:
 	iwl_mvm_dealloc_int_sta(mvm, sta);
 	return ret;
+}
+
+void iwl_mvm_cancel_channel_switch(struct iwl_mvm *mvm,
+				   struct ieee80211_vif *vif,
+				   u32 mac_id)
+{
+	struct iwl_cancel_channel_switch_cmd cancel_channel_switch_cmd = {
+		.mac_id = cpu_to_le32(mac_id),
+	};
+	int ret;
+
+	ret = iwl_mvm_send_cmd_pdu(mvm,
+				   iwl_cmd_id(CANCEL_CHANNEL_SWITCH_CMD, MAC_CONF_GROUP, 0),
+				   CMD_ASYNC,
+				   sizeof(cancel_channel_switch_cmd),
+				   &cancel_channel_switch_cmd);
+	if (ret)
+		IWL_ERR(mvm, "Failed to cancel the channel switch\n");
 }

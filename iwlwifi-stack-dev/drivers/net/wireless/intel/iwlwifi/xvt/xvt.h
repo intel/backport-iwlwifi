@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2005-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
 #ifndef __iwl_xvt_h__
@@ -143,65 +143,6 @@ struct iwl_sw_stack_config {
 	u32 fw_dbg_flags;
 	struct iwl_phy_cfg_cmd_v3 fw_calib_cmd_cfg[IWL_UCODE_TYPE_MAX];
 };
-
-/* Note: This structure is read from the device with IO accesses,
- * and the reading already does the endian conversion. As it is
- * read with u32-sized accesses, any members with a different size
- * need to be ordered correctly though!
- */
-struct iwl_error_event_table_v1 {
-	u32 valid;		/* (nonzero) valid, (0) log is empty */
-	u32 error_id;		/* type of error */
-	u32 pc;			/* program counter */
-	u32 blink1;		/* branch link */
-	u32 blink2;		/* branch link */
-	u32 ilink1;		/* interrupt link */
-	u32 ilink2;		/* interrupt link */
-	u32 data1;		/* error-specific data */
-	u32 data2;		/* error-specific data */
-	u32 data3;		/* error-specific data */
-	u32 bcon_time;		/* beacon timer */
-	u32 tsf_low;		/* network timestamp function timer */
-	u32 tsf_hi;		/* network timestamp function timer */
-	u32 gp1;		/* GP1 timer register */
-	u32 gp2;		/* GP2 timer register */
-	u32 gp3;		/* GP3 timer register */
-	u32 ucode_ver;		/* uCode version */
-	u32 hw_ver;		/* HW Silicon version */
-	u32 brd_ver;		/* HW board version */
-	u32 log_pc;		/* log program counter */
-	u32 frame_ptr;		/* frame pointer */
-	u32 stack_ptr;		/* stack pointer */
-	u32 hcmd;		/* last host command header */
-	u32 isr0;		/* isr status register LMPM_NIC_ISR0:
-				 * rxtx_flag
-				 */
-	u32 isr1;		/* isr status register LMPM_NIC_ISR1:
-				 * host_flag
-				 */
-	u32 isr2;		/* isr status register LMPM_NIC_ISR2:
-				 * enc_flag
-				 */
-	u32 isr3;		/* isr status register LMPM_NIC_ISR3:
-				 * time_flag
-				 */
-	u32 isr4;		/* isr status register LMPM_NIC_ISR4:
-				 * wico interrupt
-				 */
-	u32 isr_pref;		/* isr status register LMPM_NIC_PREF_STAT */
-	u32 wait_event;		/* wait event() caller address */
-	u32 l2p_control;	/* L2pControlField */
-	u32 l2p_duration;	/* L2pDurationField */
-	u32 l2p_mhvalid;	/* L2pMhValidBits */
-	u32 l2p_addr_match;	/* L2pAddrMatchStat */
-	u32 lmpm_pmg_sel;	/* indicate which clocks are turned on
-				 * (LMPM_PMG_SEL)
-				 */
-	u32 u_timestamp;	/* indicate when the date and time of the
-				 * compilation
-				 */
-	u32 flow_handler;	/* FH read/write pointers, RX credit */
-} __packed;
 
 /* Note: This structure is read from the device with IO accesses,
  * and the reading already does the endian conversion. As it is
@@ -367,10 +308,6 @@ int __must_check iwl_xvt_send_cmd_pdu(struct iwl_xvt *xvt, u32 id,
 				      u32 flags, u16 len, const void *data);
 
 /* Utils */
-void iwl_xvt_get_nic_error_log_v1(struct iwl_xvt *xvt,
-				  struct iwl_error_event_table_v1 *table);
-void iwl_xvt_dump_nic_error_log_v1(struct iwl_xvt *xvt,
-				   struct iwl_error_event_table_v1 *table);
 void iwl_xvt_get_nic_error_log_v2(struct iwl_xvt *xvt,
 				  struct iwl_error_event_table_v2 *table);
 void iwl_xvt_dump_nic_error_log_v2(struct iwl_xvt *xvt,

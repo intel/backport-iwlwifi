@@ -307,13 +307,13 @@ struct iwl_tof_responder_config_cmd_v7 {
  * @r2i_ndp_params: parameters for R2I NDP.
  *	bits 0 - 2: max number of LTF repetitions
  *	bits 3 - 5: max number of spatial streams (supported values are < 2)
- *	bits 6 - 7: max number of total LTFs
- *		    (&enum ieee80211_range_params_max_total_ltf)
+ *	bits 6 - 7: max number of total LTFs see
+ *	&enum ieee80211_range_params_max_total_ltf
  * @i2r_ndp_params: parameters for I2R NDP.
  *	bits 0 - 2: max number of LTF repetitions
  *	bits 3 - 5: max number of spatial streams
- *	bits 6 - 7: max number of total LTFs
- *		    (&enum ieee80211_range_params_max_total_ltf)
+ *	bits 6 - 7: max number of total LTFs see
+ *	&enum ieee80211_range_params_max_total_ltf
  */
 struct iwl_tof_responder_config_cmd_v8 {
 	__le32 cmd_valid_fields;
@@ -353,13 +353,13 @@ struct iwl_tof_responder_config_cmd_v8 {
  * @r2i_ndp_params: parameters for R2I NDP.
  *	bits 0 - 2: max number of LTF repetitions
  *	bits 3 - 5: max number of spatial streams (supported values are < 2)
- *	bits 6 - 7: max number of total LTFs
- *		    (&enum ieee80211_range_params_max_total_ltf)
+ *	bits 6 - 7: max number of total LTFs see
+ *	&enum ieee80211_range_params_max_total_ltf
  * @i2r_ndp_params: parameters for I2R NDP.
  *	bits 0 - 2: max number of LTF repetitions
  *	bits 3 - 5: max number of spatial streams
- *	bits 6 - 7: max number of total LTFs
- *		    (&enum ieee80211_range_params_max_total_ltf)
+ *	bits 6 - 7: max number of total LTFs see
+ *	&enum ieee80211_range_params_max_total_ltf
  * @min_time_between_msr: for non trigger based NDP ranging, minimum time
  *	between measurements in milliseconds.
  * @max_time_between_msr: for non trigger based NDP ranging, maximum time
@@ -624,6 +624,7 @@ enum iwl_location_frame_format {
  * @IWL_LOCATION_BW_20MHZ: 20MHz
  * @IWL_LOCATION_BW_40MHZ: 40MHz
  * @IWL_LOCATION_BW_80MHZ: 80MHz
+ * @IWL_LOCATION_BW_160MHZ: 160MHz
  */
 enum iwl_location_bw {
 	IWL_LOCATION_BW_20MHZ,
@@ -1501,7 +1502,9 @@ struct iwl_tof_range_rsp_ap_entry_ntfy_v6 {
 	u8 reserved[3];
 	u8 rx_pn[IEEE80211_CCMP_PN_LEN];
 	u8 tx_pn[IEEE80211_CCMP_PN_LEN];
-} __packed; /* LOCATION_RANGE_RSP_AP_ETRY_NTFY_API_S_VER_6 */
+} __packed; /* LOCATION_RANGE_RSP_AP_ETRY_NTFY_API_S_VER_6,
+	       LOCATION_RANGE_RSP_AP_ETRY_NTFY_API_S_VER_7 */
+
 
 /**
  * enum iwl_tof_response_status - tof response status
@@ -1582,7 +1585,8 @@ struct iwl_tof_range_rsp_ntfy_v8 {
 	u8 last_report;
 	u8 reserved;
 	struct iwl_tof_range_rsp_ap_entry_ntfy_v6 ap[IWL_MVM_TOF_MAX_APS];
-} __packed; /* LOCATION_RANGE_RSP_NTFY_API_S_VER_8 */
+} __packed; /* LOCATION_RANGE_RSP_NTFY_API_S_VER_8,
+	       LOCATION_RANGE_RSP_NTFY_API_S_VER_9 */
 
 #define IWL_MVM_TOF_MCSI_BUF_SIZE  (245)
 /**

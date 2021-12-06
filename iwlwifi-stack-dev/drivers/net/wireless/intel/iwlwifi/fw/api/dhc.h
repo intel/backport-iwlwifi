@@ -17,18 +17,30 @@
  * enum iwl_dhc_table_id - DHC table operations index
  */
 enum iwl_dhc_table_id {
-	/* @DHC_TABLE_INTEGRATION: select the integration table */
+	/**
+	 * @DHC_TABLE_INTEGRATION: select the integration table
+	 */
 	DHC_TABLE_INTEGRATION	= 2 << DHC_TABLE_MASK_POS,
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
-	/* @DHC_TABLE_TOOLS: select the tools table */
+	/**
+	 * @DHC_TABLE_TOOLS: select the tools table
+	 */
 	DHC_TABLE_TOOLS		= 0,
-	/* @DHC_TABLE_AUTOMATION: select the automation table */
+	/**
+	 * @DHC_TABLE_AUTOMATION: select the automation table
+	 */
 	DHC_TABLE_AUTOMATION	= 1 << DHC_TABLE_MASK_POS,
-	/* @DHC_TABLE_DEVELOPMENT: select the development table */
+	/**
+	 * @DHC_TABLE_DEVELOPMENT: select the development table
+	 */
 	DHC_TABLE_DEVELOPMENT	= 3 << DHC_TABLE_MASK_POS,
-	/* @DHC_TABLE_UT: select the UT table */
+	/**
+	 * @DHC_TABLE_UT: select the UT table
+	 */
 	DHC_TABLE_UT		= 4 << DHC_TABLE_MASK_POS,
-	/* @DHC_TABLE_MAX: maximal id value */
+	/**
+	 * @DHC_TABLE_MAX: maximal id value
+	 */
 	DHC_TABLE_MAX		= DHC_TABLE_UT,
 #endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 };
@@ -94,41 +106,77 @@ enum iwl_dhc_umac_automation_table {
  * enum iwl_dhc_umac_integration_table - integration operations
  */
 enum iwl_dhc_umac_integration_table {
-	/* @DHC_INT_UMAC_TWT_OPERATION: trigger a TWT operation */
+	/**
+	 * @DHC_INT_UMAC_TWT_OPERATION: trigger a TWT operation
+	 */
 	DHC_INT_UMAC_TWT_OPERATION = 4,
-#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
-	/* @DHC_INTEGRATION_POWER_FLAGS: Power flags */
-	DHC_INTEGRATION_POWER_FLAGS = 0,
-	/* @DHC_INTEGRATION_TLC_DEBUG_CONFIG: TLC debug */
+	/**
+	 * @DHC_INTEGRATION_TLC_DEBUG_CONFIG: TLC debug
+	 */
 	DHC_INTEGRATION_TLC_DEBUG_CONFIG = 1,
-	/* @DHC_INTEGRATION_QUOTA_ENFORCE: Enforce maximum quota */
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+	/**
+	 * @DHC_INTEGRATION_POWER_FLAGS: Power flags
+	 */
+	DHC_INTEGRATION_POWER_FLAGS = 0,
+	/**
+	 * @DHC_INTEGRATION_QUOTA_ENFORCE: Enforce maximum quota
+	 */
 	DHC_INTEGRATION_QUOTA_ENFORCE = 2,
-	/* @DHC_INT_UMAC_BT_COEX_USER_OVERRIDES: Override BT Coex user */
+	/**
+	 * @DHC_INT_UMAC_BT_COEX_USER_OVERRIDES: Override BT Coex user
+	 */
 	DHC_INT_UMAC_BT_COEX_USER_OVERRIDES = 3,
-	/* @DHC_COEX_ATS_USER_OVERRIDES_SET: (not implemented in the driver) */
+	/**
+	 * @DHC_COEX_ATS_USER_OVERRIDES_SET: (not implemented in the driver)
+	 */
 	DHC_COEX_ATS_USER_OVERRIDES_SET = 5,
-	/* @DHC_COEX_ATS_LOW_LATENCY_SET: (not implemented in the driver) */
+	/**
+	 * @DHC_COEX_ATS_LOW_LATENCY_SET: (not implemented in the driver)
+	 */
 	DHC_COEX_ATS_LOW_LATENCY_SET = 6,
-	/* @DHC_INT_UMAC_OMI_OPERATION: send a one-time QoS NULL with HTC-OM control */
+	/**
+	 * @DHC_INT_UMAC_OMI_OPERATION: send a one-time QoS NULL with HTC-OM control
+	 */
 	DHC_INT_UMAC_OMI_OPERATION = 7,
-	/* @DHC_INT_BT_COEX_FEATURE_ENABLEMENT_OVERRIDES: BT coex hooks */
+	/**
+	 * @DHC_INT_BT_COEX_FEATURE_ENABLEMENT_OVERRIDES: BT coex hooks
+	 */
 	DHC_INT_BT_COEX_FEATURE_ENABLEMENT_OVERRIDES = 8,
-	/* @DHC_INT_TX_ANT_CONFIG: Get valid Tx antennas */
+	/**
+	 * @DHC_INT_TX_ANT_CONFIG: Get valid Tx antennas
+	 */
 	DHC_INT_TX_ANT_CONFIG = 9,
-	/* @DHC_INT_UMAC_TWT_CONTROL: TWT hooks (like disable internal TWT triggers) */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
+	/**
+	 * @DHC_INT_UMAC_TWT_CONTROL: TWT hooks (like disable internal TWT triggers)
+	 */
 	DHC_INT_UMAC_TWT_CONTROL = 10,
-	/* @DHC_DP_TAS_CONFIG: config TAS */
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+	/**
+	 * @DHC_DP_TAS_CONFIG: config TAS
+	 */
 	DHC_DP_TAS_CONFIG = 11,
-	/* @DHC_INT_UMAC_TWT_AP_DEBUG_CONFIG: config TWT soft AP test mode */
+	/**
+	 * @DHC_INT_UMAC_TWT_AP_DEBUG_CONFIG: config TWT soft AP test mode
+	 */
 	DHC_INT_UMAC_TWT_AP_DEBUG_CONFIG = 12,
-	/* @DHC_INT_UMAC_WMAL_READ_PARAMS: read WMAL params */
+	/**
+	 * @DHC_INT_UMAC_WMAL_READ_PARAMS: read WMAL params
+	 */
 	DHC_INT_UMAC_WMAL_READ_PARAMS = 13,
-	/* @DHC_INT_UMAC_RFI_CONFIG: RFI config */
+	/**
+	 * @DHC_INT_UMAC_RFI_CONFIG: RFI config
+	 */
 	DHC_INT_UMAC_RFI_CONFIG = 14,
-	/* @DHC_INT_UMAC_SEND_TWT_INFO: send a TWT info */
+	/**
+	 * @DHC_INT_UMAC_SEND_TWT_INFO: send a TWT info
+	 */
 	DHC_INT_UMAC_SEND_TWT_INFO = 15,
 #endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
-	/* @DHC_INTEGRATION_MAX: Maximum UMAC integration table entries */
+	/**
+	 * @DHC_INTEGRATION_MAX: Maximum UMAC integration table entries
+	 */
 	DHC_INTEGRATION_MAX
 };
 
@@ -501,6 +549,10 @@ struct iwl_profiling_umac_metrics_report {
  *	fault and data page fault
  * @sleep_abort_count: total sleep abort counter
  * @max_active_duration: maximum active timer in usecs
+ * @max_pu_duration: maximum UMAC power up duration
+ * @max_pd_duration: maximum UMAC power down duration
+ * @max_phy_pu_duration: maximum power up duration per LMAC
+ * @max_phy_pd_duration: maximum power down duration per LMAC
  */
 struct iwl_ps_report {
 	__le32 total_sleep_counter;
@@ -523,7 +575,11 @@ struct iwl_ps_report {
 	__le32 total_page_faults;
 	__le32 sleep_abort_count;
 	__le32 max_active_duration;
-} __packed; /* PS_REPORT_API_S */
+	__le16 max_pu_duration;
+	__le16 max_pd_duration;
+	__le16 max_phy_pu_duration[2];
+	__le16 max_phy_pd_duration[2];
+} __packed; /* PS_REPORT_API_S_VER_6 */
 
 /**
  * struct iwl_ps_config {
@@ -542,7 +598,7 @@ struct iwl_ps_config {
 /**
  * struct iwl_ps_test_req {
  * @flags:      ps test flags
- * @testCase:   ps test case to run
+ * @test_case:   ps test case to run
  * @test_param1: generic test param 1
  * @test_param2: generic test param 2
  * @test_param3: generic test param 3
@@ -744,6 +800,7 @@ struct iwl_dhc_htc_omi {
 	u8 mac_id;
 	u8 reserved[3];
 }; /* DHC_OMI_OPERATION_API_S */
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 /**
  * struct iwl_dhc_twt_control - control TWT behavior
@@ -755,7 +812,5 @@ struct iwl_dhc_twt_control {
 	u8 twt_test_mode;
 	u8 reserved[3];
 }; /* DHC_TWT_CONTROL_API_S_VER_1 */
-
-#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 #endif /* __iwl_fw_api_dhc_h__ */

@@ -1133,7 +1133,8 @@ static void iwl_mvm_ftm_rtt_smoothing(struct iwl_mvm *mvm,
 	overshoot = IWL_MVM_FTM_INITIATOR_SMOOTH_OVERSHOOT;
 	alpha = IWL_MVM_FTM_INITIATOR_SMOOTH_ALPHA;
 
-	rtt_avg = (alpha * rtt + (100 - alpha) * resp->rtt_avg) / 100;
+	rtt_avg = alpha * rtt + (100 - alpha) * resp->rtt_avg;
+	do_div(rtt_avg, 100);
 
 	IWL_DEBUG_INFO(mvm,
 		       "%pM: prev rtt_avg=%lld, new rtt_avg=%lld, rtt=%lld\n",
@@ -1221,6 +1222,7 @@ static u8 iwl_mvm_ftm_get_range_resp_ver(struct iwl_mvm *mvm)
 static bool iwl_mvm_ftm_resp_size_validation(u8 ver, unsigned int pkt_len)
 {
 	switch (ver) {
+	case 9:
 	case 8:
 		return pkt_len == sizeof(struct iwl_tof_range_rsp_ntfy_v8);
 	case 7:
@@ -1284,7 +1286,7 @@ void iwl_mvm_ftm_range_resp(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 		int peer_idx;
 
 		if (new_api) {
-			if (notif_ver == 8) {
+			if (notif_ver >= 8) {
 				fw_ap = &fw_resp_v8->ap[i];
 				iwl_mvm_ftm_pasn_update_pn(mvm, fw_ap);
 			} else if (notif_ver == 7) {

@@ -6,9 +6,7 @@
  */
 #include <linux/etherdevice.h>
 #include <net/mac80211.h>
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 #include <linux/crc32.h>
-#endif
 
 #include "mvm.h"
 #include "fw/api/scan.h"
@@ -96,12 +94,10 @@ struct iwl_mvm_scan_params {
 	int n_scan_plans;
 	struct cfg80211_sched_scan_plan *scan_plans;
 	bool iter_notif;
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	struct cfg80211_scan_6ghz_params *scan_6ghz_params;
 	u32 n_6ghz_params;
 	bool scan_6ghz;
 	bool enable_6ghz_passive;
-#endif
 };
 
 static inline void *iwl_mvm_get_scan_req_umac_data(struct iwl_mvm *mvm)
@@ -167,7 +163,7 @@ iwl_mvm_scan_rate_n_flags(struct iwl_mvm *mvm, enum nl80211_band band,
 	tx_ant = BIT(mvm->scan_last_antenna_idx) << RATE_MCS_ANT_POS;
 
 	if (band == NL80211_BAND_2GHZ && !no_cck)
-		return cpu_to_le32(IWL_RATE_1M_PLCP | RATE_MCS_CCK_MSK |
+		return cpu_to_le32(IWL_RATE_1M_PLCP | RATE_MCS_CCK_MSK_V1 |
 				   tx_ant);
 	else
 		return cpu_to_le32(IWL_RATE_6M_PLCP | tx_ant);
@@ -798,14 +794,12 @@ iwl_mvm_build_scan_probe(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		cpu_to_le16(ies->len[NL80211_BAND_5GHZ]);
 	pos += ies->len[NL80211_BAND_5GHZ];
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	memcpy(pos, ies->ies[NL80211_BAND_6GHZ],
 	       ies->len[NL80211_BAND_6GHZ]);
 	params->preq.band_data[2].offset = cpu_to_le16(pos - params->preq.buf);
 	params->preq.band_data[2].len =
 		cpu_to_le16(ies->len[NL80211_BAND_6GHZ]);
 	pos += ies->len[NL80211_BAND_6GHZ];
-#endif
 	memcpy(pos, ies->common_ies, ies->common_ie_len);
 	params->preq.common_data.offset = cpu_to_le16(pos - params->preq.buf);
 
@@ -1400,8 +1394,8 @@ static u32 iwl_mvm_scan_umac_ooc_priority(struct iwl_mvm_scan_params *params)
 }
 
 static void
-iwl_mvm_scan_umac_dwell_v10(struct iwl_mvm *mvm,
-			    struct iwl_scan_general_params_v10 *general_params,
+iwl_mvm_scan_umac_dwell_v11(struct iwl_mvm *mvm,
+			    struct iwl_scan_general_params_v11 *general_params,
 			    struct iwl_mvm_scan_params *params)
 {
 	struct iwl_mvm_scan_timing_params *timing, *hb_timing;
@@ -1480,7 +1474,6 @@ static const struct iwl_mvm_scan_channel_segment scan_channel_segments[] = {
 		.channel_spacing_shift = 2,
 		.band = PHY_BAND_5
 	},
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	{
 		.start_idx = 51,
 		.end_idx = 111,
@@ -1489,7 +1482,6 @@ static const struct iwl_mvm_scan_channel_segment scan_channel_segments[] = {
 		.channel_spacing_shift = 2,
 		.band = PHY_BAND_6
 	},
-#endif
 };
 
 static int iwl_mvm_scan_ch_and_band_to_idx(u8 channel_id, u8 band)
@@ -1661,16 +1653,13 @@ iwl_mvm_umac_scan_cfg_channels_v6(struct iwl_mvm *mvm,
 		cfg->flags = cpu_to_le32(flags | n_aps_flag);
 		cfg->v2.channel_num = channels[i]->hw_value;
 		cfg->v2.band = iwl_mvm_phy_band_from_nl80211(band);
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 		if (cfg80211_channel_is_psc(channels[i]))
 			cfg->flags = 0;
-#endif
 		cfg->v2.iter_count = 1;
 		cfg->v2.iter_interval = 0;
 	}
 }
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 static int
 iwl_mvm_umac_scan_fill_6g_chan_list(struct iwl_mvm *mvm,
 				    struct iwl_mvm_scan_params *params,
@@ -1837,8 +1826,6 @@ iwl_mvm_umac_scan_cfg_channels_v6_6g(struct iwl_mvm_scan_params *params,
 			}
 		}
 
-		flags = bssid_bitmap | (s_ssid_bitmap << 16);
-
 		if (cfg80211_channel_is_psc(params->channels[i]) &&
 		    psc_no_listen)
 			flags |= IWL_UHB_CHAN_CFG_FLAG_PSC_CHAN_NO_LISTEN;
@@ -1880,14 +1867,16 @@ iwl_mvm_umac_scan_cfg_channels_v6_6g(struct iwl_mvm_scan_params *params,
 					  (s_max > 1 || b_max > 3));
 		}
 		if ((allow_passive && force_passive) ||
-		    (!flags && !cfg80211_channel_is_psc(params->channels[i])))
+		    (!(bssid_bitmap | s_ssid_bitmap) &&
+		     !cfg80211_channel_is_psc(params->channels[i])))
 			flags |= IWL_UHB_CHAN_CFG_FLAG_FORCE_PASSIVE;
+		else
+			flags |= bssid_bitmap | (s_ssid_bitmap << 16);
 
 		channel_cfg[i].flags |= cpu_to_le32(flags);
 	}
 }
 
-#endif
 
 static u8 iwl_mvm_scan_umac_chan_flags_v2(struct iwl_mvm *mvm,
 					  struct iwl_mvm_scan_params *params,
@@ -1913,7 +1902,6 @@ static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
 					   struct iwl_mvm_scan_params *params,
 					   struct ieee80211_vif *vif)
 {
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	struct ieee80211_supported_band *sband =
 		&mvm->nvm_data->bands[NL80211_BAND_6GHZ];
 	u32 n_disabled, i;
@@ -1938,22 +1926,19 @@ static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
 	}
 
 	/*
-	 * 6GHz passive scan is allowed while associated in a defined time
-	 * interval following HW reset or resume flow
+	 * 6GHz passive scan is allowed in a defined time interval following HW
+	 * reset or resume flow, or while not associated and a large interval
+	 * has passed since the last 6GHz passive scan.
 	 */
-	if (vif->bss_conf.assoc &&
+	if ((vif->bss_conf.assoc ||
+	     time_after(mvm->last_6ghz_passive_scan_jiffies +
+			(IWL_MVM_6GHZ_PASSIVE_SCAN_TIMEOUT * HZ), jiffies)) &&
 	    (time_before(mvm->last_reset_or_resume_time_jiffies +
 			 (IWL_MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT * HZ),
 			 jiffies))) {
-		IWL_DEBUG_SCAN(mvm, "6GHz passive scan: associated\n");
-		return;
-	}
-
-	/* No need for 6GHz passive scan if not enough time elapsed */
-	if (time_after(mvm->last_6ghz_passive_scan_jiffies +
-		       (IWL_MVM_6GHZ_PASSIVE_SCAN_TIMEOUT * HZ), jiffies)) {
-		IWL_DEBUG_SCAN(mvm,
-			       "6GHz passive scan: timeout did not expire\n");
+		IWL_DEBUG_SCAN(mvm, "6GHz passive scan: %s\n",
+			       vif->bss_conf.assoc ? "associated" :
+			       "timeout did not expire");
 		return;
 	}
 
@@ -2000,7 +1985,6 @@ static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
 	/* all conditions to enable 6ghz passive scan are satisfied */
 	IWL_DEBUG_SCAN(mvm, "6GHz passive scan: can be enabled\n");
 	params->enable_6ghz_passive = true;
-#endif /* CPTCFG_IWLWIFI_WIFI_6_SUPPORT */
 }
 
 static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
@@ -2010,8 +1994,16 @@ static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
 {
 	u16 flags = 0;
 
+	/*
+	 * If no direct SSIDs are provided perform a passive scan. Otherwise,
+	 * if there is a single SSID which is not the broadcast SSID, assume
+	 * that the scan is intended for roaming purposes and thus enable Rx on
+	 * all chains to improve chances of hearing the beacons/probe responses.
+	 */
 	if (params->n_ssids == 0)
 		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_FORCE_PASSIVE;
+	else if (params->n_ssids == 1 && params->ssids[0].ssid_len)
+		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_USE_ALL_RX_CHAINS;
 
 	if (iwl_mvm_is_scan_fragmented(params->type))
 		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_FRAGMENTED_LMAC1;
@@ -2042,7 +2034,6 @@ static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
 	if (type == IWL_MVM_SCAN_SCHED || type == IWL_MVM_SCAN_NETDETECT)
 		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_PREEMPTIVE;
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 
 	if ((type == IWL_MVM_SCAN_SCHED || type == IWL_MVM_SCAN_NETDETECT) &&
 	    params->flags & NL80211_SCAN_FLAG_COLOCATED_6GHZ)
@@ -2051,7 +2042,12 @@ static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
 	if (params->enable_6ghz_passive)
 		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_6GHZ_PASSIVE_SCAN;
 
-#endif
+	if (iwl_mvm_is_oce_supported(mvm) &&
+	    (params->flags & (NL80211_SCAN_FLAG_ACCEPT_BCAST_PROBE_RESP |
+			      NL80211_SCAN_FLAG_OCE_PROBE_REQ_HIGH_TX_RATE |
+			      NL80211_SCAN_FLAG_FILS_MAX_CHANNEL_TIME)))
+		flags |= IWL_UMAC_SCAN_GEN_FLAGS_V2_OCE;
+
 	return flags;
 }
 
@@ -2253,15 +2249,15 @@ static int iwl_mvm_scan_umac(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 }
 
 static void
-iwl_mvm_scan_umac_fill_general_p_v10(struct iwl_mvm *mvm,
+iwl_mvm_scan_umac_fill_general_p_v11(struct iwl_mvm *mvm,
 				     struct iwl_mvm_scan_params *params,
 				     struct ieee80211_vif *vif,
-				     struct iwl_scan_general_params_v10 *gp,
+				     struct iwl_scan_general_params_v11 *gp,
 				     u16 gen_flags)
 {
 	struct iwl_mvm_vif *scan_vif = iwl_mvm_vif_from_mac80211(vif);
 
-	iwl_mvm_scan_umac_dwell_v10(mvm, gp, params);
+	iwl_mvm_scan_umac_dwell_v11(mvm, gp, params);
 
 	gp->flags = cpu_to_le16(gen_flags);
 
@@ -2325,7 +2321,6 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
 					  channel_cfg_flags,
 					  vif->type);
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	if (params->enable_6ghz_passive) {
 		struct ieee80211_supported_band *sband =
 			&mvm->nvm_data->bands[NL80211_BAND_6GHZ];
@@ -2349,7 +2344,6 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
 			cp->count++;
 		}
 	}
-#endif /* CPTCFG_IWLWIFI_WIFI_6_SUPPORT*/
 }
 
 static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
@@ -2367,7 +2361,7 @@ static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	cmd->uid = cpu_to_le32(uid);
 
 	gen_flags = iwl_mvm_scan_umac_flags_v2(mvm, params, vif, type);
-	iwl_mvm_scan_umac_fill_general_p_v10(mvm, params, vif,
+	iwl_mvm_scan_umac_fill_general_p_v11(mvm, params, vif,
 					     &scan_p->general_params,
 					     gen_flags);
 
@@ -2384,16 +2378,15 @@ static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	return 0;
 }
 
-static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
-				 struct iwl_mvm_scan_params *params, int type,
-				 int uid)
+static int iwl_mvm_scan_umac_v14_and_above(struct iwl_mvm *mvm,
+					   struct ieee80211_vif *vif,
+					   struct iwl_mvm_scan_params *params,
+					   int type, int uid, u32 version)
 {
-	struct iwl_scan_req_umac_v14 *cmd = mvm->scan_cmd;
-	struct iwl_scan_req_params_v14 *scan_p = &cmd->scan_params;
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
+	struct iwl_scan_req_umac_v15 *cmd = mvm->scan_cmd;
+	struct iwl_scan_req_params_v15 *scan_p = &cmd->scan_params;
 	struct iwl_scan_channel_params_v6 *cp = &scan_p->channel_params;
 	struct iwl_scan_probe_params_v4 *pb = &scan_p->probe_params;
-#endif
 	int ret;
 	u16 gen_flags;
 	u32 bitmap_ssid = 0;
@@ -2404,7 +2397,7 @@ static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	cmd->uid = cpu_to_le32(uid);
 
 	gen_flags = iwl_mvm_scan_umac_flags_v2(mvm, params, vif, type);
-	iwl_mvm_scan_umac_fill_general_p_v10(mvm, params, vif,
+	iwl_mvm_scan_umac_fill_general_p_v11(mvm, params, vif,
 					     &scan_p->general_params,
 					     gen_flags);
 
@@ -2414,16 +2407,13 @@ static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	if (ret)
 		return ret;
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	if (!params->scan_6ghz) {
-#endif
 	iwl_mvm_scan_umac_fill_probe_p_v4(params, &scan_p->probe_params,
 					  &bitmap_ssid);
 	iwl_mvm_scan_umac_fill_ch_p_v6(mvm, params, vif,
 				       &scan_p->channel_params, bitmap_ssid);
 
 	return 0;
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	} else {
 		pb->preq = params->preq;
 	}
@@ -2445,7 +2435,20 @@ static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		cp->flags |= IWL_SCAN_CHANNEL_FLAG_6G_PSC_NO_FILTER;
 
 	return 0;
-#endif
+}
+
+static int iwl_mvm_scan_umac_v14(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
+				 struct iwl_mvm_scan_params *params, int type,
+				 int uid)
+{
+	return iwl_mvm_scan_umac_v14_and_above(mvm, vif, params, type, uid, 14);
+}
+
+static int iwl_mvm_scan_umac_v15(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
+				 struct iwl_mvm_scan_params *params, int type,
+				 int uid)
+{
+	return iwl_mvm_scan_umac_v14_and_above(mvm, vif, params, type, uid, 15);
 }
 
 static int iwl_mvm_num_scans(struct iwl_mvm *mvm)
@@ -2563,6 +2566,7 @@ struct iwl_scan_umac_handler {
 
 static const struct iwl_scan_umac_handler iwl_scan_umac_handlers[] = {
 	/* set the newest version first to shorten the list traverse time */
+	IWL_SCAN_UMAC_HANDLER(15),
 	IWL_SCAN_UMAC_HANDLER(14),
 	IWL_SCAN_UMAC_HANDLER(12),
 };
@@ -2659,11 +2663,9 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	params.scan_plans = &scan_plan;
 	params.n_scan_plans = 1;
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	params.n_6ghz_params = req->n_6ghz_params;
 	params.scan_6ghz_params = req->scan_6ghz_params;
 	params.scan_6ghz = req->scan_6ghz;
-#endif
 	iwl_mvm_fill_scan_type(mvm, &params, vif);
 
 	if (req->duration)
@@ -2697,10 +2699,8 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	mvm->scan_status |= IWL_MVM_SCAN_REGULAR;
 	mvm->scan_vif = iwl_mvm_vif_from_mac80211(vif);
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	if (params.enable_6ghz_passive)
 		mvm->last_6ghz_passive_scan_jiffies = jiffies;
-#endif /* CPTCFG_IWLWIFI_WIFI_6_SUPPORT */
 
 	schedule_delayed_work(&mvm->scan_timeout_dwork,
 			      msecs_to_jiffies(SCAN_TIMEOUT));
@@ -2721,10 +2721,8 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 	};
 	struct iwl_mvm_scan_params params = {};
 	int ret, uid;
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	int i, j;
 	bool non_psc_included = false;
-#endif
 
 	lockdep_assert_held(&mvm->mutex);
 
@@ -2741,10 +2739,6 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 	if (WARN_ON(!mvm->scan_cmd))
 		return -ENOMEM;
 
-#ifndef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
-	if (!iwl_mvm_scan_fits(mvm, req->n_ssids, ies, req->n_channels))
-		return -ENOBUFS;
-#endif
 
 	params.n_ssids = req->n_ssids;
 	params.flags = req->flags;
@@ -2784,7 +2778,6 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 
 	iwl_mvm_build_scan_probe(mvm, vif, ies, &params);
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	/* for 6 GHZ band only PSC channels need to be added */
 	for (i = 0; i < params.n_channels; i++) {
 		struct ieee80211_channel *channel = params.channels[i];
@@ -2818,13 +2811,10 @@ int iwl_mvm_sched_scan_start(struct iwl_mvm *mvm,
 		kfree(params.channels);
 		return -ENOBUFS;
 	}
-#endif
 	uid = iwl_mvm_build_scan_cmd(mvm, vif, &hcmd, &params, type);
 
-#ifdef CPTCFG_IWLWIFI_WIFI_6_SUPPORT
 	if (non_psc_included)
 		kfree(params.channels);
-#endif
 	if (uid < 0)
 		return uid;
 
@@ -2976,15 +2966,14 @@ static int iwl_mvm_scan_stop_wait(struct iwl_mvm *mvm, int type)
 				     1 * HZ);
 }
 
-#define IWL_SCAN_REQ_UMAC_HANDLE_SIZE(_ver) {				\
-	case (_ver): return sizeof(struct iwl_scan_req_umac_v##_ver);	\
-}
-
 static int iwl_scan_req_umac_get_size(u8 scan_ver)
 {
 	switch (scan_ver) {
-		IWL_SCAN_REQ_UMAC_HANDLE_SIZE(14);
-		IWL_SCAN_REQ_UMAC_HANDLE_SIZE(12);
+	case 12:
+		return sizeof(struct iwl_scan_req_umac_v12);
+	case 14:
+	case 15:
+		return sizeof(struct iwl_scan_req_umac_v15);
 	};
 
 	return 0;
