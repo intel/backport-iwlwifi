@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
+ * Copyright (C) 2021 Intel Corporation
  */
 #include "debugfs.h"
 #include "mvm.h"
@@ -29,8 +30,7 @@ iwl_dbgfs_ax_softap_testmode_dl_basic_write(struct iwl_mvm *mvm,
 
 	mutex_lock(&mvm->mutex);
 	ret = iwl_mvm_send_cmd_pdu_status(mvm,
-					  iwl_cmd_id(AX_SOFTAP_TESTMODE_DL_BASIC,
-						     DATA_PATH_GROUP, 0),
+					  WIDE_ID(DATA_PATH_GROUP, AX_SOFTAP_TESTMODE_DL_BASIC),
 					  count, cmd, &status);
 	mutex_unlock(&mvm->mutex);
 	if (ret) {
@@ -70,8 +70,7 @@ iwl_dbgfs_ax_softap_testmode_dl_mu_bar_write(struct iwl_mvm *mvm,
 
 	mutex_lock(&mvm->mutex);
 	ret = iwl_mvm_send_cmd_pdu_status(mvm,
-					  iwl_cmd_id(AX_SOFTAP_TESTMODE_DL_MU_BAR,
-						     DATA_PATH_GROUP, 0),
+					  WIDE_ID(DATA_PATH_GROUP, AX_SOFTAP_TESTMODE_DL_MU_BAR),
 					  count, cmd, &status);
 	mutex_unlock(&mvm->mutex);
 	if (ret) {
@@ -110,8 +109,7 @@ iwl_dbgfs_ax_softap_testmode_ul_write(struct iwl_mvm *mvm,
 
 	mutex_lock(&mvm->mutex);
 	ret = iwl_mvm_send_cmd_pdu_status(mvm,
-					  iwl_cmd_id(AX_SOFTAP_TESTMODE_UL,
-						     DATA_PATH_GROUP, 0),
+					  WIDE_ID(DATA_PATH_GROUP, AX_SOFTAP_TESTMODE_UL),
 					  count, cmd, &status);
 	mutex_unlock(&mvm->mutex);
 	if (ret) {

@@ -22,7 +22,7 @@ static inline u32 iwl_dhc_resp_status(const struct iwl_fw *fw,
 				      struct iwl_rx_packet *pkt)
 {
 	if (iwl_fw_lookup_notif_ver(fw, IWL_ALWAYS_LONG_GROUP,
-				    DEBUG_HOST_COMMAND, 1) == 2) {
+				    DEBUG_HOST_COMMAND, 1) >= 2) {
 		struct iwl_dhc_cmd_resp *resp = (void *)pkt->data;
 
 		if (iwl_rx_packet_payload_len(pkt) < sizeof(*resp))
@@ -53,7 +53,7 @@ static inline void *iwl_dhc_resp_data(const struct iwl_fw *fw,
 				      unsigned int *len)
 {
 	if (iwl_fw_lookup_notif_ver(fw, IWL_ALWAYS_LONG_GROUP,
-				    DEBUG_HOST_COMMAND, 1) == 2) {
+				    DEBUG_HOST_COMMAND, 1) >= 2) {
 		struct iwl_dhc_cmd_resp *resp = (void *)pkt->data;
 
 		if (iwl_rx_packet_payload_len(pkt) < sizeof(*resp))

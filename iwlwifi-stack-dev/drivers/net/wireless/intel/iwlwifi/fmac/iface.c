@@ -57,8 +57,7 @@ static int __iwl_fmac_dev_stop(struct net_device *dev)
 
 	atomic_dec(&fmac->open_count);
 
-	ret = iwl_fmac_send_cmd_pdu(fmac, iwl_cmd_id(FMAC_DEL_VIF,
-						     FMAC_GROUP, 0),
+	ret = iwl_fmac_send_cmd_pdu(fmac, WIDE_ID(FMAC_GROUP, FMAC_DEL_VIF),
 				    0, sizeof(cmd), &cmd);
 	WARN_ON(ret);
 
@@ -88,7 +87,7 @@ static int iwl_fmac_dev_open(struct net_device *dev)
 	struct iwl_fmac_add_vif_cmd cmd = {};
 	struct iwl_fmac_add_vif_resp *resp;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_ADD_VIF, FMAC_GROUP, 0),
+		.id = WIDE_ID(FMAC_GROUP, FMAC_ADD_VIF),
 		.flags = CMD_WANT_SKB,
 		.data = { &cmd, },
 		.len = { sizeof(cmd), },

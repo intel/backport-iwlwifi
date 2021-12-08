@@ -92,7 +92,7 @@ static int iwl_fmac_cfg_scan(struct wiphy *wiphy,
 	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
 	unsigned int cmd_size;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_SCAN, FMAC_GROUP, 0),
+		.id = WIDE_ID(FMAC_GROUP, FMAC_SCAN),
 		.dataflags = { IWL_HCMD_DFL_NOCOPY, },
 	};
 	void *ptr = NULL;
@@ -167,7 +167,7 @@ int iwl_fmac_abort_scan(struct iwl_fmac *fmac, struct iwl_fmac_vif *vif)
 	IWL_DEBUG_SCAN(fmac, "Preparing to stop scan\n");
 
 	ret = iwl_fmac_send_cmd_pdu(fmac,
-				    iwl_cmd_id(FMAC_SCAN_ABORT, FMAC_GROUP, 0),
+				    WIDE_ID(FMAC_GROUP, FMAC_SCAN_ABORT),
 				    0, sizeof(cmd), &cmd);
 	if (ret) {
 		IWL_DEBUG_SCAN(fmac, "couldn't stop scan\n");
@@ -361,7 +361,7 @@ static int iwl_fmac_cfg_connect(struct wiphy *wiphy, struct net_device *dev,
 
 	mutex_lock(&fmac->mutex);
 	ret = iwl_fmac_send_cmd_pdu(fmac,
-				    iwl_cmd_id(FMAC_CONNECT, FMAC_GROUP, 0),
+				    WIDE_ID(FMAC_GROUP, FMAC_CONNECT),
 				    0, sizeof(cmd), &cmd);
 	mutex_unlock(&fmac->mutex);
 
@@ -403,8 +403,7 @@ static int iwl_fmac_cfg_disconnect(struct wiphy *wiphy,
 		 */
 
 		ret = iwl_fmac_send_cmd_pdu_status(fmac,
-						   iwl_cmd_id(FMAC_DISCONNECT,
-							      FMAC_GROUP, 0),
+						   WIDE_ID(FMAC_GROUP, FMAC_DISCONNECT),
 						   sizeof(cmd), &cmd, &status);
 	}
 
@@ -787,7 +786,7 @@ static int iwl_fmac_mgmt_tx(struct wiphy *wiphy,
 {
 	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
 	struct iwl_fmac_vif *vif = vif_from_wdev(wdev);
-	const struct ieee80211_mgmt *mgmt = (void *)params->buf;
+	const struct ieee80211_mgmt *mgmt = (const void *)params->buf;
 	struct iwl_fmac_tx_data tx = {};
 	struct iwl_fmac_skb_info *info;
 	struct sk_buff *skb;
@@ -927,7 +926,7 @@ static int iwl_fmac_set_pmk(struct wiphy *wiphy, struct net_device *dev,
 
 	mutex_lock(&fmac->mutex);
 	ret = iwl_fmac_send_cmd_pdu(fmac,
-				    iwl_cmd_id(FMAC_SET_PMK, FMAC_GROUP, 0),
+				    WIDE_ID(FMAC_GROUP, FMAC_SET_PMK),
 				    0, sizeof(cmd), &cmd);
 	mutex_unlock(&fmac->mutex);
 
@@ -967,8 +966,7 @@ static int iwl_fmac_external_auth(struct wiphy *wiphy, struct net_device *dev,
 
 	mutex_lock(&fmac->mutex);
 	ret = iwl_fmac_send_cmd_pdu(fmac,
-				    iwl_cmd_id(FMAC_EXTERNAL_AUTH_STATUS,
-					       FMAC_GROUP, 0),
+				    WIDE_ID(FMAC_GROUP, FMAC_EXTERNAL_AUTH_STATUS),
 				    0, sizeof(cmd), &cmd);
 	mutex_unlock(&fmac->mutex);
 

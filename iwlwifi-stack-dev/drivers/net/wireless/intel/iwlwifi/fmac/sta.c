@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #include "iwl-debug.h"
 
@@ -323,8 +323,7 @@ static void iwl_fmac_destroy_sta(struct iwl_fmac *fmac,
 
 		/* acknowledge the removal to the firmware */
 		WARN(iwl_fmac_send_cmd_pdu(fmac,
-					   iwl_cmd_id(FMAC_ACK_STA_REMOVED,
-						      FMAC_GROUP, 0), 0,
+					   WIDE_ID(FMAC_GROUP, FMAC_ACK_STA_REMOVED), 0,
 					   sizeof(cmd), &cmd),
 		     "Failed to acknowledge station removal\n");
 	}

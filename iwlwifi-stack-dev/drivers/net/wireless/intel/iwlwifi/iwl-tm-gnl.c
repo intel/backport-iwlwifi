@@ -899,7 +899,7 @@ static int iwl_tm_gnl_dump(struct sk_buff *skb, struct netlink_callback *cb)
 	struct iwl_tm_gnl_cmd cmd_data;
 	void *nlmsg_head = NULL;
 	struct nlattr *attrs[IWL_TM_GNL_MSG_ATTR_MAX];
-	void *dump_addr;
+	u8 *dump_addr;
 	unsigned long dump_offset;
 	int dump_size, chunk_size, ret;
 

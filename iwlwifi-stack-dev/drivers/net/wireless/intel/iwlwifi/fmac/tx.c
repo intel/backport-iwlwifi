@@ -1126,8 +1126,7 @@ static void iwl_fmac_set_tx_cmd_rate(struct iwl_fmac *fmac,
 			min(tx_cmd->data_retry_limit, tx_cmd->rts_retry_limit);
 	}
 
-	is_new_rate = (iwl_fw_lookup_cmd_ver(fmac->fw, LEGACY_GROUP,
-					     TX_CMD, 0) > 8);
+	is_new_rate = (iwl_fw_lookup_cmd_ver(fmac->fw, WIDE_ID(LEGACY_GROUP, TX_CMD), 0) > 8);
 
 	if (tx->flags & IWL_FMAC_SKB_INFO_FLAG_BAND_5 ||
 	    tx->flags & IWL_FMAC_SKB_INFO_FLAG_NO_CCK)

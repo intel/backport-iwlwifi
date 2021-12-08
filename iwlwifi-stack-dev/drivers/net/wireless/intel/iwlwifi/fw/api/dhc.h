@@ -226,7 +226,7 @@ struct iwl_dhc_cmd_resp {
 	__le32 status;
 	__le32 descriptor;
 	__le32 data[0];
-} __packed; /* DHC_RESP_API_S_VER_2 */
+} __packed; /* DHC_RESP_API_S_VER_2 and DHC_RESP_API_S_VER_3 */
 
 /**
  * struct iwl_dhc_profile_cmd - profiling command.
@@ -523,6 +523,22 @@ struct iwl_profiling_umac_metrics_report {
 } __packed; /* PROFILING_UMAC_METRICS_REPORT_API_S */
 
 /**
+ * struct iwl_ltr_statistic_report
+ * @tx_active_time: time during which ltr was in tx active state
+ * @rx_active_time: time during which ltr was in rx active state
+ * @rx_listen_time: time during which ltr was in rx listen state
+ * @power_save_time: time during which ltr was in power save state
+ * @total_time: total time of statistic collection
+ */
+struct iwl_ltr_statistics_report {
+	__le32 tx_active_time;
+	__le32 rx_active_time;
+	__le32 rx_listen_time;
+	__le32 power_save_time;
+	__le32 total_time;
+} __packed; /* LTR_STATISTICS_REPORT_API_S */
+
+/**
  * struct iwl_ps_report {
  * @total_sleep_counter: number of times NIC actually go to PD [cnt]
  * @total_sleep_duration: total sleep duration of sleep-master CPU [usec]
@@ -553,6 +569,7 @@ struct iwl_profiling_umac_metrics_report {
  * @max_pd_duration: maximum UMAC power down duration
  * @max_phy_pu_duration: maximum power up duration per LMAC
  * @max_phy_pd_duration: maximum power down duration per LMAC
+ * @ltr: ltr statistics report collection
  */
 struct iwl_ps_report {
 	__le32 total_sleep_counter;
@@ -579,6 +596,7 @@ struct iwl_ps_report {
 	__le16 max_pd_duration;
 	__le16 max_phy_pu_duration[2];
 	__le16 max_phy_pd_duration[2];
+	struct iwl_ltr_statistics_report ltr;
 } __packed; /* PS_REPORT_API_S_VER_6 */
 
 /**

@@ -45,6 +45,9 @@ iwlwifi-$(CPTCFG_IWLWIFI_DEVICE_TESTMODE) += iwl-dnt-dev-if.o fw/testmode.o
 
 ccflags-y += -I$(src)
 subdir-ccflags-y += $(call cc-option,-Wimplicit-fallthrough)
+# for FreeBSD compatibility - they use most of our driver
+subdir-ccflags-$(CPTCFG_IWLWIFI_SIMULATION) += $(call cc-option,-Wcast-qual)
+subdir-ccflags-$(CPTCFG_IWLWIFI_SIMULATION) += $(call cc-option,-Wpointer-arith)
 
 obj-$(CPTCFG_IWLDVM)	+= dvm/
 obj-$(CPTCFG_IWLMVM)	+= mvm/

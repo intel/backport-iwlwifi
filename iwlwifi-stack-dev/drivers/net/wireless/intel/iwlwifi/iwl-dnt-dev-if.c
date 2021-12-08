@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2014, 2019-2020 Intel Corporation
+ * Copyright (C) 2014, 2019-2021 Intel Corporation
  * Copyright (C) 2014 Intel Mobile Communications GmbH
  */
 #include <linux/types.h>
@@ -147,7 +147,7 @@ static void iwl_dnt_dev_if_configure_dbgm_registers(struct iwl_trans *trans,
 
 static int iwl_dnt_dev_if_retrieve_dma_monitor_data(struct iwl_dnt *dnt,
 						    struct iwl_trans *trans,
-						    void *buffer,
+						    u8 *buffer,
 						    u32 buffer_size)
 {
 	struct iwl_dbg_cfg *cfg = &trans->dbg_cfg;

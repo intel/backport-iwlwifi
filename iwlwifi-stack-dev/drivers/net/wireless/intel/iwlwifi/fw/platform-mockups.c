@@ -142,7 +142,7 @@ static int iwl_acpi_mockup_parse_object(union acpi_object *object,
 	if (len < 1)
 		return -EINVAL;
 
-	object->type = *(u8 *)data;
+	object->type = *(const u8 *)data;
 
 	used += sizeof(u8);
 	data += sizeof(u8);
@@ -177,7 +177,7 @@ static int iwl_acpi_mockup_parse_object(union acpi_object *object,
 static int iwl_acpi_mockup_parse_dsm(const u8 *data, int len)
 {
 	struct mockup_acpi_dsm_func *func;
-	struct mockup_acpi_dsm_key *key;
+	const struct mockup_acpi_dsm_key *key;
 	int used = 0;
 
 	while (len >= sizeof(*key)) {
@@ -187,7 +187,7 @@ static int iwl_acpi_mockup_parse_dsm(const u8 *data, int len)
 		if (!func)
 			return -ENOMEM;
 
-		key = (void *)data;
+		key = (const void *)data;
 
 		func->key.guid32 = get_unaligned_be32(&key->guid32);
 		func->key.guid16_1 = get_unaligned_be16(&key->guid16_1);
@@ -238,7 +238,7 @@ int iwl_platform_mockups_init(void)
 		goto out;
 
 	len = tables_file->size;
-	obj = (void *)tables_file->data;
+	obj = (const void *)tables_file->data;
 
 	while (len >= sizeof(*obj)) {
 		struct mockup_acpi_handle *new_method;

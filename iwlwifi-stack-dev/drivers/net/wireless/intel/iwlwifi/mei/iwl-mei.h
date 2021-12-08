@@ -110,6 +110,40 @@
  */
 
 /**
+ * DOC: CSME behavior regarding the ownership requests
+ *
+ * The ownership requests from the host can come in two different ways:
+ *  - the HW registers in iwl_pcie_set_hw_ready
+ *  - using the Software Arbitration Protocol (SAP)
+ *
+ * The host can ask CSME who owns the device with %SAP_MSG_NOTIF_WHO_OWNS_NIC,
+ * and it can request ownership with %SAP_MSG_NOTIF_HOST_ASKS_FOR_NIC_OWNERSHIP.
+ * The host will first use %SAP_MSG_NOTIF_WHO_OWNS_NIC to know what state
+ * CSME is in. In case CSME thinks it owns the device, the host can ask for
+ * ownership with %SAP_MSG_NOTIF_HOST_ASKS_FOR_NIC_OWNERSHIP.
+ *
+ * Here the table that describes CSME's behavior upon ownership request:
+ *
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ * | State             | HW reg bit | Reply for    | Event                       | HW reg bit |
+ * |                   | before     | WHO_OWNS_NIC |                             | after      |
+ * +===================+============+==============+=============================+============+
+ * | WiAMT not         | 0          | Host         | HW register or              | 0          |
+ * | operational       | Host owner |              | HOST_ASKS_FOR_NIC_OWNERSHIP | Host owner |
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ * | Operational &     | 1          | N/A          | HW register                 | 0          |
+ * | SAP down &        | CSME owner |              |                             | Host owner |
+ * | no session active |            |              |                             |            |
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ * | Operational &     | 1          | CSME         | HW register                 | 1          |
+ * | SAP up            | CSME owner |              |                             | CSME owner |
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ * | Operational &     | 1          | CSME         | HOST_ASKS_FOR_NIC_OWNERSHIP | 0          |
+ * | SAP up            | CSME owner |              |                             | Host owner |
+ * +-------------------+------------+--------------+-----------------------------+------------+
+ */
+
+/**
  * DOC: Driver load when CSME is associated and a session is active
  *
  * A "session" is active when CSME is associated to an access point and the

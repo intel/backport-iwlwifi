@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018 Intel Corporation
+ * Copyright (C) 2012-2014, 2018, 2021 Intel Corporation
  * Copyright (C) 2013-2014 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -168,7 +168,7 @@ int iwl_mvm_dhc_quota_enforce(struct iwl_mvm *mvm,
 {
 	struct iwl_dhc_cmd *dhc_cmd;
 	struct iwl_dhc_quota_enforce *dhc_quota_cmd;
-	u32 cmd_id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0);
+	u32 cmd_id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND);
 	int ret;
 
 	lockdep_assert_held(&mvm->mutex);

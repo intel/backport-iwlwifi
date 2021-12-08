@@ -240,6 +240,7 @@ remove_notif:
 
 static int iwl_fmac_send_phy_cfg_cmd(struct iwl_fmac *fmac)
 {
+	u32 cmd_id = PHY_CONFIGURATION_CMD;
 	struct iwl_phy_cfg_cmd_v3 phy_cfg_cmd;
 	enum iwl_ucode_type ucode_type = fmac->fwrt.cur_fw_img;
 	size_t cmd_size;
@@ -329,16 +330,14 @@ static int iwl_fmac_send_phy_cfg_cmd(struct iwl_fmac *fmac)
 				event_override);
 	}
 #endif
-	cmd_size = iwl_fw_lookup_cmd_ver(fmac->fw, IWL_ALWAYS_LONG_GROUP,
-					 PHY_CONFIGURATION_CMD,
+	cmd_size = iwl_fw_lookup_cmd_ver(fmac->fw, cmd_id,
 					 IWL_FW_CMD_VER_UNKNOWN) == 3 ?
 					    sizeof(struct iwl_phy_cfg_cmd_v3) :
 					    sizeof(struct iwl_phy_cfg_cmd_v1);
 	IWL_DEBUG_INFO(fmac, "Sending Phy CFG command: 0x%x\n",
 		       phy_cfg_cmd.phy_cfg);
 
-	return iwl_fmac_send_cmd_pdu(fmac, PHY_CONFIGURATION_CMD, 0,
-				cmd_size, &phy_cfg_cmd);
+	return iwl_fmac_send_cmd_pdu(fmac, cmd_id, 0, cmd_size, &phy_cfg_cmd);
 }
 
 struct ieee80211_regdomain *
@@ -351,7 +350,7 @@ iwl_fmac_set_regdom(struct iwl_fmac *fmac, const char *mcc,
 	};
 	struct iwl_host_cmd hcmd = {
 		.flags = CMD_WANT_SKB,
-		.id = iwl_cmd_id(FMAC_REG_CFG, FMAC_GROUP, 0),
+		.id = WIDE_ID(FMAC_GROUP, FMAC_REG_CFG),
 		.data = { &cmd, },
 		.len = { sizeof(cmd), },
 	};
@@ -447,8 +446,9 @@ static void iwl_fmac_lari_cfg(struct iwl_fmac *fmac)
 	    cmd.oem_unii4_allow_bitmap) {
 		size_t cmd_size;
 		u8 cmd_ver = iwl_fw_lookup_cmd_ver(fmac->fw,
-						   REGULATORY_AND_NVM_GROUP,
-						   LARI_CONFIG_CHANGE, 1);
+						   WIDE_ID(REGULATORY_AND_NVM_GROUP,
+							   LARI_CONFIG_CHANGE),
+						   1);
 		if (cmd_ver == 4)
 			cmd_size = sizeof(struct iwl_lari_config_change_cmd_v4);
 		else if (cmd_ver == 3)
@@ -641,7 +641,7 @@ static int iwl_send_rss_cfg_cmd(struct iwl_fmac *fmac)
 			     BIT(IWL_RSS_HASH_TYPE_IPV6_PAYLOAD),
 	};
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(RSS_CONFIG_CMD, LEGACY_GROUP, 0),
+		.id = WIDE_ID(LEGACY_GROUP, RSS_CONFIG_CMD),
 		.data = { &cmd, },
 		.len = { sizeof(cmd), },
 	};
@@ -666,7 +666,7 @@ int iwl_fmac_send_config_cmd(struct iwl_fmac *fmac,
 	struct iwl_fmac_config_cmd *cmd;
 	u16 cmd_len = sizeof(*cmd) + len;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_CONFIG, FMAC_GROUP, 0),
+		.id = WIDE_ID(FMAC_GROUP, FMAC_CONFIG),
 		.len = { cmd_len },
 	};
 	int ret;

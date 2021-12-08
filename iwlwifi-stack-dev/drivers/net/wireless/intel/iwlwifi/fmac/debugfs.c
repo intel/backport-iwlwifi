@@ -252,7 +252,7 @@ static ssize_t iwl_dbgfs_debug_profile_write(struct iwl_fmac *fmac,
 	struct iwl_dhc_cmd *dhc_cmd;
 	struct iwl_dhc_profile_cmd *profile_cmd;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0),
+		.id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND),
 	};
 	int ret;
 	u32 report, reset, period, metrics;
@@ -312,7 +312,7 @@ static ssize_t iwl_dbgfs_rs_table_write(struct file *file,
 	struct iwl_fmac *fmac;
 	struct iwl_dhc_cmd *dhc_cmd;
 	struct iwl_dhc_tlc_cmd *dhc_tlc_cmd;
-	u32 cmd_id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0);
+	u32 cmd_id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND);
 	u32 hw_rate;
 	int ret;
 
@@ -354,7 +354,7 @@ static int iwl_rs_set_ampdu_size(struct iwl_fmac *fmac,
 {
 	struct iwl_dhc_cmd *dhc_cmd;
 	struct iwl_dhc_tlc_cmd *dhc_tlc_cmd;
-	u32 cmd_id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0);
+	u32 cmd_id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND);
 	int ret;
 
 	dhc_cmd = kzalloc(sizeof(*dhc_cmd) + sizeof(*dhc_tlc_cmd), GFP_KERNEL);
@@ -463,8 +463,7 @@ static ssize_t iwl_dbgfs_mem_read(struct file *file, char __user *user_buf,
 	size_t delta;
 	ssize_t len, ret;
 
-	hcmd.id = iwl_cmd_id(*ppos >> 24 ? UMAC_RD_WR : LMAC_RD_WR,
-			     DEBUG_GROUP, 0);
+	hcmd.id = WIDE_ID(DEBUG_GROUP, *ppos >> 24 ? UMAC_RD_WR : LMAC_RD_WR);
 	cmd.op = cpu_to_le32(DEBUG_MEM_OP_READ);
 
 	/* Take care of alignment of both the position and the length */
@@ -494,7 +493,7 @@ static ssize_t iwl_dbgfs_mem_read(struct file *file, char __user *user_buf,
 		goto out;
 	}
 
-	ret = len - copy_to_user(user_buf, (void *)rsp->data + delta, len);
+	ret = len - copy_to_user(user_buf, (u8 *)rsp->data + delta, len);
 	*ppos += ret;
 
 out:
@@ -515,8 +514,7 @@ static ssize_t iwl_dbgfs_mem_write(struct file *file,
 	u32 op, len;
 	ssize_t ret;
 
-	hcmd.id = iwl_cmd_id(*ppos >> 24 ? UMAC_RD_WR : LMAC_RD_WR,
-			     DEBUG_GROUP, 0);
+	hcmd.id = WIDE_ID(DEBUG_GROUP, *ppos >> 24 ? UMAC_RD_WR : LMAC_RD_WR);
 
 	if (*ppos & 0x3 || count < 4) {
 		op = DEBUG_MEM_OP_WRITE_BYTES;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014 Intel Corporation
+ * Copyright (C) 2012-2014, 2021 Intel Corporation
  * Copyright (C) 2015 Intel Deutschland GmbH
  */
 #include <linux/firmware.h>
@@ -146,7 +146,7 @@ static int iwl_xvt_load_external_nvm(struct iwl_xvt *xvt)
 	}
 
 	eof = fw_entry->data + fw_entry->size;
-	dword_buff = (__le32 *)fw_entry->data;
+	dword_buff = (const __le32 *)fw_entry->data;
 
 	/* some NVM file will contain a header.
 	 * The header is identified by 2 dwords header as follows:
@@ -158,12 +158,12 @@ static int iwl_xvt_load_external_nvm(struct iwl_xvt *xvt)
 	if (fw_entry->size > NVM_HEADER_SIZE &&
 	    dword_buff[0] == cpu_to_le32(NVM_HEADER_0) &&
 	    dword_buff[1] == cpu_to_le32(NVM_HEADER_1)) {
-		file_sec = (void *)(fw_entry->data + NVM_HEADER_SIZE);
+		file_sec = (const void *)(fw_entry->data + NVM_HEADER_SIZE);
 		IWL_INFO(xvt, "NVM Version %08X\n", le32_to_cpu(dword_buff[2]));
 		IWL_INFO(xvt, "NVM Manufacturing date %08X\n",
 			 le32_to_cpu(dword_buff[3]));
 	} else {
-		file_sec = (void *)fw_entry->data;
+		file_sec = (const void *)fw_entry->data;
 	}
 
 	while (true) {
@@ -244,7 +244,7 @@ static int iwl_xvt_load_external_nvm(struct iwl_xvt *xvt)
 		}
 
 		/* advance to the next section */
-		file_sec = (void *)(file_sec->data + section_size);
+		file_sec = (const void *)(file_sec->data + section_size);
 	}
 out:
 	release_firmware(fw_entry);

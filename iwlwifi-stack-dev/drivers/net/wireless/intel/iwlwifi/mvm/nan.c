@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
- * Copyright (C) 2018, 2020 Intel Corporation
+ * Copyright (C) 2018, 2020-2021 Intel Corporation
  */
 #include <net/cfg80211.h>
 #include <linux/etherdevice.h>
@@ -94,8 +94,7 @@ int iwl_mvm_start_nan(struct ieee80211_hw *hw,
 		return -EINVAL;
 
 	/* This function should not be called when using ADD_STA ver >=12 */
-	WARN_ON_ONCE(iwl_fw_lookup_cmd_ver(mvm->fw, LONG_GROUP,
-					   ADD_STA, 0) >= 12);
+	WARN_ON_ONCE(iwl_fw_lookup_cmd_ver(mvm->fw, ADD_STA, 0) >= 12);
 
 	conf->bands |= BIT(NL80211_BAND_2GHZ);
 	cmd = kzalloc(iwl_mvm_nan_cfg_cmd_len(hw), GFP_KERNEL);
@@ -146,8 +145,7 @@ int iwl_mvm_start_nan(struct ieee80211_hw *hw,
 	    (conf->bands & BIT(NL80211_BAND_5GHZ)))
 		umac_cfg->dual_band = cpu_to_le32(1);
 
-	ret = iwl_mvm_send_cmd_pdu(mvm, iwl_cmd_id(NAN_CONFIG_CMD,
-						   NAN_GROUP, 0),
+	ret = iwl_mvm_send_cmd_pdu(mvm, WIDE_ID(NAN_GROUP, NAN_CONFIG_CMD),
 				   0, iwl_mvm_nan_cfg_cmd_len(hw), cmd);
 
 	if (!ret)
@@ -179,8 +177,7 @@ int iwl_mvm_stop_nan(struct ieee80211_hw *hw,
 	mutex_lock(&mvm->mutex);
 	umac_cfg->action = cpu_to_le32(FW_CTXT_ACTION_REMOVE);
 
-	ret = iwl_mvm_send_cmd_pdu(mvm, iwl_cmd_id(NAN_CONFIG_CMD,
-						   NAN_GROUP, 0),
+	ret = iwl_mvm_send_cmd_pdu(mvm, WIDE_ID(NAN_GROUP, NAN_CONFIG_CMD),
 				   0, iwl_mvm_nan_cfg_cmd_len(hw), cmd);
 
 	if (!ret)
@@ -279,7 +276,7 @@ int iwl_mvm_add_nan_func(struct ieee80211_hw *hw,
 	struct iwl_nan_add_func_common *cmn;
 	struct iwl_nan_add_func_common_tail *tail;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(NAN_DISCOVERY_FUNC_CMD, NAN_GROUP, 0),
+		.id = WIDE_ID(NAN_GROUP, NAN_DISCOVERY_FUNC_CMD),
 		.flags = CMD_WANT_SKB,
 	};
 	struct iwl_nan_add_func_res *resp;
@@ -483,8 +480,8 @@ void iwl_mvm_del_nan_func(struct ieee80211_hw *hw,
 	cmn->action = cpu_to_le32(FW_CTXT_ACTION_REMOVE);
 	cmn->instance_id = instance_id;
 
-	ret = iwl_mvm_send_cmd_pdu(mvm, iwl_cmd_id(NAN_DISCOVERY_FUNC_CMD,
-						   NAN_GROUP, 0),
+	ret = iwl_mvm_send_cmd_pdu(mvm,
+				   WIDE_ID(NAN_GROUP, NAN_DISCOVERY_FUNC_CMD),
 				   0, iwl_mvm_nan_add_func_cmd_len(hw), cmd);
 	if (ret)
 		IWL_ERR(mvm, "Failed to remove NAN func instance_id: %d\n",
@@ -651,8 +648,8 @@ int iwl_mvm_nan_config_nan_faw_cmd(struct iwl_mvm *mvm,
 	cmd.id_n_color = cpu_to_le32(FW_CMD_ID_AND_COLOR(mvmvif->id,
 							 mvmvif->color));
 
-	ret = iwl_mvm_send_cmd_pdu(mvm, iwl_cmd_id(NAN_FAW_CONFIG_CMD,
-						   NAN_GROUP, 0),
+	ret = iwl_mvm_send_cmd_pdu(mvm,
+				   WIDE_ID(NAN_GROUP, NAN_FAW_CONFIG_CMD),
 				   0, sizeof(cmd), &cmd);
 
 	mutex_unlock(&mvm->mutex);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2020 Intel Corporation
+ * Copyright (C) 2018-2021 Intel Corporation
  */
 #include <linux/netdevice.h>
 #include <uapi/linux/if_ether.h>
@@ -499,8 +499,8 @@ static void iwl_fmac_create_skb(struct iwl_fmac *fmac,
 	fraglen = len - headlen;
 
 	if (fraglen) {
-		int offset = hdr + headlen + pad_len -
-			     rxb_addr(preskb->rxb) + rxb_offset(preskb->rxb);
+		int offset = (u8 *)hdr + headlen + pad_len -
+			     (u8 *)rxb_addr(preskb->rxb) + rxb_offset(preskb->rxb);
 
 		skb_add_rx_frag(skb, 0, rxb_steal_page(preskb->rxb), offset,
 				fraglen, preskb->rxb->truesize);
@@ -791,9 +791,7 @@ static bool iwl_fmac_accept_tkip_tsc(struct iwl_fmac *fmac,
 				cpu_to_le16(iv16);
 
 			iwl_fmac_send_cmd_pdu(fmac,
-					      iwl_cmd_id(FMAC_TKIP_SET_MCAST_RSC,
-							 FMAC_GROUP,
-							 0),
+					      WIDE_ID(FMAC_GROUP, FMAC_TKIP_SET_MCAST_RSC),
 					      CMD_ASYNC, sizeof(cmd), &cmd);
 		}
 #else
@@ -809,8 +807,7 @@ static bool iwl_fmac_accept_tkip_tsc(struct iwl_fmac *fmac,
 		};
 
 		iwl_fmac_send_cmd_pdu(fmac,
-				      iwl_cmd_id(FMAC_MIC_FAILURE, FMAC_GROUP,
-						 0),
+				      WIDE_ID(FMAC_GROUP, FMAC_MIC_FAILURE),
 				      CMD_ASYNC, sizeof(cmd), &cmd);
 
 		return false;
@@ -949,8 +946,8 @@ static void iwl_fmac_create_eth_skb(struct iwl_fmac *fmac,
 
 	fraglen = len - headlen;
 	if (fraglen) {
-		int offset = (void *)hdr + headlen -
-			     rxb_addr(preskb->rxb) + rxb_offset(preskb->rxb);
+		int offset = (u8 *)hdr + headlen -
+			     (u8 *)rxb_addr(preskb->rxb) + rxb_offset(preskb->rxb);
 
 		skb_add_rx_frag(skb, 0, rxb_steal_page(preskb->rxb), offset,
 				fraglen, preskb->rxb->truesize);

@@ -432,8 +432,7 @@ void iwl_mvm_tlc_update_notif(struct iwl_mvm *mvm,
 
 u16 rs_fw_get_max_amsdu_len(struct ieee80211_sta *sta);
 
-int iwl_rs_send_dhc(struct iwl_mvm *mvm, struct iwl_lq_sta_rs_fw *lq_sta,
-		    u32 type, u32 data);
+int iwl_rs_send_dhc(struct iwl_mvm *mvm, u8 sta_id, u32 type, u32 data);
 
 #if defined(CPTCFG_MAC80211_DEBUGFS) && defined(CPTCFG_IWLWIFI_DHC_PRIVATE)
 int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta, u32 ampdu_size);

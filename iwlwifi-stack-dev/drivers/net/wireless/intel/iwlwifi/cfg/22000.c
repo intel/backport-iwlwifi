@@ -7,9 +7,10 @@
 #include <linux/stringify.h>
 #include "iwl-config.h"
 #include "iwl-prph.h"
+#include "fw/api/txq.h"
 
 /* Highest firmware API version supported */
-#define IWL_22000_UCODE_API_MAX	68
+#define IWL_22000_UCODE_API_MAX	70
 
 /* Lowest firmware API version supported */
 #define IWL_22000_UCODE_API_MIN	39
@@ -40,6 +41,7 @@
 #define IWL_SO_A_GF_A_FW_PRE		"iwlwifi-so-a0-gf-a0-"
 #define IWL_TY_A_GF_A_FW_PRE		"iwlwifi-ty-a0-gf-a0-"
 #define IWL_SO_A_GF4_A_FW_PRE		"iwlwifi-so-a0-gf4-a0-"
+#define IWL_SO_A_MR_A_FW_PRE		"iwlwifi-so-a0-mr-a0-"
 #define IWL_SNJ_A_GF4_A_FW_PRE		"iwlwifi-SoSnj-a0-gf4-a0-"
 #define IWL_SNJ_A_GF_A_FW_PRE		"iwlwifi-SoSnj-a0-gf-a0-"
 #define IWL_SNJ_A_HR_B_FW_PRE		"iwlwifi-SoSnj-a0-hr-b0-"
@@ -225,7 +227,7 @@ static const struct iwl_ht_params iwl_22000_ht_params = {
 	.trans.base_params = &iwl_ax210_base_params,			\
 	.min_txq_size = 128,						\
 	.gp2_reg_addr = 0xd02c68,					\
-	.min_256_ba_txq_size = 1024,					\
+	.min_ba_txq_size = IWL_DEFAULT_QUEUE_SIZE_HE,		\
 	.mon_dram_regs = {						\
 		.write_ptr = {						\
 			.addr = DBGC_CUR_DBGBUF_STATUS,			\
@@ -253,7 +255,7 @@ static const struct iwl_ht_params iwl_22000_ht_params = {
 	.dccm2_len = IWL_22000_DCCM2_LEN,				\
 	.smem_offset = IWL_22000_SMEM_OFFSET,				\
 	.smem_len = IWL_22000_SMEM_LEN,					\
-	.features = IWL_TX_CSUM_NETIF_FLAGS | NETIF_F_RXCSUM,		\
+	.features = IWL_TX_CSUM_NETIF_FLAGS_BZ | NETIF_F_RXCSUM,	\
 	.apmg_not_supported = true,					\
 	.trans.mq_rx_supported = true,					\
 	.vht_mu_mimo_supported = true,					\
@@ -286,7 +288,7 @@ static const struct iwl_ht_params iwl_22000_ht_params = {
 	.trans.base_params = &iwl_ax210_base_params,			\
 	.min_txq_size = 128,						\
 	.gp2_reg_addr = 0xd02c68,					\
-	.min_256_ba_txq_size = 1024,					\
+	.min_ba_txq_size = IWL_DEFAULT_QUEUE_SIZE_EHT,		\
 	.mon_dram_regs = {						\
 		.write_ptr = {						\
 			.addr = DBGC_CUR_DBGBUF_STATUS,			\
@@ -299,6 +301,12 @@ static const struct iwl_ht_params iwl_22000_ht_params = {
 		.cur_frag = {						\
 			.addr = DBGC_CUR_DBGBUF_STATUS,			\
 			.mask = DBGC_CUR_DBGBUF_STATUS_IDX_MSK,		\
+		},							\
+	},								\
+	.mon_dbgi_regs = {						\
+		.write_ptr = {						\
+			.addr = DBGI_SRAM_FIFO_POINTERS,		\
+			.mask = DBGI_SRAM_FIFO_POINTERS_WR_PTR_MSK,	\
 		},							\
 	}
 
@@ -477,6 +485,7 @@ const char iwl_ax101_name[] = "Intel(R) Wi-Fi 6 AX101";
 const char iwl_ax200_name[] = "Intel(R) Wi-Fi 6 AX200 160MHz";
 const char iwl_ax201_name[] = "Intel(R) Wi-Fi 6 AX201 160MHz";
 const char iwl_ax203_name[] = "Intel(R) Wi-Fi 6 AX203";
+const char iwl_ax204_name[] = "Intel(R) Wi-Fi 6 AX204 160MHz";
 const char iwl_ax211_name[] = "Intel(R) Wi-Fi 6E AX211 160MHz";
 const char iwl_ax221_name[] = "Intel(R) Wi-Fi 6E AX221 160MHz";
 const char iwl_ax231_name[] = "Intel(R) Wi-Fi 6E AX231 160MHz";
@@ -817,6 +826,20 @@ const struct iwl_cfg iwl_cfg_ma_a0_mr_a0 = {
 	.num_rbds = IWL_NUM_RBDS_AX210_HE,
 };
 
+const struct iwl_cfg iwl_cfg_ma_a0_ms_a0 = {
+	.fw_name_pre = IWL_MA_A_MR_A_FW_PRE,
+	.uhb_supported = false,
+	IWL_DEVICE_AX210,
+	.num_rbds = IWL_NUM_RBDS_AX210_HE,
+};
+
+const struct iwl_cfg iwl_cfg_so_a0_ms_a0 = {
+	.fw_name_pre = IWL_SO_A_MR_A_FW_PRE,
+	.uhb_supported = false,
+	IWL_DEVICE_AX210,
+	.num_rbds = IWL_NUM_RBDS_AX210_HE,
+};
+
 const struct iwl_cfg iwl_cfg_ma_a0_fm_a0 = {
 	.fw_name_pre = IWL_MA_A_FM_A_FW_PRE,
 	.uhb_supported = true,
@@ -827,6 +850,13 @@ const struct iwl_cfg iwl_cfg_ma_a0_fm_a0 = {
 const struct iwl_cfg iwl_cfg_snj_a0_mr_a0 = {
 	.fw_name_pre = IWL_SNJ_A_MR_A_FW_PRE,
 	.uhb_supported = true,
+	IWL_DEVICE_AX210,
+	.num_rbds = IWL_NUM_RBDS_AX210_HE,
+};
+
+const struct iwl_cfg iwl_cfg_snj_a0_ms_a0 = {
+	.fw_name_pre = IWL_SNJ_A_MR_A_FW_PRE,
+	.uhb_supported = false,
 	IWL_DEVICE_AX210,
 	.num_rbds = IWL_NUM_RBDS_AX210_HE,
 };
