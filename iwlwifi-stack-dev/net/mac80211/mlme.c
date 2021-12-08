@@ -2528,10 +2528,17 @@ static void ieee80211_sta_tx_wmm_ac_notify(struct ieee80211_sub_if_data *sdata,
 					   u16 tx_time)
 {
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
-	u16 tid = ieee80211_get_tid(hdr);
-	int ac = ieee80211_ac_from_tid(tid);
-	struct ieee80211_sta_tx_tspec *tx_tspec = &ifmgd->tx_tspec[ac];
+	u16 tid;
+	int ac;
+	struct ieee80211_sta_tx_tspec *tx_tspec;
 	unsigned long now = jiffies;
+
+	if (!ieee80211_is_data_qos(hdr->frame_control))
+		return;
+
+	tid = ieee80211_get_tid(hdr);
+	ac = ieee80211_ac_from_tid(tid);
+	tx_tspec = &ifmgd->tx_tspec[ac];
 
 	if (likely(!tx_tspec->admitted_time))
 		return;
@@ -5037,11 +5044,12 @@ static u8 ieee80211_max_rx_chains(struct ieee80211_sub_if_data *sdata,
 	if (!he_cap_elem || he_cap_elem->datalen < sizeof(*he_cap))
 		return chains;
 
-	he_cap = (void *)(he_cap_elem->data);
+	/* skip one byte ext_tag_id */
+	he_cap = (void *)(he_cap_elem->data + 1);
 	mcs_nss_size = ieee80211_he_mcs_nss_size(he_cap);
 
 	/* invalid HE IE */
-	if (he_cap_elem->datalen < mcs_nss_size + sizeof(*he_cap))
+	if (he_cap_elem->datalen < 1 + mcs_nss_size + sizeof(*he_cap))
 		return chains;
 
 	/* mcs_nss is right after he_cap info */
