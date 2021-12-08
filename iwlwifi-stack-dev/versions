@@ -1,6 +1,5 @@
 BACKPORTS_VERSION="(see git)"
 BACKPORTED_KERNEL_VERSION="(see git)"
 BACKPORTED_KERNEL_NAME="iwlwifi"
-
-BACKPORTS_GIT_TRACKED="iwlwifi-stack-dev:tags/jenkins-Core_build_core67-14^0:jenkins-Core_build_core67-14:50ecb6981"
-BACKPORTS_BUILD_TSTAMP=\"Dec 07 2021  0:13:52\"
+BACKPORTS_GIT_TRACKED="backport tracker ID: $(shell test -f ~/.iwlwifi-no-tracker-id && echo 'developer mode' || git rev-parse HEAD 2>/dev/null || echo 'not built in git tree')"
+BACKPORTS_BUILD_TSTAMP=__DATE__ \" \" __TIME__
