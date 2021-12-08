@@ -699,8 +699,12 @@ static bool cfg80211_find_ssid_match(struct cfg80211_colocated_ap *ap,
 
 	for (i = 0; i < request->n_ssids; i++) {
 		/* wildcard ssid in the scan request */
-		if (!request->ssids[i].ssid_len)
+		if (!request->ssids[i].ssid_len) {
+			if (ap->multi_bss && !ap->transmitted_bssid)
+				continue;
+
 			return true;
+		}
 
 		if (ap->ssid_len &&
 		    ap->ssid_len == request->ssids[i].ssid_len) {
@@ -824,6 +828,9 @@ static int cfg80211_scan_6ghz(struct cfg80211_registered_device *rdev)
 
 		if (request->n_ssids > 0 &&
 		    !cfg80211_find_ssid_match(ap, request))
+			continue;
+
+		if (!request->n_ssids && ap->multi_bss && !ap->transmitted_bssid)
 			continue;
 
 		cfg80211_scan_req_add_chan(request, chan, true);
@@ -1813,13 +1820,15 @@ cfg80211_get_bss_channel(struct wiphy *wiphy, const u8 *ie, size_t ielen,
 
 	if (channel->band == NL80211_BAND_6GHZ) {
 		const struct element *elem;
+		struct ieee80211_he_operation *he_oper;
 
 		elem = cfg80211_find_ext_elem(WLAN_EID_EXT_HE_OPERATION, ie,
 					      ielen);
-		if (elem && elem->datalen >= ieee80211_he_oper_size(&elem->data[1])) {
-			struct ieee80211_he_operation *he_oper =
-				(void *)(&elem->data[1]);
+		if (elem && elem->datalen >= sizeof(*he_oper) &&
+		    elem->datalen >= ieee80211_he_oper_size(&elem->data[1])) {
 			const struct ieee80211_he_6ghz_oper *he_6ghz_oper;
+
+			he_oper = (void *)&elem->data[1];
 
 			he_6ghz_oper = ieee80211_he_6ghz_oper(he_oper);
 			if (!he_6ghz_oper)

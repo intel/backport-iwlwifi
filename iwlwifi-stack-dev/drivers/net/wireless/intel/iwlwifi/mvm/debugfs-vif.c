@@ -763,8 +763,8 @@ static ssize_t iwl_dbgfs_twt_setup_write(struct ieee80211_vif *vif, char *buf,
 			    DHC_INT_UMAC_TWT_OPERATION);
 
 	mutex_lock(&mvm->mutex);
-	ret = iwl_mvm_send_cmd_pdu(mvm, iwl_cmd_id(DEBUG_HOST_COMMAND,
-						   IWL_ALWAYS_LONG_GROUP, 0),
+	ret = iwl_mvm_send_cmd_pdu(mvm,
+				   WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND),
 				   0, sizeof(*cmd) + sizeof(*dhc_twt_cmd),
 				   cmd);
 	mutex_unlock(&mvm->mutex);
@@ -801,8 +801,8 @@ static ssize_t iwl_dbgfs_htc_omi_write(struct ieee80211_vif *vif, char *buf,
 			    DHC_INT_UMAC_OMI_OPERATION);
 
 	mutex_lock(&mvm->mutex);
-	ret = iwl_mvm_send_cmd_pdu(mvm, iwl_cmd_id(DEBUG_HOST_COMMAND,
-						   IWL_ALWAYS_LONG_GROUP, 0),
+	ret = iwl_mvm_send_cmd_pdu(mvm,
+				   WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND),
 				   0, sizeof(*cmd) + sizeof(*dhc_omi_cmd),
 				   cmd);
 	mutex_unlock(&mvm->mutex);
@@ -834,8 +834,8 @@ static ssize_t iwl_dbgfs_twt_info_frame_write(struct ieee80211_vif *vif, char *b
 	*(__le32 *)cmd->data = cpu_to_le32(nextTwtOffset);
 
 	mutex_lock(&mvm->mutex);
-	ret = iwl_mvm_send_cmd_pdu(mvm, iwl_cmd_id(DEBUG_HOST_COMMAND,
-						   IWL_ALWAYS_LONG_GROUP, 0),
+	ret = iwl_mvm_send_cmd_pdu(mvm,
+				   WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND),
 				   0, sizeof(*cmd) + sizeof(nextTwtOffset),
 				   cmd);
 	mutex_unlock(&mvm->mutex);

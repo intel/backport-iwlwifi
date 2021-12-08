@@ -218,6 +218,13 @@ static int iwl_dbg_tlv_alloc_region(struct iwl_trans *trans,
 		return -EOPNOTSUPP;
 	}
 #endif
+	if (type == IWL_FW_INI_REGION_INTERNAL_BUFFER) {
+		trans->dbg.imr_data.sram_addr =
+			le32_to_cpu(reg->internal_buffer.base_addr);
+		trans->dbg.imr_data.sram_size =
+			le32_to_cpu(reg->internal_buffer.size);
+	}
+
 
 	active_reg = &trans->dbg.active_regions[id];
 	if (*active_reg) {
@@ -287,7 +294,7 @@ static int iwl_dbg_tlv_alloc_trigger(struct iwl_trans *trans,
 static int iwl_dbg_tlv_config_set(struct iwl_trans *trans,
 				  const struct iwl_ucode_tlv *tlv)
 {
-	struct iwl_fw_ini_conf_set_tlv *conf_set = (void *)tlv->data;
+	const struct iwl_fw_ini_conf_set_tlv *conf_set = (const void *)tlv->data;
 	u32 tp = le32_to_cpu(conf_set->time_point);
 	u32 type = le32_to_cpu(conf_set->set_type);
 
@@ -476,7 +483,7 @@ static int iwl_dbg_tlv_parse_bin(struct iwl_trans *trans, const u8 *data,
 
 	while (len >= sizeof(*tlv)) {
 		len -= sizeof(*tlv);
-		tlv = (void *)data;
+		tlv = (const void *)data;
 
 		tlv_len = le32_to_cpu(tlv->length);
 
@@ -593,8 +600,7 @@ static int iwl_dbg_tlv_alloc_fragments(struct iwl_fw_runtime *fwrt,
 		return 0;
 
 	num_frags = le32_to_cpu(fw_mon_cfg->max_frags_num);
-	if (!fw_has_capa(&fwrt->fw->ucode_capa,
-			 IWL_UCODE_TLV_CAPA_DBG_BUF_ALLOC_CMD_SUPP)) {
+	if (fwrt->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210) {
 		if (alloc_id != IWL_FW_INI_ALLOCATION_ID_DBGC1)
 			return -EIO;
 		num_frags = 1;

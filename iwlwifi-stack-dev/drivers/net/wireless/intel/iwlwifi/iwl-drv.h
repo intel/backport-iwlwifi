@@ -104,4 +104,7 @@ int iwl_drv_switch_op_mode(struct iwl_drv *drv, const char *new_op_name);
 #define IWL_EXPORT_SYMBOL(sym)
 #endif
 
+/* max retry for init flow */
+#define IWL_MAX_INIT_RETRY 2
+
 #endif /* __iwl_drv_h__ */

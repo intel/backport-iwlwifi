@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2015 Intel Mobile Communications GmbH
  */
 #include <linux/types.h>
@@ -10,6 +10,7 @@
 #include "iwl-modparams.h"
 #include "iwl-eeprom-parse.h"
 
+#if IS_ENABLED(CPTCFG_IWLDVM)
 /* EEPROM offset definitions */
 
 /* indirect access definitions */
@@ -647,6 +648,7 @@ static int iwl_init_channel_map(struct device *dev, const struct iwl_cfg *cfg,
 
 	return n_channels;
 }
+#endif
 
 int iwl_init_sband_channels(struct iwl_nvm_data *data,
 			    struct ieee80211_supported_band *sband,
@@ -750,6 +752,7 @@ void iwl_init_ht_hw_capab(struct iwl_trans *trans,
 	}
 }
 
+#if IS_ENABLED(CPTCFG_IWLDVM)
 static void iwl_init_sbands(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 			    struct iwl_nvm_data *data,
 			    const u8 *eeprom, size_t eeprom_size)
@@ -873,3 +876,4 @@ iwl_parse_eeprom_data(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	return NULL;
 }
 IWL_EXPORT_SYMBOL(iwl_parse_eeprom_data);
+#endif

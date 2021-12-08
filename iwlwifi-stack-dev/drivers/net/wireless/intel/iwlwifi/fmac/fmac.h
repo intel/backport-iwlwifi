@@ -143,7 +143,6 @@ struct iwl_fmac_amsdu_data {
 
 #define IWL_FMAC_INVALID_STA_ID	0xff
 #define IWL_FMAC_MAX_STA 16
-#define IWL_MAX_BAID	32
 #define IWL_FMAC_NON_QOS_TID IWL_MAX_TID_COUNT
 struct iwl_fmac_sta {
 	u8 addr[ETH_ALEN];

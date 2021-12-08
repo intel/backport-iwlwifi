@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2016 Intel Deutschland GmbH
- * Copyright (C) 2018-2019 Intel Corporation
+ * Copyright (C) 2018-2019, 2021 Intel Corporation
  */
 #include <linux/firmware.h>
 #include <linux/rtnetlink.h>
@@ -391,7 +391,7 @@ int iwl_fmac_send_nvm_cmd(struct iwl_fmac *fmac)
 {
 	struct iwl_fmac_nvm_cmd cmd = {};
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_NVM, FMAC_GROUP, 0),
+		.id = WIDE_ID(FMAC_GROUP, FMAC_NVM),
 		.data = { &cmd, },
 		.len = { sizeof(cmd), },
 	};

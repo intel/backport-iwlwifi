@@ -162,8 +162,7 @@ static void iwl_fmac_enable_txq(struct iwl_fmac *fmac, int queue, u16 ssn,
 
 	iwl_trans_txq_enable_cfg(fmac->trans, queue, ssn, NULL, wdg_timeout);
 	WARN(iwl_fmac_send_cmd_pdu(fmac,
-				   iwl_cmd_id(FMAC_SCD_QUEUE_CFG,
-					      FMAC_GROUP, 0), 0,
+				   WIDE_ID(FMAC_GROUP, FMAC_SCD_QUEUE_CFG), 0,
 				   sizeof(cmd), &cmd),
 	     "Failed to configure queue %d on FIFO %d\n", queue, cfg->fifo);
 }
@@ -184,8 +183,7 @@ static void iwl_fmac_disable_txq_old(struct iwl_fmac *fmac,
 
 	iwl_trans_txq_disable(fmac->trans, queue, false);
 	ret = iwl_fmac_send_cmd_pdu(fmac,
-				    iwl_cmd_id(FMAC_SCD_QUEUE_CFG,
-					       FMAC_GROUP, 0),
+				    WIDE_ID(FMAC_GROUP, FMAC_SCD_QUEUE_CFG),
 				    0, sizeof(cmd), &cmd);
 	if (ret)
 		IWL_ERR(fmac, "Failed to disable queue %d (ret=%d)\n",
@@ -332,8 +330,7 @@ static void iwl_fmac_fail_connection(struct iwl_fmac *fmac,
 		.reason = cpu_to_le16(WLAN_REASON_UNSPECIFIED),
 	};
 
-	iwl_fmac_send_cmd_pdu(fmac, iwl_cmd_id(FMAC_DISCONNECT,
-					       FMAC_GROUP, 0),
+	iwl_fmac_send_cmd_pdu(fmac, WIDE_ID(FMAC_GROUP, FMAC_DISCONNECT),
 			      0, sizeof(disconnect),
 			      &disconnect);
 
@@ -999,7 +996,7 @@ void iwl_fmac_nic_restart(struct iwl_fmac *fmac)
 		struct iwl_fmac_add_vif_cmd cmd = {};
 		struct iwl_fmac_add_vif_resp *resp;
 		struct iwl_host_cmd hcmd = {
-			.id = iwl_cmd_id(FMAC_ADD_VIF, FMAC_GROUP, 0),
+			.id = WIDE_ID(FMAC_GROUP, FMAC_ADD_VIF),
 			.flags = CMD_WANT_SKB,
 			.data = { &cmd, },
 			.len = { sizeof(cmd) },
@@ -2013,7 +2010,7 @@ static int iwl_fmac_alloc_queue_old(struct iwl_fmac *fmac,
 	};
 	struct iwl_fmac_req_queue_response *resp;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_REQ_QUEUE, FMAC_GROUP, 0),
+		.id = WIDE_ID(FMAC_GROUP, FMAC_REQ_QUEUE),
 		.flags = CMD_WANT_SKB,
 		.data = { &cmd, },
 		.len = { sizeof(cmd), },
@@ -2073,7 +2070,7 @@ int iwl_fmac_alloc_queue(struct iwl_fmac *fmac, struct iwl_fmac_sta *sta,
 			 u8 tid, struct ieee80211_hdr *hdr)
 {
 	int queue, size = max_t(u32, IWL_DEFAULT_QUEUE_SIZE,
-				fmac->trans->cfg->min_256_ba_txq_size);
+				fmac->trans->cfg->min_ba_txq_size);
 
 	if (!iwl_fmac_has_new_tx_api(fmac))
 		return iwl_fmac_alloc_queue_old(fmac, sta, tid, hdr);
@@ -2106,7 +2103,7 @@ static void iwl_fmac_release_txq_old(struct iwl_fmac *fmac,
 	};
 	struct iwl_fmac_rel_queue_response *rel_queue_resp;
 	struct iwl_host_cmd rel_queue_hcmd = {
-		.id = iwl_cmd_id(FMAC_REL_QUEUE, FMAC_GROUP, 0),
+		.id = WIDE_ID(FMAC_GROUP, FMAC_REL_QUEUE),
 		.flags = CMD_WANT_SKB,
 		.data = { &rel_queue_cmd, },
 		.len = { sizeof(rel_queue_cmd), },

@@ -181,8 +181,8 @@ int iwl_fmac_get_temp(struct iwl_fmac *fmac, s32 *temp)
 	 * a response. For older versions we send the command and wait for a
 	 * notification (no command TLV for previous versions).
 	 */
-	cmd_ver = iwl_fw_lookup_cmd_ver(fmac->fw, PHY_OPS_GROUP,
-					CMD_DTS_MEASUREMENT_TRIGGER_WIDE,
+	cmd_ver = iwl_fw_lookup_cmd_ver(fmac->fw,
+					WIDE_ID(PHY_OPS_GROUP, CMD_DTS_MEASUREMENT_TRIGGER_WIDE),
 					IWL_FW_CMD_VER_UNKNOWN);
 
 	if (cmd_ver == 1)

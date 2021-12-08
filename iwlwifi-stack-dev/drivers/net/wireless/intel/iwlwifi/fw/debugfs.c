@@ -155,7 +155,7 @@ static int iwl_dbgfs_enabled_severities_write(struct iwl_fw_runtime *fwrt,
 {
 	struct iwl_dbg_host_event_cfg_cmd event_cfg;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(HOST_EVENT_CFG, DEBUG_GROUP, 0),
+		.id = WIDE_ID(DEBUG_GROUP, HOST_EVENT_CFG),
 		.flags = CMD_ASYNC,
 		.data[0] = &event_cfg,
 		.len[0] = sizeof(event_cfg),
@@ -313,7 +313,7 @@ static ssize_t iwl_dbgfs_send_dhc_write(struct iwl_fw_runtime *fwrt,
 	size_t data_size = (count - 1) / 2, cmd_size;
 	struct iwl_dhc_cmd *dhc_cmd = NULL;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, LEGACY_GROUP, 0),
+		.id = WIDE_ID(LEGACY_GROUP, DEBUG_HOST_COMMAND),
 		.flags = CMD_ASYNC,
 		.len = { 0, },
 		.data = { NULL, },
@@ -392,7 +392,7 @@ static ssize_t iwl_dbgfs_tpc_enable_write(struct iwl_fw_runtime *fwrt,
 {
 	struct iwl_dhc_tlc_whole_cmd dhc_cmd = { {0} };
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0),
+		.id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND),
 		.data[0] = &dhc_cmd,
 		.len[0] = sizeof(dhc_cmd),
 	};
@@ -428,7 +428,7 @@ static ssize_t iwl_dbgfs_tpc_stats_read(struct iwl_fw_runtime *fwrt,
 {
 	struct iwl_dhc_tlc_whole_cmd dhc_cmd = { {0} };
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0),
+		.id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND),
 		.flags = CMD_WANT_SKB,
 		.data[0] = &dhc_cmd,
 		.len[0] = sizeof(dhc_cmd),
@@ -496,7 +496,7 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 	};
 
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, LEGACY_GROUP, 0),
+		.id = WIDE_ID(LEGACY_GROUP, DEBUG_HOST_COMMAND),
 		.flags = CMD_WANT_SKB,
 		.data = { &cmd, &cmd_data},
 		.len = { sizeof(cmd), sizeof(cmd_data) },
@@ -572,6 +572,16 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 	ret += PRINT_PS_REPORT_16(max_phy_pd_duration[0]);
 	ret += PRINT_PS_REPORT_16(max_phy_pd_duration[1]);
 
+	if (iwl_fw_lookup_cmd_ver(fwrt->fw,
+				  WIDE_ID(LEGACY_GROUP,
+					  DEBUG_HOST_COMMAND), 0) >= 6) {
+		ret += PRINT_PS_REPORT_32(ltr.tx_active_time);
+		ret += PRINT_PS_REPORT_32(ltr.rx_active_time);
+		ret += PRINT_PS_REPORT_32(ltr.rx_listen_time);
+		ret += PRINT_PS_REPORT_32(ltr.power_save_time);
+		ret += PRINT_PS_REPORT_32(ltr.total_time);
+	}
+
 	return ret;
 
 err:
@@ -595,7 +605,7 @@ static ssize_t iwl_dbgfs_send_ps_test_write(struct iwl_fw_runtime *fwrt,
 
 	struct iwl_dhc_cmd *dhc_cmd;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, LEGACY_GROUP, 0),
+		.id = WIDE_ID(LEGACY_GROUP, DEBUG_HOST_COMMAND),
 		.flags = CMD_WANT_SKB,
 	};
 	/* allocate the maximal amount of memory that can be sent */
@@ -672,7 +682,7 @@ static ssize_t iwl_dbgfs_ps_test_response_read
 	};
 
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, LEGACY_GROUP, 0),
+		.id = WIDE_ID(LEGACY_GROUP, DEBUG_HOST_COMMAND),
 		.flags = CMD_WANT_SKB,
 		.data = { &cmd, &cmd_data},
 		.len = { sizeof(cmd), sizeof(cmd_data) },
@@ -806,7 +816,7 @@ static int iwl_dbgfs_fw_info_seq_show(struct seq_file *seq, void *v)
 
 	ver = &fw->ucode_capa.cmd_versions[state->pos];
 
-	cmd_id = iwl_cmd_id(ver->cmd, ver->group, 0);
+	cmd_id = WIDE_ID(ver->group, ver->cmd);
 
 	seq_printf(seq, "  0x%04x:\n", cmd_id);
 	seq_printf(seq, "    name: %s\n",

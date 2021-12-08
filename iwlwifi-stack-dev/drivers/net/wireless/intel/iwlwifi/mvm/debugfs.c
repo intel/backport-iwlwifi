@@ -497,7 +497,7 @@ static ssize_t iwl_dbgfs_send_ps_config_dhc(struct iwl_mvm *mvm,
 	int ret;
 	struct iwl_dhc_cmd *dhc_cmd;
 	struct iwl_host_cmd hcmd = {
-			.id = iwl_cmd_id(DEBUG_HOST_COMMAND, LEGACY_GROUP, 0),
+			.id = WIDE_ID(LEGACY_GROUP, DEBUG_HOST_COMMAND),
 			};
 
 	/* allocate the maximal amount of memory that can be sent */
@@ -533,7 +533,7 @@ static ssize_t iwl_dbgfs_send_ps_config_dhc(struct iwl_mvm *mvm,
 static void iwl_rs_set_fixed_rate(struct iwl_mvm *mvm,
 				  struct iwl_lq_sta_rs_fw *lq_sta)
 {
-	int ret = iwl_rs_send_dhc(mvm, lq_sta,
+	int ret = iwl_rs_send_dhc(mvm, lq_sta->pers.sta_id,
 				  IWL_TLC_DEBUG_FIXED_RATE,
 				  lq_sta->pers.dbg_fixed_rate);
 
@@ -568,12 +568,11 @@ static ssize_t iwl_dbgfs_fixed_rate_write(struct ieee80211_sta *sta,
 	return count;
 }
 
-#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 static void iwl_rs_disable_rts(struct iwl_mvm *mvm,
 			       struct iwl_lq_sta_rs_fw *lq_sta,
 			       u16 sta_id, bool rts_disable)
 {
-	if (iwl_rs_send_dhc(mvm, lq_sta,
+	if (iwl_rs_send_dhc(mvm, lq_sta->pers.sta_id,
 			    IWL_TLC_DEBUG_RTS_DISABLE,
 			    rts_disable))
 		return;
@@ -603,23 +602,42 @@ static ssize_t iwl_dbgfs_tlc_dhc_write(struct ieee80211_sta *sta,
 				       char *buf, size_t count,
 				       loff_t *ppos)
 {
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->lq_sta.rs_fw;
-	u32 sta_id = lq_sta->pers.sta_id;
-	struct iwl_mvm *mvm = lq_sta->pers.drv;
 	u32 type, value;
 	int ret;
 
-	if (sscanf(buf, "%x %x", &type, &value) != 2)
-		return -EINVAL;
+	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
+	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->lq_sta.rs_fw;
+	struct iwl_mvm *mvm = lq_sta->pers.drv;
 
-	ret = iwl_rs_send_dhc(mvm, lq_sta, type, value);
+	if (sscanf(buf, "%i %i", &type, &value) != 2) {
+		IWL_DEBUG_RATE(mvm, "usage <type> <value>\n");
+		return -EINVAL;
+	}
+
+	ret = iwl_rs_send_dhc(mvm, lq_sta->pers.sta_id, type, value);
 
 	if (ret)
 		return -EINVAL;
 
-	IWL_DEBUG_RATE(mvm, "sta_id %d, type: 0x%X, value: 0x%X\n",
-		       sta_id, type, value);
+	return count;
+}
+
+static ssize_t iwl_dbgfs_iwl_tlc_dhc_write(struct iwl_mvm *mvm, char *buf,
+					   size_t count, loff_t *ppos)
+{
+	u32 sta_id, type, value;
+	int ret;
+
+	if (sscanf(buf, "%i %i %i", &sta_id, &type, &value) != 3) {
+		IWL_DEBUG_RATE(mvm, "usage <sta_id> <type> <value>\n");
+		return -EINVAL;
+	}
+
+	ret = iwl_rs_send_dhc(mvm, sta_id, type, value);
+
+	if (ret)
+		return -EINVAL;
+
 	return count;
 }
 
@@ -637,7 +655,6 @@ static ssize_t iwl_dbgfs_ampdu_size_write(struct ieee80211_sta *sta,
 	iwl_rs_dhc_set_ampdu_size(sta, ampdu_size);
 	return count;
 }
-#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 static ssize_t iwl_dbgfs_amsdu_len_write(struct ieee80211_sta *sta,
 					 char *buf, size_t count,
@@ -753,8 +770,7 @@ static ssize_t iwl_dbgfs_ax_softap_client_testmode_write(struct iwl_mvm *mvm,
 	mutex_lock(&mvm->mutex);
 
 	ret = iwl_mvm_send_cmd_pdu_status(mvm,
-					  iwl_cmd_id(AX_SOFTAP_CLIENT_TESTMODE,
-						     DATA_PATH_GROUP, 0),
+					  WIDE_ID(DATA_PATH_GROUP, AX_SOFTAP_CLIENT_TESTMODE),
 					  sizeof(cmd), &cmd, &status);
 
 	mutex_unlock(&mvm->mutex);
@@ -1934,7 +1950,7 @@ iwl_dbgfs_he_sniffer_params_write(struct iwl_mvm *mvm, char *buf,
 		.mvm = mvm,
 	};
 	u16 wait_cmds[] = {
-		iwl_cmd_id(HE_AIR_SNIFFER_CONFIG_CMD, DATA_PATH_GROUP, 0),
+		WIDE_ID(DATA_PATH_GROUP, HE_AIR_SNIFFER_CONFIG_CMD),
 	};
 	u32 aid;
 	int ret;
@@ -1969,8 +1985,9 @@ iwl_dbgfs_he_sniffer_params_write(struct iwl_mvm *mvm, char *buf,
 				   wait_cmds, ARRAY_SIZE(wait_cmds),
 				   iwl_mvm_sniffer_apply, &apply);
 
-	ret = iwl_mvm_send_cmd_pdu(mvm, iwl_cmd_id(HE_AIR_SNIFFER_CONFIG_CMD,
-						   DATA_PATH_GROUP, 0), 0,
+	ret = iwl_mvm_send_cmd_pdu(mvm,
+				   WIDE_ID(DATA_PATH_GROUP, HE_AIR_SNIFFER_CONFIG_CMD),
+				   0,
 				   sizeof(he_mon_cmd), &he_mon_cmd);
 
 	/* no need to really wait, we already did anyway */
@@ -2321,7 +2338,7 @@ static ssize_t iwl_dbgfs_debug_profile_write(struct iwl_mvm *mvm, char *buf,
 	struct iwl_dhc_cmd *dhc_cmd;
 	struct iwl_dhc_profile_cmd *profile_cmd;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, IWL_ALWAYS_LONG_GROUP, 0),
+		.id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND),
 	};
 	int ret;
 	u32 report, reset, period, metrics;
@@ -2379,7 +2396,7 @@ static ssize_t iwl_dbgfs_send_dhc(struct iwl_mvm *mvm, char *buf,
 	};
 
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(DEBUG_HOST_COMMAND, LEGACY_GROUP, 0),
+		.id = WIDE_ID(LEGACY_GROUP, DEBUG_HOST_COMMAND),
 		.data = { &cmd, &cmd_data},
 		.len = { sizeof(cmd), sizeof(cmd_data) },
 	};
@@ -2631,10 +2648,11 @@ MVM_DEBUGFS_READ_FILE_OPS(sar_geo_profile);
 #endif
 
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(fixed_rate, 64);
-#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(ampdu_size, 64);
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(disable_rts, 8);
 MVM_DEBUGFS_WRITE_STA_FILE_OPS(tlc_dhc, 64);
+MVM_DEBUGFS_WRITE_FILE_OPS(iwl_tlc_dhc, 64);
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 MVM_DEBUGFS_WRITE_FILE_OPS(debug_profile, 64);
 MVM_DEBUGFS_WRITE_FILE_OPS(enable_adwell_fine_tune_report, 32);
 MVM_DEBUGFS_WRITE_FILE_OPS(enable_adwell_channel_dwell_report, 32);
@@ -2669,8 +2687,7 @@ static ssize_t iwl_dbgfs_mem_read(struct file *file, char __user *user_buf,
 	if (!iwl_mvm_firmware_running(mvm))
 		return -EIO;
 
-	hcmd.id = iwl_cmd_id(*ppos >> 24 ? UMAC_RD_WR : LMAC_RD_WR,
-			     DEBUG_GROUP, 0);
+	hcmd.id = WIDE_ID(DEBUG_GROUP, *ppos >> 24 ? UMAC_RD_WR : LMAC_RD_WR);
 	cmd.op = cpu_to_le32(DEBUG_MEM_OP_READ);
 
 	/* Take care of alignment of both the position and the length */
@@ -2700,7 +2717,7 @@ static ssize_t iwl_dbgfs_mem_read(struct file *file, char __user *user_buf,
 		goto out;
 	}
 
-	ret = len - copy_to_user(user_buf, (void *)rsp->data + delta, len);
+	ret = len - copy_to_user(user_buf, (u8 *)rsp->data + delta, len);
 	*ppos += ret;
 
 out:
@@ -2724,8 +2741,7 @@ static ssize_t iwl_dbgfs_mem_write(struct file *file,
 	if (!iwl_mvm_firmware_running(mvm))
 		return -EIO;
 
-	hcmd.id = iwl_cmd_id(*ppos >> 24 ? UMAC_RD_WR : LMAC_RD_WR,
-			     DEBUG_GROUP, 0);
+	hcmd.id = WIDE_ID(DEBUG_GROUP, *ppos >> 24 ? UMAC_RD_WR : LMAC_RD_WR);
 
 	if (*ppos & 0x3 || count < 4) {
 		op = DEBUG_MEM_OP_WRITE_BYTES;
@@ -2798,11 +2814,9 @@ void iwl_mvm_sta_add_debugfs(struct ieee80211_hw *hw,
 	if (iwl_mvm_has_tlc_offload(mvm)) {
 		MVM_DEBUGFS_ADD_STA_FILE(rs_data, dir, 0400);
 		MVM_DEBUGFS_ADD_STA_FILE(fixed_rate, dir, 0200);
-#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 		MVM_DEBUGFS_ADD_STA_FILE(ampdu_size, dir, 0400);
 		MVM_DEBUGFS_ADD_STA_FILE(disable_rts, dir, 0400);
-		MVM_DEBUGFS_ADD_STA_FILE(tlc_dhc, dir, 0400);
-#endif
+		MVM_DEBUGFS_ADD_STA_FILE(tlc_dhc, dir, 0200);
 	}
 	MVM_DEBUGFS_ADD_STA_FILE(amsdu_len, dir, 0600);
 }
@@ -2852,6 +2866,7 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm)
 
 	if (mvm->fw->phy_integration_ver)
 		MVM_DEBUGFS_ADD_FILE(phy_integration_ver, mvm->debugfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(iwl_tlc_dhc, mvm->debugfs_dir, 0400);
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	MVM_DEBUGFS_ADD_FILE(debug_profile, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(enable_adwell_fine_tune_report,

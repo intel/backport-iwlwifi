@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2020 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -266,7 +266,7 @@ static int iwl_fmac_test_fips(struct wiphy *wiphy, struct wireless_dev *wdev,
 	struct iwl_fmac *fmac = iwl_fmac_from_wiphy(wiphy);
 	struct nlattr **tb;
 	struct iwl_host_cmd hcmd = {
-		.id = iwl_cmd_id(FMAC_TEST_FIPS, FMAC_GROUP, 0),
+		.id = WIDE_ID(FMAC_GROUP, FMAC_TEST_FIPS),
 		.flags = CMD_WANT_SKB,
 		.dataflags = { IWL_HCMD_DFL_NOCOPY, },
 	};

@@ -4991,7 +4991,7 @@ static u8 ieee80211_max_rx_chains(struct ieee80211_sub_if_data *sdata,
 	const struct ieee80211_he_cap_elem *he_cap;
 	const struct element *he_cap_elem;
 	u16 mcs_80_map, mcs_160_map;
-	u8 i, mcs_nss_size;
+	int i, mcs_nss_size;
 	bool support_160;
 	u8 chains = 1;
 
@@ -5250,6 +5250,7 @@ static int ieee80211_prep_channel(struct ieee80211_sub_if_data *sdata,
 		he_oper_ie = cfg80211_find_ext_ie(WLAN_EID_EXT_HE_OPERATION,
 						  ies->data, ies->len);
 		if (he_oper_ie &&
+		    he_oper_ie[1] >= sizeof(*he_oper) &&
 		    he_oper_ie[1] >= ieee80211_he_oper_size(&he_oper_ie[3]))
 			he_oper = (void *)(he_oper_ie + 3);
 		else

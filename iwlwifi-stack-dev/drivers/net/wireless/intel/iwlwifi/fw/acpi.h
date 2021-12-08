@@ -81,6 +81,8 @@
 #define ACPI_WTAS_ENABLE_IEC_MSK	0x4
 #define ACPI_WTAS_OVERRIDE_IEC_POS	0x1
 #define ACPI_WTAS_ENABLE_IEC_POS	0x2
+#define ACPI_WTAS_USA_UHB_MSK		BIT(16)
+#define ACPI_WTAS_USA_UHB_POS		16
 
 
 #define ACPI_PPAG_WIFI_DATA_SIZE_V1	((IWL_NUM_CHAIN_LIMITS * \
@@ -116,6 +118,11 @@ struct iwl_geo_profile_band {
 
 struct iwl_geo_profile {
 	struct iwl_geo_profile_band bands[ACPI_GEO_NUM_BANDS_REV2];
+};
+
+/* Same thing as with SAR, all revisions fit in revision 2 */
+struct iwl_ppag_chain {
+	s8 subbands[ACPI_SAR_NUM_SUB_BANDS_REV2];
 };
 
 enum iwl_dsm_funcs_rev_0 {
@@ -212,7 +219,7 @@ int iwl_sar_geo_init(struct iwl_fw_runtime *fwrt,
 		     u32 n_bands, u32 n_profiles);
 
 int iwl_acpi_get_tas(struct iwl_fw_runtime *fwrt,
-		     struct iwl_tas_config_cmd_v3 *cmd);
+		     union iwl_tas_config_cmd *cmd, int fw_ver);
 
 __le32 iwl_acpi_get_lari_config_bitmap(struct iwl_fw_runtime *fwrt);
 
@@ -293,7 +300,7 @@ static inline bool iwl_sar_geo_support(struct iwl_fw_runtime *fwrt)
 }
 
 static inline int iwl_acpi_get_tas(struct iwl_fw_runtime *fwrt,
-				   struct iwl_tas_config_cmd_v3 *cmd)
+				   union iwl_tas_config_cmd *cmd, int fw_ver)
 {
 	return -ENOENT;
 }
