@@ -34,6 +34,7 @@
 #define DRV_DESCRIPTION	"Intel(R) wireless full-MAC driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS(IWLWIFI);
 
 static const struct iwl_op_mode_ops iwl_fmac_ops;
 static void iwl_fmac_async_handlers_wk(struct work_struct *wk);
@@ -1327,13 +1328,11 @@ static const struct iwl_hcmd_arr iwl_fmac_groups[] = {
 	[DEBUG_GROUP] = HCMD_ARR(iwl_fmac_debug_names),
 };
 
-static int iwl_fmac_fwrt_dump_start(void *ctx)
+static void iwl_fmac_fwrt_dump_start(void *ctx)
 {
 	struct iwl_fmac *fmac = ctx;
 
 	mutex_lock(&fmac->mutex);
-
-	return 0;
 }
 
 static void iwl_fmac_fwrt_dump_end(void *ctx)

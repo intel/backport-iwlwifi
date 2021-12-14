@@ -39,6 +39,7 @@
 #define DRV_DESCRIPTION	"The new Intel(R) wireless AGN driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS(IWLWIFI);
 
 static const struct iwl_op_mode_ops iwl_mvm_ops;
 static const struct iwl_op_mode_ops iwl_mvm_ops_mq;
@@ -308,6 +309,7 @@ enum iwl_rx_handler_context {
 /**
  * struct iwl_rx_handlers handler for FW notification
  * @cmd_id: command id
+ * @min_size: minimum size to expect for the notification
  * @context: see &iwl_rx_handler_context
  * @fn: the function is called when notification is received
  */
@@ -531,7 +533,6 @@ static const struct iwl_hcmd_names iwl_mvm_legacy_names[] = {
 	HCMD_NAME(POWER_TABLE_CMD),
 	HCMD_NAME(PSM_UAPSD_AP_MISBEHAVING_NOTIFICATION),
 	HCMD_NAME(REPLY_THERMAL_MNG_BACKOFF),
-	HCMD_NAME(DC2DC_CONFIG_CMD),
 	HCMD_NAME(NVM_ACCESS_CMD),
 	HCMD_NAME(BEACON_NOTIFICATION),
 	HCMD_NAME(BEACON_TEMPLATE_CMD),
@@ -787,13 +788,11 @@ static void iwl_mvm_init_modparams(struct iwl_mvm *mvm)
 }
 #endif
 
-static int iwl_mvm_fwrt_dump_start(void *ctx)
+static void iwl_mvm_fwrt_dump_start(void *ctx)
 {
 	struct iwl_mvm *mvm = ctx;
 
 	mutex_lock(&mvm->mutex);
-
-	return 0;
 }
 
 static void iwl_mvm_fwrt_dump_end(void *ctx)
@@ -971,7 +970,9 @@ static void iwl_mvm_mei_roaming_forbidden(void *priv, bool forbidden)
 	if (!mvm->hw_registered || !mvm->csme_vif)
 		return;
 
+#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
 	iwl_mvm_send_roaming_forbidden_event(mvm, mvm->csme_vif, forbidden);
+#endif
 }
 
 static void iwl_mvm_sap_connected_wk(struct work_struct *wk)

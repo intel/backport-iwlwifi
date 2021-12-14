@@ -695,6 +695,8 @@ static inline void skb_mark_not_on_list(struct sk_buff *skb)
 
 #if LINUX_VERSION_IS_LESS(5,4,0)
 #include <linux/pci-aspm.h>
+#define EXPORT_SYMBOL_NS_GPL(sym, ns) EXPORT_SYMBOL_GPL(sym)
+#define MODULE_IMPORT_NS(ns)
 #endif
 
 #if LINUX_VERSION_IS_LESS(5,5,0)

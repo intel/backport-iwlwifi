@@ -76,7 +76,7 @@ csa_counter_offsets_presp(struct cfg80211_csa_settings *s)
  */
 struct ieee80211_sta_eht_cap {
 	bool has_eht;
-	struct ieee80211_eht_cap_elem eht_cap_elem;
+	struct ieee80211_eht_cap_elem_fixed eht_cap_elem;
 	struct ieee80211_eht_mcs_nss_supp eht_mcs_nss_supp;
 	u8 eht_ppe_thres[IEEE80211_EHT_PPE_THRES_MAX_LEN];
 };

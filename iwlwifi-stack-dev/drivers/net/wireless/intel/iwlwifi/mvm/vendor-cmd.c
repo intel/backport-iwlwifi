@@ -425,7 +425,8 @@ static int iwl_vendor_rfim_get_capa(struct wiphy *wiphy,
 		return -ENOMEM;
 
 	if (mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210 &&
-	    mvm->trans->trans_cfg->integrated)
+	    mvm->trans->trans_cfg->integrated &&
+	    fw_has_capa(&mvm->fw->ucode_capa, IWL_UCODE_TLV_CAPA_RFIM_SUPPORT))
 		capa = IWL_MVM_RFIM_CAPA_ALL;
 
 	if (nla_put_u8(skb, IWL_MVM_VENDOR_ATTR_RFIM_CAPA, capa)) {

@@ -1,0 +1,40 @@
+diff --git a/options.c b/options.c
+index 6704fc8d2c8d..87c67ccca8b9 100644
+--- a/options.c
++++ b/options.c
+@@ -120,6 +120,7 @@ int Wparen_string = 0;
+ int Wpast_deep_designator = 0;
+ int Wpedantic = 0;
+ int Wpointer_arith = 0;
++int Wpointer_arith_always_off = 0;
+ int Wpointer_to_int_cast = 1;
+ int Wptr_subtraction_blows = 0;
+ int Wreturn_void = 0;
+@@ -872,7 +873,7 @@ static const struct flag warnings[] = {
+ 	{ "shift-count-overflow", &Wshift_count_overflow },
+ 	{ "sizeof-bool", &Wsizeof_bool },
+ 	{ "strict-prototypes", &Wstrict_prototypes },
+-	{ "pointer-arith", &Wpointer_arith },
++	{ "pointer-arith", &Wpointer_arith_always_off },
+ 	{ "sparse-error", &Wsparse_error },
+ 	{ "tautological-compare", &Wtautological_compare },
+ 	{ "transparent-union", &Wtransparent_union },
+diff --git a/symbol.c b/symbol.c
+index 91352a3a447b..6076ea6a33aa 100644
+--- a/symbol.c
++++ b/symbol.c
+@@ -715,9 +715,11 @@ void check_declaration(struct symbol *sym)
+ 			continue;
+ 		if (get_sym_type(next) == SYM_FN)
+ 			continue;
+-		warned = 1;
+-		warning(sym->pos, "symbol '%s' shadows an earlier one", show_ident(sym->ident));
+-		info(next->pos, "originally declared here");
++		if (strcmp(show_ident(sym->ident), "__ret")) {
++			warned = 1;
++			warning(sym->pos, "symbol '%s' shadows an earlier one", show_ident(sym->ident));
++			info(next->pos, "originally declared here");
++		}
+ 	}
+ }
+ 

@@ -961,6 +961,7 @@ iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
 	switch (CSR_HW_RFID_TYPE(trans->hw_rf_id)) {
 	case IWL_CFG_RF_TYPE_GF:
 	case IWL_CFG_RF_TYPE_MR:
+	case IWL_CFG_RF_TYPE_MS:
 		iftype_data->he_cap.he_cap_elem.phy_cap_info[9] |=
 			IEEE80211_HE_PHY_CAP9_TX_1024_QAM_LESS_THAN_242_TONE_RU;
 		if (!is_ap)
@@ -1734,8 +1735,12 @@ iwl_parse_nvm_mcc_info(struct device *dev, const struct iwl_cfg *cfg,
 		nvm_chan = iwl_nvm_channels;
 	}
 
-	if (WARN_ON(num_of_ch > max_num_ch))
+	if (num_of_ch > max_num_ch) {
+		IWL_DEBUG_DEV(dev, IWL_DL_LAR,
+			      "Num of channels (%d) is greater than expected. Truncating to %d\n",
+			      num_of_ch, max_num_ch);
 		num_of_ch = max_num_ch;
+	}
 
 	if (WARN_ON_ONCE(num_of_ch > NL80211_MAX_SUPP_REG_RULES))
 		return ERR_PTR(-EINVAL);
@@ -2116,11 +2121,8 @@ struct iwl_nvm_data *iwl_get_nvm(struct iwl_trans *trans,
 		goto err_free;
 	}
 
-	IWL_INFO(trans, "base HW address: %pM\n", nvm->hw_addr);
-
-	/* read OTP minor version */
-	IWL_INFO(trans, "OTP minor version: 0x%x\n",
-		 iwl_read_prph(trans, REG_OTP_MINOR));
+	IWL_INFO(trans, "base HW address: %pM OTP minor version: 0x%x\n",
+		 nvm->hw_addr, iwl_read_prph(trans, REG_OTP_MINOR));
 
 	/* Initialize general data */
 	nvm->nvm_version = le16_to_cpu(rsp->general.nvm_version);
