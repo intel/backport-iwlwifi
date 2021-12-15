@@ -1415,7 +1415,8 @@ static int iwl_set_hw_address(struct iwl_trans *trans,
 		return -EINVAL;
 	}
 
-	IWL_INFO(trans, "base HW address: %pM\n", data->hw_addr);
+	IWL_INFO(trans, "base HW address: %pM, OTP minor version: 0x%x\n",
+			 data->hw_addr, iwl_read_prph(trans, REG_OTP_MINOR));
 
 	return 0;
 }
@@ -2121,9 +2122,7 @@ struct iwl_nvm_data *iwl_get_nvm(struct iwl_trans *trans,
 		goto err_free;
 	}
 
-	IWL_INFO(trans, "base HW address: %pM OTP minor version: 0x%x\n",
-		 nvm->hw_addr, iwl_read_prph(trans, REG_OTP_MINOR));
-
+	IWL_INFO(trans, "base HW address: %pM\n", nvm->hw_addr);
 	/* Initialize general data */
 	nvm->nvm_version = le16_to_cpu(rsp->general.nvm_version);
 	nvm->n_hw_addrs = rsp->general.n_hw_addrs;
