@@ -315,8 +315,10 @@ void iwl_uefi_get_sgom_table(struct iwl_trans *trans,
 	unsigned long package_size;
 	int err, ret;
 
+	#ifdef CONFIG_ACPI
 	if (!fwrt->geo_enabled)
 		return;
+	#endif
 
 	sgom_efivar = kzalloc(sizeof(*sgom_efivar), GFP_KERNEL);
 	if (!sgom_efivar)
