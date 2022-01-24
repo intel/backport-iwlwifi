@@ -2528,17 +2528,10 @@ static void ieee80211_sta_tx_wmm_ac_notify(struct ieee80211_sub_if_data *sdata,
 					   u16 tx_time)
 {
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
-	u16 tid;
-	int ac;
-	struct ieee80211_sta_tx_tspec *tx_tspec;
+	u16 tid = ieee80211_get_tid(hdr);
+	int ac = ieee80211_ac_from_tid(tid);
+	struct ieee80211_sta_tx_tspec *tx_tspec = &ifmgd->tx_tspec[ac];
 	unsigned long now = jiffies;
-
-	if (!ieee80211_is_data_qos(hdr->frame_control))
-		return;
-
-	tid = ieee80211_get_tid(hdr);
-	ac = ieee80211_ac_from_tid(tid);
-	tx_tspec = &ifmgd->tx_tspec[ac];
 
 	if (likely(!tx_tspec->admitted_time))
 		return;
@@ -5131,15 +5124,7 @@ ieee80211_verify_sta_he_mcs_support(struct ieee80211_sub_if_data *sdata,
 
 			/*
 			 * Make sure the HE AP doesn't require MCSs that aren't
-			 * supported by the client as required by spec
-			 *
-			 * P802.11-REVme/D0.3
-			 * 26.17.1 Basic HE BSS operation
-			 *
-			 * An HE STA shall not attempt to join * (MLME-JOIN.request primitive)
-			 * a BSS, unless it supports (i.e., is able to both transmit and
-			 * receive using) all of the <HE-MCS, NSS> tuples in the basic
-			 * HE-MCS and NSS set.
+			 * supported by the client
 			 */
 			if (sta_rx_val == IEEE80211_HE_MCS_NOT_SUPPORTED ||
 			    sta_tx_val == IEEE80211_HE_MCS_NOT_SUPPORTED ||

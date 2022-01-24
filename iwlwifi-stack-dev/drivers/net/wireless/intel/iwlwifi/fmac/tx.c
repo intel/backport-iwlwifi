@@ -787,7 +787,6 @@ iwl_fmac_get_agg_status(struct iwl_fmac *fmac, struct iwl_mvm_tx_resp *tx_resp)
 
 /**
  * iwl_fmac_get_scd_ssn - returns the SSN of the SCD
- * @fmac: fmac pointer
  * @tx_resp: the Tx response from the fw (agg or non-agg)
  *
  * When the fw sends an AMPDU, it fetches the MPDUs one after the other. Since

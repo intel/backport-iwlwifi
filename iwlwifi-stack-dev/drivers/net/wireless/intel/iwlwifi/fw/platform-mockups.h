@@ -113,11 +113,10 @@ static inline acpi_handle _acpi_handle(struct device *dev)
 
 static inline void _acpi_free(void *p)
 {
-	if (iwlwifi_mod_params.enable_acpi_mockups) {
+	if (iwlwifi_mod_params.enable_acpi_mockups)
 		kfree(p);
-	} else {
+	else
 		ACPI_FREE(p);
-	}
 }
 
 #undef ACPI_FREE

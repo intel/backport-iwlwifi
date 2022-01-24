@@ -338,7 +338,6 @@ static const u8 he_if_types_ext_capa_sta[] = {
 	 [0] = WLAN_EXT_CAPA1_EXT_CHANNEL_SWITCHING,
 	 [2] = WLAN_EXT_CAPA3_MULTI_BSSID_SUPPORT,
 	 [7] = WLAN_EXT_CAPA8_OPMODE_NOTIF,
-	 [9] = WLAN_EXT_CAPA10_TWT_REQUESTER_SUPPORT,
 };
 
 #ifdef CPTCFG_IWLMVM_AX_SOFTAP_TESTMODE
@@ -2440,24 +2439,24 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 		}
 
 		flags |= STA_CTXT_HE_PACKET_EXT;
-	} else if (u8_get_bits(sta->he_cap.he_cap_elem.phy_cap_info[9],
-			       IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_MASK)
-		   != IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_RESERVED) {
+	} else if ((sta->he_cap.he_cap_elem.phy_cap_info[9] &
+		    IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_MASK) !=
+		  IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_RESERVED) {
 		int low_th = -1;
 		int high_th = -1;
 
 		/* Take the PPE thresholds from the nominal padding info */
-		switch (u8_get_bits(sta->he_cap.he_cap_elem.phy_cap_info[9],
-				    IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_MASK)) {
-		case IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_0US:
+		switch (sta->he_cap.he_cap_elem.phy_cap_info[9] &
+			IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_MASK) {
+		case IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_0US:
 			low_th = IWL_HE_PKT_EXT_NONE;
 			high_th = IWL_HE_PKT_EXT_NONE;
 			break;
-		case IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_8US:
+		case IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_8US:
 			low_th = IWL_HE_PKT_EXT_BPSK;
 			high_th = IWL_HE_PKT_EXT_NONE;
 			break;
-		case IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_16US:
+		case IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_16US:
 			low_th = IWL_HE_PKT_EXT_NONE;
 			high_th = IWL_HE_PKT_EXT_BPSK;
 			break;

@@ -68,9 +68,6 @@ struct iwl_drv {
 	struct iwl_trans *trans;
 	struct device *dev;
 #if IS_ENABLED(CPTCFG_IWLXVT)
-	/**
-	 * @xvt_mode_on: XVT mode is turned on
-	 */
 	bool xvt_mode_on;
 #endif
 

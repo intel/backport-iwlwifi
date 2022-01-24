@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2021 Intel Corporation
  */
@@ -223,8 +223,6 @@ struct iwl_mei_nvm {
  * @IWL_MEI_CIPHER_CCMP: ccmp
  * @IWL_MEI_CIPHER_GCMP: gcmp
  * @IWL_MEI_CIPHER_GCMP_256: gcmp 256
- *
- * Note that those values are dictated by the CSME firmware API (see sap.h)
  */
 enum iwl_mei_pairwise_cipher {
 	IWL_MEI_CIPHER_NONE	= 0,
@@ -239,8 +237,6 @@ enum iwl_mei_pairwise_cipher {
  * @IWL_MEI_AKM_AUTH_RSNA: 1X profile
  * @IWL_MEI_AKM_AUTH_RSNA_PSK: PSK profile
  * @IWL_MEI_AKM_AUTH_SAE: SAE profile
- *
- * Note that those values are dictated by the CSME firmware API (see sap.h)
  */
 enum iwl_mei_akm_auth {
 	IWL_MEI_AKM_AUTH_OPEN		= 0,

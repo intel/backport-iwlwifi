@@ -2273,39 +2273,6 @@ out:
 	spin_unlock_bh(&trans_pcie->reg_lock);
 }
 
-#ifdef CPTCFG_IWLWIFI_SIMULATION
-static int iwl_trans_pcie_read_mem_sim(struct iwl_trans *trans, u32 addr,
-				       void *buf, int dwords)
-{
-	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
-
-	if (iwl_trans_grab_nic_access(trans)) {
-		u8 __iomem *ioaddr = pcim_iomap_table(trans_pcie->pci_dev)[2];
-		void *tmpbuf = kmalloc(4 * dwords, GFP_ATOMIC);
-
-		if (!tmpbuf) {
-			iwl_trans_release_nic_access(trans);
-			return -ENOMEM;
-		}
-
-#define SMEM_WINDOW_START (8 * 1024 * 1024)
-		ioaddr += SMEM_WINDOW_START;
-
-		/* set the pointer */
-		writel(addr, ioaddr);
-		/* and copy data */
-		memcpy_fromio(tmpbuf, ioaddr, 4 * dwords);
-
-		memcpy(buf, tmpbuf, 4 * dwords);
-		kfree(tmpbuf);
-		iwl_trans_release_nic_access(trans);
-		return 0;
-	}
-
-	return -EBUSY;
-}
-#endif
-
 static int iwl_trans_pcie_read_mem(struct iwl_trans *trans, u32 addr,
 				   void *buf, int dwords)
 {
@@ -2314,9 +2281,33 @@ static int iwl_trans_pcie_read_mem(struct iwl_trans *trans, u32 addr,
 
 #ifdef CPTCFG_IWLWIFI_SIMULATION
 	/* for large reads, do magic BAR - keep smaller as normal to test */
-	if (dwords > 100 &&
-	    pcim_iomap_table(IWL_TRANS_GET_PCIE_TRANS(trans)->pci_dev)[2])
-		return iwl_trans_pcie_read_mem_sim(trans, addr, buf, dwords);
+	if (dwords > 100) {
+		struct iwl_trans_pcie *trans_pcie;
+
+		trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
+
+		if (pcim_iomap_table(trans_pcie->pci_dev)[2] &&
+		    iwl_trans_grab_nic_access(trans)) {
+			u8 __iomem *ioaddr = pcim_iomap_table(trans_pcie->pci_dev)[2];
+			void *tmpbuf = kmalloc(4 * dwords, GFP_ATOMIC);
+
+			if (!tmpbuf)
+				return -ENOMEM;
+
+#define SMEM_WINDOW_START (8 * 1024 * 1024)
+			ioaddr += SMEM_WINDOW_START;
+
+			/* set the pointer */
+			writel(addr, ioaddr);
+			/* and copy data */
+			memcpy_fromio(tmpbuf, ioaddr, 4 * dwords);
+
+			memcpy(buf, tmpbuf, 4 * dwords);
+			kfree(tmpbuf);
+			iwl_trans_release_nic_access(trans);
+			return 0;
+		}
+	}
 #endif
 
 	while (offs < dwords) {
@@ -3550,7 +3541,7 @@ struct request_fw_work {
 	void (*cont)(const struct firmware *fw, void *context);
 	void *context;
 	const char *name;
-	const u8 __iomem *iomem;
+	const u8 * __iomem iomem;
 };
 
 static void iwl_trans_pci_load_firmware(struct work_struct *work)
