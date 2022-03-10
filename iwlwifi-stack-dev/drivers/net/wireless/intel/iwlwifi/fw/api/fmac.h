@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018, 2020 Intel Corporation
+ * Copyright (C) 2018, 2020-2021 Intel Corporation
  */
 #ifndef __iwl_fw_api_fmac_h__
 #define __iwl_fw_api_fmac_h__
@@ -427,17 +427,7 @@ enum iwl_fmac_tx_fifo {
 	IWL_FMAC_TX_FIFO_CMD = 7,
 };
 
-static const u8 iwl_fmac_tid_to_tx_fifo[] = {
-	IWL_FMAC_TX_FIFO_BE,
-	IWL_FMAC_TX_FIFO_BK,
-	IWL_FMAC_TX_FIFO_BK,
-	IWL_FMAC_TX_FIFO_BE,
-	IWL_FMAC_TX_FIFO_VI,
-	IWL_FMAC_TX_FIFO_VI,
-	IWL_FMAC_TX_FIFO_VO,
-	IWL_FMAC_TX_FIFO_VO,
-	IWL_FMAC_TX_FIFO_VO /* MGMT is mapped to VO */
-};
+extern const u8 iwl_fmac_tid_to_tx_fifo[IWL_MAX_TID_COUNT + 1];
 
 /**
  * struct iwl_fmac_add_vif_cmd - Add a new virtual interface.

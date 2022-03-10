@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -198,6 +198,9 @@ static int iwl_mvm_set_country(struct wiphy *wiphy,
 	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 	int retval;
+	int mcc_update_src = mvm->trans->trans_cfg->device_family >
+		IWL_DEVICE_FAMILY_9000 ? MCC_SOURCE_MCC_API :
+		MCC_SOURCE_3G_LTE_HOST;
 
 	if (!iwl_mvm_is_lar_supported(mvm))
 		return -EOPNOTSUPP;
@@ -217,7 +220,7 @@ static int iwl_mvm_set_country(struct wiphy *wiphy,
 	regd = iwl_mvm_get_regdomain(wiphy,
 				     nla_data(tb[IWL_MVM_VENDOR_ATTR_COUNTRY]),
 				     iwl_mvm_is_wifi_mcc_supported(mvm) ?
-				     MCC_SOURCE_3G_LTE_HOST :
+				     mcc_update_src :
 				     MCC_SOURCE_OLD_FW, NULL);
 	if (IS_ERR_OR_NULL(regd)) {
 		retval = -EIO;

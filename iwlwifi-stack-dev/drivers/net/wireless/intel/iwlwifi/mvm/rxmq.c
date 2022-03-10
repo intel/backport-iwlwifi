@@ -1994,7 +1994,8 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 	} else if (format == RATE_MCS_VHT_MSK) {
 		u8 stbc = (rate_n_flags & RATE_MCS_STBC_MSK) >>
 			RATE_MCS_STBC_POS;
-			rx_status->nss =
+
+		rx_status->nss =
 			((rate_n_flags & RATE_MCS_NSS_MSK) >>
 			RATE_MCS_NSS_POS) + 1;
 		rx_status->rate_idx = rate_n_flags & RATE_MCS_CODE_MSK;

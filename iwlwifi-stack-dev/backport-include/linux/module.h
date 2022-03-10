@@ -66,4 +66,8 @@ extern void backport_dependency_symbol(void);
 #define param_check_bool(name, p) __param_check(name, p, bool)
 #endif
 
+#if LINUX_VERSION_IS_LESS(5,4,0)
+#define MODULE_IMPORT_NS(ns)
+#endif
+
 #endif /* __BACKPORT_LINUX_MODULE_H */

@@ -1,7 +1,7 @@
 /*
  * ChromeOS backport definitions
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2021 Intel Corporation
+ * Copyright (C) 2018-2022 Intel Corporation
  */
 #include <linux/if_ether.h>
 #include <net/cfg80211.h>
@@ -76,7 +76,7 @@ csa_counter_offsets_presp(struct cfg80211_csa_settings *s)
  */
 struct ieee80211_sta_eht_cap {
 	bool has_eht;
-	struct ieee80211_eht_cap_elem eht_cap_elem;
+	struct ieee80211_eht_cap_elem_fixed eht_cap_elem;
 	struct ieee80211_eht_mcs_nss_supp eht_mcs_nss_supp;
 	u8 eht_ppe_thres[IEEE80211_EHT_PPE_THRES_MAX_LEN];
 };
@@ -2730,7 +2730,7 @@ static inline void __iwl7000_cfg80211_unregister_wdev(struct wireless_dev *wdev)
 #define cfg80211_unregister_wdev __iwl7000_cfg80211_unregister_wdev
 #endif /* < 5.12 */
 
-#if CFG80211_VERSION < KERNEL_VERSION(5,13,0)
+#if CFG80211_VERSION < KERNEL_VERSION(5,18,0)
 #define ieee80211_data_to_8023_exthdr iwl7000_ieee80211_data_to_8023_exthdr
 int ieee80211_data_to_8023_exthdr(struct sk_buff *skb, struct ethhdr *ehdr,
 				  const u8 *addr, enum nl80211_iftype iftype,
@@ -2742,4 +2742,4 @@ static inline int ieee80211_data_to_8023(struct sk_buff *skb, const u8 *addr,
 {
 	return ieee80211_data_to_8023_exthdr(skb, NULL, addr, iftype, 0, false);
 }
-#endif /* CFG80211_VERSION < KERNEL_VERSION(5,13,0) */
+#endif /* CFG80211_VERSION < KERNEL_VERSION(5,18,0) */

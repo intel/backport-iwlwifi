@@ -18,7 +18,6 @@
 #define IWL_MAX_NVM_SECTION_SIZE	7000
 
 #define NVM_WRITE_OPCODE 1
-#define NVM_READ_OPCODE 0
 
 enum wkp_nvm_offsets {
 	/* NVM HW-Section offset (in words) definitions */

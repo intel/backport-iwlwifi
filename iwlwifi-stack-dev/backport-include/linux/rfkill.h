@@ -24,6 +24,15 @@ static inline bool rfkill_set_hw_state_reason(struct rfkill *rfkill,
 
 #endif /* 5.11 */
 
+#if LINUX_VERSION_IS_LESS(5,17,0) && !defined(CONFIG_WLAN_VENDOR_INTEL_MEI)
+
+static inline bool rfkill_soft_blocked(struct rfkill *rfkill)
+{
+	return rfkill_blocked(rfkill);
+}
+
+#endif /* 5.17 */
+
 #else
 /* API only slightly changed since then */
 #define rfkill_type old_rfkill_type

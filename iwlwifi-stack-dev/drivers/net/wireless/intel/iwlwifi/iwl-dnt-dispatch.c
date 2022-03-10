@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2014, 2018 Intel Corporation
+ * Copyright (C) 2014, 2018, 2021 Intel Corporation
  * Copyright (C) 2014 Intel Mobile Communications GmbH
  * Copyright (C) 2015-2016 Intel Deutschland GmbH
  */
@@ -68,9 +68,8 @@ static int iwl_dnt_dispatch_get_list_data(struct dnt_collect_db *db,
 	return data_offset;
 }
 
-/**
+/*
  * iwl_dnt_dispatch_push_ftrace_handler - handles data ad push it to ftrace.
- *
  */
 static void iwl_dnt_dispatch_push_ftrace_handler(struct iwl_dnt *dnt,
 						 u8 *buffer, u32 buffer_size)
@@ -78,9 +77,8 @@ static void iwl_dnt_dispatch_push_ftrace_handler(struct iwl_dnt *dnt,
 	trace_iwlwifi_dev_dnt_data(dnt->dev, buffer, buffer_size);
 }
 
-/**
+/*
  * iwl_dnt_dispatch_push_netlink_handler - handles data ad push it to netlink.
- *
  */
 static int iwl_dnt_dispatch_push_netlink_handler(struct iwl_dnt *dnt,
 						 struct iwl_trans *trans,

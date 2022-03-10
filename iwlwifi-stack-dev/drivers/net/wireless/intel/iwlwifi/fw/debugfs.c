@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -390,7 +390,7 @@ static void iwl_fw_build_dhc_tlc_cmd(struct iwl_dhc_tlc_whole_cmd *cmd,
 static ssize_t iwl_dbgfs_tpc_enable_write(struct iwl_fw_runtime *fwrt,
 					  char *buf, size_t count)
 {
-	struct iwl_dhc_tlc_whole_cmd dhc_cmd = { {0} };
+	struct iwl_dhc_tlc_whole_cmd dhc_cmd = {};
 	struct iwl_host_cmd hcmd = {
 		.id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND),
 		.data[0] = &dhc_cmd,
@@ -426,7 +426,7 @@ FWRT_DEBUGFS_READ_WRITE_FILE_OPS(tpc_enable, 30);
 static ssize_t iwl_dbgfs_tpc_stats_read(struct iwl_fw_runtime *fwrt,
 					size_t size, char *buf)
 {
-	struct iwl_dhc_tlc_whole_cmd dhc_cmd = { {0} };
+	struct iwl_dhc_tlc_whole_cmd dhc_cmd = {};
 	struct iwl_host_cmd hcmd = {
 		.id = WIDE_ID(IWL_ALWAYS_LONG_GROUP, DEBUG_HOST_COMMAND),
 		.flags = CMD_WANT_SKB,
@@ -572,15 +572,17 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 	ret += PRINT_PS_REPORT_16(max_phy_pd_duration[0]);
 	ret += PRINT_PS_REPORT_16(max_phy_pd_duration[1]);
 
-	if (iwl_fw_lookup_cmd_ver(fwrt->fw,
-				  WIDE_ID(LEGACY_GROUP,
-					  DEBUG_HOST_COMMAND), 0) >= 6) {
-		ret += PRINT_PS_REPORT_32(ltr.tx_active_time);
-		ret += PRINT_PS_REPORT_32(ltr.rx_active_time);
-		ret += PRINT_PS_REPORT_32(ltr.rx_listen_time);
-		ret += PRINT_PS_REPORT_32(ltr.power_save_time);
-		ret += PRINT_PS_REPORT_32(ltr.total_time);
-	}
+	/* LTR statistics */
+	ret += PRINT_PS_REPORT_32(ltr.tx_active_time);
+	ret += PRINT_PS_REPORT_32(ltr.rx_active_time);
+	ret += PRINT_PS_REPORT_32(ltr.rx_listen_time);
+	ret += PRINT_PS_REPORT_32(ltr.power_save_time);
+	ret += PRINT_PS_REPORT_32(ltr.total_time);
+
+	/* PS durations */
+	ret += PRINT_PS_REPORT_32(ps_duration[0]);
+	ret += PRINT_PS_REPORT_32(ps_duration[1]);
+	ret += PRINT_PS_REPORT_32(ps_duration[2]);
 
 	return ret;
 
@@ -596,7 +598,10 @@ static ssize_t iwl_dbgfs_ps_report_umac_read
 	return iwl_dbgfs_ps_report_read(fwrt, size, buf, DHC_TARGET_UMAC);
 }
 
-FWRT_DEBUGFS_READ_FILE_OPS(ps_report_umac, 842);
+/* We set the size of the ps_report_umac file to be according to the ps report size.
+ 10 -> indicates the maximun char that can be added by 4 byte int converted to string
+ 20 -> indicates the avarege chars in a field*/
+FWRT_DEBUGFS_READ_FILE_OPS(ps_report_umac, (sizeof(struct iwl_ps_report) / 4) * (10 + 20));
 
 static ssize_t iwl_dbgfs_send_ps_test_write(struct iwl_fw_runtime *fwrt,
 					    struct iwl_ps_test_req *ps_test_req)

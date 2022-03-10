@@ -1,10 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2021 Intel Corporation
  */
 
 #ifndef __sap_h__
 #define __sap_h__
+
+#include "mei/iwl-mei.h"
 
 /**
  * DOC: Introduction
@@ -322,13 +324,10 @@ enum iwl_sap_nic_owner {
 };
 
 enum iwl_sap_wifi_auth_type {
-	SAP_WIFI_AUTH_TYPE_OPEN		= 0,
-	SAP_WIFI_AUTH_TYPE_SHARED	= 1,
-	SAP_WIFI_AUTH_TYPE_WPA		= 3,
-	SAP_WIFI_AUTH_TYPE_WPA_PSK	= 4,
-	SAP_WIFI_AUTH_TYPE_RSNA		= 6,
-	SAP_WIFI_AUTH_TYPE_RSNA_PSK	= 7,
-	SAP_WIFI_AUTH_TYPE_SAE		= 9,
+	SAP_WIFI_AUTH_TYPE_OPEN		= IWL_MEI_AKM_AUTH_OPEN,
+	SAP_WIFI_AUTH_TYPE_RSNA		= IWL_MEI_AKM_AUTH_RSNA,
+	SAP_WIFI_AUTH_TYPE_RSNA_PSK	= IWL_MEI_AKM_AUTH_RSNA_PSK,
+	SAP_WIFI_AUTH_TYPE_SAE		= IWL_MEI_AKM_AUTH_SAE,
 	SAP_WIFI_AUTH_TYPE_MAX,
 };
 
@@ -340,10 +339,10 @@ enum iwl_sap_wifi_auth_type {
  * @SAP_WIFI_CIPHER_ALG_GCMP_256: TBD
  */
 enum iwl_sap_wifi_cipher_alg {
-	SAP_WIFI_CIPHER_ALG_NONE	= 0,
-	SAP_WIFI_CIPHER_ALG_CCMP	= 4,
-	SAP_WIFI_CIPHER_ALG_GCMP	= 8,
-	SAP_WIFI_CIPHER_ALG_GCMP_256	= 9,
+	SAP_WIFI_CIPHER_ALG_NONE	= IWL_MEI_CIPHER_NONE,
+	SAP_WIFI_CIPHER_ALG_CCMP	= IWL_MEI_CIPHER_CCMP,
+	SAP_WIFI_CIPHER_ALG_GCMP	= IWL_MEI_CIPHER_GCMP,
+	SAP_WIFI_CIPHER_ALG_GCMP_256	= IWL_MEI_CIPHER_GCMP_256,
 };
 
 /**

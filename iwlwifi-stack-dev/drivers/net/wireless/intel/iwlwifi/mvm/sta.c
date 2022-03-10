@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2015, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2015, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -714,7 +714,25 @@ static int iwl_mvm_find_free_queue(struct iwl_mvm *mvm, u8 sta_id,
 	return -ENOSPC;
 }
 
+static int iwl_mvm_get_queue_size(struct ieee80211_sta *sta)
+{
+	/* this queue isn't used for traffic (cab_queue) */
+	if (!sta)
+		return IWL_MGMT_QUEUE_SIZE;
+
+	/* support for 1k ba size */
+	if (sta->eht_cap.has_eht)
+		return IWL_DEFAULT_QUEUE_SIZE_EHT;
+
+	/* support for 256 ba size */
+	if (sta->he_cap.has_he)
+		return IWL_DEFAULT_QUEUE_SIZE_HE;
+
+	return IWL_DEFAULT_QUEUE_SIZE;
+}
+
 static int iwl_mvm_tvqm_enable_txq(struct iwl_mvm *mvm,
+				   struct ieee80211_sta *sta,
 				   u8 sta_id, u8 tid, unsigned int timeout)
 {
 	int queue, size;
@@ -724,25 +742,7 @@ static int iwl_mvm_tvqm_enable_txq(struct iwl_mvm *mvm,
 		size = max_t(u32, IWL_MGMT_QUEUE_SIZE,
 			     mvm->trans->cfg->min_txq_size);
 	} else {
-		struct ieee80211_sta *sta;
-
-		rcu_read_lock();
-		sta = rcu_dereference(mvm->fw_id_to_mac_id[sta_id]);
-
-		/* this queue isn't used for traffic (cab_queue) */
-		if (IS_ERR_OR_NULL(sta)) {
-			size = IWL_MGMT_QUEUE_SIZE;
-		} else if (sta->eht_cap.has_eht) {
-			/* support for 1k ba size */
-			size = IWL_DEFAULT_QUEUE_SIZE_EHT;
-		} else if (sta->he_cap.has_he) {
-			/* support for 256 ba size */
-			size = IWL_DEFAULT_QUEUE_SIZE_HE;
-		} else {
-			size = IWL_DEFAULT_QUEUE_SIZE;
-		}
-
-		rcu_read_unlock();
+		size = iwl_mvm_get_queue_size(sta);
 	}
 
 	/* take the min with bc tbl entries allowed */
@@ -790,7 +790,8 @@ static int iwl_mvm_sta_alloc_queue_tvqm(struct iwl_mvm *mvm,
 	IWL_DEBUG_TX_QUEUES(mvm,
 			    "Allocating queue for sta %d on tid %d\n",
 			    mvmsta->sta_id, tid);
-	queue = iwl_mvm_tvqm_enable_txq(mvm, mvmsta->sta_id, tid, wdg_timeout);
+	queue = iwl_mvm_tvqm_enable_txq(mvm, sta, mvmsta->sta_id,
+					tid, wdg_timeout);
 	if (queue < 0)
 		return queue;
 
@@ -1045,12 +1046,12 @@ static bool iwl_mvm_remove_inactive_tids(struct iwl_mvm *mvm,
 	 * Remove the ones that did.
 	 */
 	for_each_set_bit(tid, &tid_bitmap, IWL_MAX_TID_COUNT + 1) {
-		u16 tid_bitmap;
+		u16 q_tid_bitmap;
 
 		mvmsta->tid_data[tid].txq_id = IWL_MVM_INVALID_QUEUE;
 		mvm->queue_info[queue].tid_bitmap &= ~BIT(tid);
 
-		tid_bitmap = mvm->queue_info[queue].tid_bitmap;
+		q_tid_bitmap = mvm->queue_info[queue].tid_bitmap;
 
 		/*
 		 * We need to take into account a situation in which a TXQ was
@@ -1063,7 +1064,7 @@ static bool iwl_mvm_remove_inactive_tids(struct iwl_mvm *mvm,
 		 * Mark this queue in the right bitmap, we'll send the command
 		 * to the firmware later.
 		 */
-		if (!(tid_bitmap & BIT(mvm->queue_info[queue].txq_tid)))
+		if (!(q_tid_bitmap & BIT(mvm->queue_info[queue].txq_tid)))
 			set_bit(queue, changetid_queues);
 
 		IWL_DEBUG_TX_QUEUES(mvm,
@@ -1491,7 +1492,8 @@ static void iwl_mvm_realloc_queues_after_restart(struct iwl_mvm *mvm,
 			IWL_DEBUG_TX_QUEUES(mvm,
 					    "Re-mapping sta %d tid %d\n",
 					    mvm_sta->sta_id, i);
-			txq_id = iwl_mvm_tvqm_enable_txq(mvm, mvm_sta->sta_id,
+			txq_id = iwl_mvm_tvqm_enable_txq(mvm, sta,
+							 mvm_sta->sta_id,
 							 i, wdg);
 			/*
 			 * on failures, just set it to IWL_MVM_INVALID_QUEUE
@@ -1999,7 +2001,7 @@ static int iwl_mvm_enable_aux_snif_queue_tvqm(struct iwl_mvm *mvm, u8 sta_id)
 
 	WARN_ON(!iwl_mvm_has_new_tx_api(mvm));
 
-	return iwl_mvm_tvqm_enable_txq(mvm, sta_id, IWL_MAX_TID_COUNT,
+	return iwl_mvm_tvqm_enable_txq(mvm, NULL, sta_id, IWL_MAX_TID_COUNT,
 				       wdg_timeout);
 }
 
@@ -2181,7 +2183,7 @@ int iwl_mvm_send_add_bcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	 * to firmware so enable queue here - after the station was added
 	 */
 	if (iwl_mvm_has_new_tx_api(mvm)) {
-		queue = iwl_mvm_tvqm_enable_txq(mvm, bsta->sta_id,
+		queue = iwl_mvm_tvqm_enable_txq(mvm, NULL, bsta->sta_id,
 						IWL_MAX_TID_COUNT,
 						wdg_timeout);
 		if (queue < 0) {
@@ -2374,9 +2376,8 @@ int iwl_mvm_add_mcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	 * tfd_queue_mask.
 	 */
 	if (iwl_mvm_has_new_tx_api(mvm)) {
-		int queue = iwl_mvm_tvqm_enable_txq(mvm, msta->sta_id,
-						    0,
-						    timeout);
+		int queue = iwl_mvm_tvqm_enable_txq(mvm, NULL, msta->sta_id,
+						    0, timeout);
 		if (queue < 0) {
 			ret = queue;
 			goto err;
@@ -2600,21 +2601,26 @@ static int iwl_mvm_fw_baid_op_sta(struct iwl_mvm *mvm,
 static int iwl_mvm_fw_baid_op_cmd(struct iwl_mvm *mvm,
 				  struct iwl_mvm_sta *mvm_sta,
 				  bool start, int tid, u16 ssn,
-				  u16 buf_size)
+				  u16 buf_size, int baid)
 {
-	struct iwl_rx_baid_alloc_cfg_cmd cmd = {
-		.sta_id_mask = cpu_to_le32(BIT(mvm_sta->sta_id)),
-		.tid = tid,
-		.ssn = cpu_to_le16(ssn),
-		.win_size = cpu_to_le16(buf_size),
-		.action = start ? cpu_to_le16(IWL_RX_BAID_ACTION_ADD) :
-				  cpu_to_le16(IWL_RX_BAID_ACTION_REMOVE),
+	struct iwl_rx_baid_cfg_cmd cmd = {
+		.action = start ? cpu_to_le32(IWL_RX_BAID_ACTION_ADD) :
+				  cpu_to_le32(IWL_RX_BAID_ACTION_REMOVE),
 	};
 	u32 cmd_id = WIDE_ID(DATA_PATH_GROUP, RX_BAID_ALLOCATION_CONFIG_CMD);
-	u32 baid = ~0;
 	int ret;
 
-	BUILD_BUG_ON(sizeof(struct iwl_rx_baid_alloc_cfg_resp) != sizeof(baid));
+	BUILD_BUG_ON(sizeof(struct iwl_rx_baid_cfg_resp) != sizeof(baid));
+
+	if (start) {
+		cmd.alloc.sta_id_mask = cpu_to_le32(BIT(mvm_sta->sta_id));
+		cmd.alloc.tid = tid;
+		cmd.alloc.ssn = cpu_to_le16(ssn);
+		cmd.alloc.win_size = cpu_to_le16(buf_size);
+		baid = -EIO;
+	} else {
+		cmd.remove.baid = cpu_to_le32(baid);
+	}
 
 	ret = iwl_mvm_send_cmd_pdu_status(mvm, cmd_id, sizeof(cmd),
 					  &cmd, &baid);
@@ -2629,19 +2635,20 @@ static int iwl_mvm_fw_baid_op_cmd(struct iwl_mvm *mvm,
 	IWL_DEBUG_HT(mvm, "RX BA Session %sed in fw\n",
 		     start ? "start" : "stopp");
 
-	if (baid >= ARRAY_SIZE(mvm->baid_map))
+	if (baid < 0 || baid >= ARRAY_SIZE(mvm->baid_map))
 		return -EINVAL;
 
 	return baid;
 }
 
 static int iwl_mvm_fw_baid_op(struct iwl_mvm *mvm, struct iwl_mvm_sta *mvm_sta,
-			      bool start, int tid, u16 ssn, u16 buf_size)
+			      bool start, int tid, u16 ssn, u16 buf_size,
+			      int baid)
 {
 	if (fw_has_capa(&mvm->fw->ucode_capa,
 			IWL_UCODE_TLV_CAPA_BAID_ML_SUPPORT))
 		return iwl_mvm_fw_baid_op_cmd(mvm, mvm_sta, start,
-					      tid, ssn, buf_size);
+					      tid, ssn, buf_size, baid);
 
 	return iwl_mvm_fw_baid_op_sta(mvm, mvm_sta, start,
 				      tid, ssn, buf_size);
@@ -2704,7 +2711,18 @@ int iwl_mvm_sta_rx_agg(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 			reorder_buf_size / sizeof(baid_data->entries[0]);
 	}
 
-	baid = iwl_mvm_fw_baid_op(mvm, mvm_sta, start, tid, ssn, buf_size);
+	if (iwl_mvm_has_new_rx_api(mvm) && !start) {
+		baid = mvm_sta->tid_to_baid[tid];
+	} else {
+		/* we don't really need it in this case */
+		baid = -1;
+	}
+
+	/* Don't send command to remove (start=0) BAID during restart */
+	if (start || !test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status))
+		baid = iwl_mvm_fw_baid_op(mvm, mvm_sta, start, tid, ssn, buf_size,
+					  baid);
+
 	if (baid < 0) {
 		ret = baid;
 		goto out_free;

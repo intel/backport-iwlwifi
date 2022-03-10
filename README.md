@@ -1,2 +1,3 @@
 # backport-iwlwifi
-intel wifi driver backport 
+intel wifi driver backport
+intel WiFi firmware binaries  

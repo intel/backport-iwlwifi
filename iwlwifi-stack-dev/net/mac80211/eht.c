@@ -29,7 +29,7 @@ ieee80211_eht_cap_ie_to_sta_eht_cap(struct ieee80211_sub_if_data *sdata,
 		return;
 
 	mcs_nss_size = ieee80211_eht_mcs_nss_size(he_cap_ie_elem,
-						  eht_cap_ie_elem);
+						  &eht_cap_ie_elem->fixed);
 
 	eht_total_size += mcs_nss_size;
 
@@ -37,8 +37,8 @@ ieee80211_eht_cap_ie_to_sta_eht_cap(struct ieee80211_sub_if_data *sdata,
 	if (eht_total_size + sizeof(u16) < eht_cap_len)
 		eht_ppe_size =
 			ieee80211_eht_ppe_size(eht_cap_ie_elem->optional[mcs_nss_size],
-					       eht_cap_ie_elem->phy_cap_info);
-	else if ((eht_cap_ie_elem->phy_cap_info[5] &
+					       eht_cap_ie_elem->fixed.phy_cap_info);
+	else if ((eht_cap_ie_elem->fixed.phy_cap_info[5] &
 		  IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT))
 		return;
 
@@ -71,7 +71,7 @@ ieee80211_eht_cap_ie_to_sta_eht_cap(struct ieee80211_sub_if_data *sdata,
 			pos += 3;
 		}
 
-		if (eht_cap_ie_elem->phy_cap_info[0] &
+		if (eht_cap_ie_elem->fixed.phy_cap_info[0] &
 		    IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ) {
 			memcpy(&eht_cap->eht_mcs_nss_supp.bw_320, pos,
 			       sizeof(eht_cap->eht_mcs_nss_supp.bw_320));

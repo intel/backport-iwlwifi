@@ -31,7 +31,7 @@ iwl_mvm_phc_get_crosstimestamp(struct ptp_clock_info *ptp,
 
 	/* Check if GP2 has wrapped */
 	if (mvm->ptp_data.last_gp2 > gp2)
-		gp2_ns = (gp2 + 0x100000000) * 1000L;
+		gp2_ns = (gp2 + 0x100000000L) * 1000L;
 	else
 		gp2_ns = gp2 * 1000L;
 

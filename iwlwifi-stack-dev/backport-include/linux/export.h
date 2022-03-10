@@ -16,4 +16,8 @@
 #endif
 #endif /* LINUX_VERSION_IS_GEQ(3,2,0) */
 
+#if LINUX_VERSION_IS_LESS(5,4,0)
+#define EXPORT_SYMBOL_NS_GPL(sym, ns) EXPORT_SYMBOL_GPL(sym)
+#endif
+
 #endif	/* _COMPAT_LINUX_EXPORT_H */

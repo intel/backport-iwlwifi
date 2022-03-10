@@ -256,6 +256,7 @@ def prune(defconfig, verify, basedir):
             os.unlink(rmf)
 
     os.unlink(os.path.join(basedir, 'shell.nix'))
+    shutil.rmtree(os.path.join(basedir, 'nix'))
 
     shutil.rmtree(os.path.join(basedir, 'Documentation'))
 
