@@ -6,16 +6,19 @@
 
 with pkgs;
 
-multiStdenv.mkDerivation {
-    name = "iwlwifi";
-    buildInputs = [
-        # for the driver - it really should declare this itself
-        flex
-        bison
-        openssl
-        bc
-        hostname
-        kmod
-        elfutils
-    ];
-}
+let
+    sparse = import ./nix/sparse.nix { inherit pkgs; };
+in
+    multiStdenv.mkDerivation {
+        name = "iwlwifi";
+        buildInputs = [
+            flex
+            bison
+            openssl
+            bc
+            hostname
+            kmod
+            elfutils
+            sparse
+        ];
+    }

@@ -303,9 +303,6 @@ static void iwl_fw_dump_txf(struct iwl_fw_runtime *fwrt,
 	iwl_trans_release_nic_access(fwrt->trans);
 }
 
-#define IWL8260_ICCM_OFFSET		0x44000 /* Only for B-step */
-#define IWL8260_ICCM_LEN		0xC000 /* Only for B-step */
-
 struct iwl_prph_range {
 	u32 start, end;
 };
@@ -2954,9 +2951,8 @@ void iwl_fw_error_dump_wk(struct work_struct *work)
 	/* assumes the op mode mutex is locked in dump_start since
 	 * iwl_fw_dbg_collect_sync can't run in parallel
 	 */
-	if (fwrt->ops && fwrt->ops->dump_start &&
-	    fwrt->ops->dump_start(fwrt->ops_ctx))
-		return;
+	if (fwrt->ops && fwrt->ops->dump_start)
+		fwrt->ops->dump_start(fwrt->ops_ctx);
 
 	iwl_fw_dbg_collect_sync(fwrt, wks->idx);
 

@@ -570,6 +570,7 @@ struct iwl_ltr_statistics_report {
  * @max_phy_pu_duration: maximum power up duration per LMAC
  * @max_phy_pd_duration: maximum power down duration per LMAC
  * @ltr: ltr statistics report collection
+ * @ps_duration: powersave duration (per index)
  */
 struct iwl_ps_report {
 	__le32 total_sleep_counter;
@@ -597,7 +598,8 @@ struct iwl_ps_report {
 	__le16 max_phy_pu_duration[2];
 	__le16 max_phy_pd_duration[2];
 	struct iwl_ltr_statistics_report ltr;
-} __packed; /* PS_REPORT_API_S_VER_6 */
+	__le32 ps_duration[3];
+} __packed; /* PS_REPORT_API_S_VER_7 */
 
 /**
  * struct iwl_ps_config {

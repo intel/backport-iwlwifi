@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2021 Intel Corporation
  */
@@ -102,8 +102,8 @@ static bool iwl_mei_rx_filter_arp(struct sk_buff *skb,
 	 * src IP address    - 4 bytes
 	 * target MAC addess - 6 bytes
 	 */
-	target_ip = (void *)((u8 *)(arp + 1) +
-			     ETH_ALEN + sizeof(__be32) + ETH_ALEN);
+	target_ip = (const void *)((const u8 *)(arp + 1) +
+				   ETH_ALEN + sizeof(__be32) + ETH_ALEN);
 
 	/*
 	 * ARP request is forwarded to ME only if IP address match in the
@@ -195,8 +195,7 @@ static bool iwl_mei_rx_filter_ipv4(struct sk_buff *skb,
 	bool match;
 
 	if (!pskb_may_pull(skb, skb_network_offset(skb) + sizeof(*iphdr)) ||
-	    !pskb_may_pull(skb, skb_network_offset(skb) +
-			   sizeof(ip_hdrlen(skb) - sizeof(*iphdr))))
+	    !pskb_may_pull(skb, skb_network_offset(skb) + ip_hdrlen(skb)))
 		return false;
 
 	iphdrlen = ip_hdrlen(skb);
@@ -299,7 +298,7 @@ iwl_mei_rx_pass_to_csme(struct sk_buff *skb,
 	if (!skb_mac_offset(skb))
 		return RX_HANDLER_PASS;
 
-	if (WARN_ON_ONCE(skb_headroom(skb) < sizeof(*ethhdr)))
+	if (skb_headroom(skb) < sizeof(*ethhdr))
 		return RX_HANDLER_PASS;
 
 	if (iwl_mei_rx_filter_eth(ethhdr, filters,
@@ -406,4 +405,4 @@ void iwl_mei_tx_copy_to_csme(struct sk_buff *origskb, unsigned int ivlen)
 
 	dev_kfree_skb(skb);
 }
-EXPORT_SYMBOL(iwl_mei_tx_copy_to_csme);
+EXPORT_SYMBOL_GPL(iwl_mei_tx_copy_to_csme);

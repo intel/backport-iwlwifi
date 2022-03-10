@@ -43,6 +43,9 @@ subdir-ccflags-y += -Wno-pointer-sign
 endif
 
 subdir-ccflags-y += -D__CHECK_ENDIAN__ -Wunused-but-set-variable
+subdir-ccflags-$(CPTCFG_IWLWIFI_SIMULATION) += -Wshadow
+subdir-ccflags-$(CPTCFG_IWLWIFI_SIMULATION) += -Wlogical-op
+subdir-ccflags-$(CPTCFG_IWLWIFI_SIMULATION) += -Wmissing-field-initializers
 
 obj-y += compat/
 

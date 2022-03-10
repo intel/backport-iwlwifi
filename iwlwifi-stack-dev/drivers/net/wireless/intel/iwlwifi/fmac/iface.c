@@ -13,6 +13,18 @@
 
 #include "fmac.h"
 
+const u8 iwl_fmac_tid_to_tx_fifo[IWL_MAX_TID_COUNT + 1] = {
+	IWL_FMAC_TX_FIFO_BE,
+	IWL_FMAC_TX_FIFO_BK,
+	IWL_FMAC_TX_FIFO_BK,
+	IWL_FMAC_TX_FIFO_BE,
+	IWL_FMAC_TX_FIFO_VI,
+	IWL_FMAC_TX_FIFO_VI,
+	IWL_FMAC_TX_FIFO_VO,
+	IWL_FMAC_TX_FIFO_VO,
+	IWL_FMAC_TX_FIFO_VO /* MGMT is mapped to VO */
+};
+
 static int iwl_fmac_dev_init(struct net_device *dev)
 {
 	netif_carrier_off(dev);

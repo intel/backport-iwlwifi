@@ -1970,14 +1970,26 @@ struct ieee80211_eht_mcs_nss_supp {
 };
 
 /**
- * struct ieee80211_eht_cap_elem - eht capabilities element
+ * struct ieee80211_eht_cap_elem_fixed - EHT capabilities fixed data
  *
- * This structure is the "eht capabilities element" fixed fields as
+ * This structure is the "EHT capabilities element" fixed fields as
  * described in P802.11be_D1.0 section 9.4.2.295a
+ *
+ * @mac_cap_info: MAC capabilities
+ * @phy_cap_info: PHY capabilities
  */
-struct ieee80211_eht_cap_elem {
+struct ieee80211_eht_cap_elem_fixed {
 	u8 mac_cap_info[2];
 	u8 phy_cap_info[8];
+} __packed;
+
+/**
+ * struct ieee80211_eht_cap_elem - EHT capabilities element
+ * @fixed: fixed parts, see &ieee80211_eht_cap_elem_fixed
+ * @optional: optional parts
+ */
+struct ieee80211_eht_cap_elem {
+	struct ieee80211_eht_cap_elem_fixed fixed;
 
 	/*
 	 * Followed by:
@@ -1991,7 +2003,7 @@ struct ieee80211_eht_cap_elem {
  * struct ieee80211_eht_operation - eht operation element
  *
  * This structure is the "eht operation element" fields as
- * described in P802.11be_D1.0 section 9.4.2.295c
+ * described in P802.11be_D1.2 section 9.4.2.295c
  *
  * TODO: the actual layout of the EHT operation element is not clearly defined
  * in the specification. For now assume the below layout.
@@ -1999,6 +2011,7 @@ struct ieee80211_eht_cap_elem {
 struct ieee80211_eht_operation {
 	u8 chan_width;
 	u8 ccfs;
+	u8 present_bm;
 } __packed;
 
 /* 802.11ac VHT Capabilities */
@@ -2297,11 +2310,12 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 #define IEEE80211_HE_PHY_CAP9_RX_1024_QAM_LESS_THAN_242_TONE_RU		0x08
 #define IEEE80211_HE_PHY_CAP9_RX_FULL_BW_SU_USING_MU_WITH_COMP_SIGB	0x10
 #define IEEE80211_HE_PHY_CAP9_RX_FULL_BW_SU_USING_MU_WITH_NON_COMP_SIGB	0x20
-#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_0US			0x00
-#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_8US			0x40
-#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_16US			0x80
-#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_RESERVED		0xc0
-#define IEEE80211_HE_PHY_CAP9_NOMIMAL_PKT_PADDING_MASK			0xc0
+#define IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_0US			0x0
+#define IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_8US			0x1
+#define IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_16US			0x2
+#define IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_RESERVED		0x3
+#define IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_POS			6
+#define IEEE80211_HE_PHY_CAP9_NOMINAL_PKT_PADDING_MASK			0xc0
 
 #define IEEE80211_HE_PHY_CAP10_HE_MU_M1RU_MAX_LTF			0x01
 
@@ -2679,7 +2693,7 @@ ieee80211_he_spr_size(const u8 *he_spr_ie)
 /* Calculate 802.11be EHT capabilities IE Tx/Rx EHT MCS NSS Support Field size */
 static inline u8
 ieee80211_eht_mcs_nss_size(const struct ieee80211_he_cap_elem *he_cap,
-			   const struct ieee80211_eht_cap_elem *eht_cap)
+			   const struct ieee80211_eht_cap_elem_fixed *eht_cap)
 {
 	u8 count = 0;
 
@@ -3184,13 +3198,9 @@ enum ieee80211_eid_ext {
 	WLAN_EID_EXT_SHORT_SSID_LIST = 58,
 	WLAN_EID_EXT_HE_6GHZ_CAPA = 59,
 	WLAN_EID_EXT_UL_MU_POWER_CAPA = 60,
-
-	/*
-	 * TODO: the actual ANA assignments for these IE IDs are not defined yet
-	 * in Draft P802.11be_D1.0. For now use these values.
-	 */
-	WLAN_EID_EXT_EHT_CAPABILITY = 253,
-	WLAN_EID_EXT_EHT_OPERATION = 254,
+	WLAN_EID_EXT_EHT_OPERATION = 106,
+	WLAN_EID_EXT_EHT_MULTI_LINK = 107,
+	WLAN_EID_EXT_EHT_CAPABILITY = 108,
 };
 
 /* Action category code */

@@ -1,7 +1,6 @@
 /*
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 Intel Corporation
- * Copyright (C) 2020 Intel Corporation
+ * Copyright (C) 2018, 2020, 2022 Intel Corporation
  *
  * Backport functionality introduced in Linux 4.4.
  *
@@ -20,7 +19,7 @@
 #include <asm/unaligned.h>
 #include <linux/device.h>
 
-#if CFG80211_VERSION < KERNEL_VERSION(5,12,0)
+#if CFG80211_VERSION < KERNEL_VERSION(5,18,0)
 static unsigned int __ieee80211_get_mesh_hdrlen(u8 flags)
 {
 	int ae = flags & MESH_FLAGS_AE;
@@ -82,8 +81,7 @@ int ieee80211_data_to_8023_exthdr(struct sk_buff *skb, struct ethhdr *ehdr,
 			return -1;
 		break;
 	case cpu_to_le16(IEEE80211_FCTL_TODS | IEEE80211_FCTL_FROMDS):
-		if (unlikely(iftype != NL80211_IFTYPE_WDS &&
-			     iftype != NL80211_IFTYPE_MESH_POINT &&
+		if (unlikely(iftype != NL80211_IFTYPE_MESH_POINT &&
 			     iftype != NL80211_IFTYPE_AP_VLAN &&
 			     iftype != NL80211_IFTYPE_STATION))
 			return -1;
@@ -129,12 +127,14 @@ int ieee80211_data_to_8023_exthdr(struct sk_buff *skb, struct ethhdr *ehdr,
 	if (likely((!is_amsdu && ether_addr_equal(payload.hdr, rfc1042_header) &&
 		    tmp.h_proto != htons(ETH_P_AARP) &&
 		    tmp.h_proto != htons(ETH_P_IPX)) ||
-		   ether_addr_equal(payload.hdr, bridge_tunnel_header)))
+		   ether_addr_equal(payload.hdr, bridge_tunnel_header))) {
 		/* remove RFC1042 or Bridge-Tunnel encapsulation and
 		 * replace EtherType */
 		hdrlen += ETH_ALEN + 2;
-	else
+		skb_postpull_rcsum(skb, &payload, ETH_ALEN + 2);
+	} else {
 		tmp.h_proto = htons(skb->len - hdrlen);
+	}
 
 	pskb_pull(skb, hdrlen);
 
@@ -146,7 +146,7 @@ int ieee80211_data_to_8023_exthdr(struct sk_buff *skb, struct ethhdr *ehdr,
 }
 EXPORT_SYMBOL(/* don't auto-generate a rename */
 	ieee80211_data_to_8023_exthdr);
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4,18,0) */
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0) */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
 static void

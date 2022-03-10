@@ -308,7 +308,7 @@ void iwl_dnt_configure(struct iwl_trans *trans, const struct fw_img *image)
 			IWL_ERR(trans, "DMA buffer wasn't allocated\n");
 			return;
 		}
-		/* fall through */
+		fallthrough;
 	case NO_MONITOR:
 	case MIPI:
 	case INTERFACE:

@@ -7,7 +7,7 @@
 #include "fw/api/commands.h"
 #include "fw/api/phy-ctxt.h"
 
-/**
+/*
  * DDR needs frequency in units of 16.666MHz, so provide FW with the
  * frequency values in the adjusted format.
  */
@@ -133,4 +133,13 @@ struct iwl_rfi_freq_table_resp_cmd *iwl_rfi_get_freq_table(struct iwl_mvm *mvm)
 
 	iwl_free_resp(&cmd);
 	return resp;
+}
+
+void iwl_rfi_deactivate_notif_handler(struct iwl_mvm *mvm,
+				      struct iwl_rx_cmd_buffer *rxb)
+{
+	struct iwl_rx_packet *pkt = rxb_addr(rxb);
+	struct iwl_rfi_deactivate_notif *notif = (void *)pkt->data;
+
+	IWL_INFO(mvm, "RFIm is deactivated, reason = %d\n", notif->reason);
 }
