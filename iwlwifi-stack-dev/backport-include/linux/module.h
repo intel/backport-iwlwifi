@@ -61,11 +61,6 @@ extern void backport_dependency_symbol(void);
 	void cleanup_module(void) __attribute__((cold,alias("__exit_compat")));
 #endif
 
-#if LINUX_VERSION_IS_LESS(3,3,0)
-#undef param_check_bool
-#define param_check_bool(name, p) __param_check(name, p, bool)
-#endif
-
 #if LINUX_VERSION_IS_LESS(5,4,0)
 #define MODULE_IMPORT_NS(ns)
 #endif

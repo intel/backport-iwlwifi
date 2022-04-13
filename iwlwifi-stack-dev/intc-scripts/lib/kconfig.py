@@ -51,7 +51,7 @@ class ConfigTree(object):
 
     def remove_symbols(self, syms):
         for nf in self._walk(self.rootfile):
-            out = ''
+            out = []
             skip = False
             for l in open(os.path.join(self.basedir, nf), 'r'):
                 m = cfg_line.match(l)
@@ -62,7 +62,9 @@ class ConfigTree(object):
                 if src_line.match(l) or other_line.match(l):
                     skip = False
                 if not skip:
-                    out += l
-            outf = open(os.path.join(self.basedir, nf), 'w')
-            outf.write(out)
-            outf.close()
+                    out.append(l)
+            if out[-1] == '\n':
+                out = out[:-1]
+
+            with open(os.path.join(self.basedir, nf), 'w') as outf:
+                outf.writelines(out)

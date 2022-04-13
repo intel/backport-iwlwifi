@@ -27,7 +27,7 @@ endif
 
 $(obj)/shipped-certs.c: $(wildcard $(src)/certs/*.hex)
 	@$(kecho) "  GEN     $@"
-	@(echo '#include "reg.h"'; \
+	$(Q)(echo '#include "reg.h"'; \
 	  echo 'const u8 shipped_regdb_certs[] = {'; \
 	  echo | cat - $^ ; \
 	  echo '};'; \
@@ -37,7 +37,7 @@ $(obj)/shipped-certs.c: $(wildcard $(src)/certs/*.hex)
 $(obj)/extra-certs.c: $(CPTCFG_CFG80211_EXTRA_REGDB_KEYDIR:"%"=%) \
 		      $(wildcard $(CPTCFG_CFG80211_EXTRA_REGDB_KEYDIR:"%"=%)/*.x509)
 	@$(kecho) "  GEN     $@"
-	@(set -e; \
+	$(Q)(set -e; \
 	  allf=""; \
 	  for f in $^ ; do \
 	      test -f $$f || continue;\

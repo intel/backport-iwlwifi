@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -92,9 +92,6 @@ enum {
 #if IS_ENABLED(CPTCFG_IWLXVT)
 	XVT_OP_MODE,
 #endif
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-	FMAC_OP_MODE,
-#endif
 };
 
 /* Protects the table contents, i.e. the ops pointer & drv list */
@@ -106,9 +103,6 @@ static struct iwlwifi_opmode_table {
 } iwlwifi_opmode_table[] = {		/* ops set when driver is initialized */
 	[DVM_OP_MODE] = { .name = "iwldvm", .ops = NULL },
 	[MVM_OP_MODE] = { .name = "iwlmvm", .ops = NULL },
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-	[FMAC_OP_MODE] = { .name = "iwlfmac", .ops = NULL },
-#endif
 #if IS_ENABLED(CPTCFG_IWLXVT)
 	[XVT_OP_MODE] = { .name = "iwlxvt", .ops = NULL },
 #endif
@@ -170,9 +164,6 @@ static bool iwl_drv_xvt_mode_supported(enum iwl_fw_type fw_type, int mode_idx)
 	/* xVT mode is available only with 16 FW */
 	switch (fw_type) {
 	case IWL_FW_MVM:
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-	case IWL_FW_FMAC:
-#endif
 		break;
 	default:
 		return false;
@@ -182,9 +173,6 @@ static bool iwl_drv_xvt_mode_supported(enum iwl_fw_type fw_type, int mode_idx)
 	switch (mode_idx) {
 	case XVT_OP_MODE:
 	case MVM_OP_MODE:
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-	case FMAC_OP_MODE:
-#endif
 		return true;
 	default:
 		return false;
@@ -1467,14 +1455,6 @@ fw_dbg_conf:
 				le32_to_cpu(recov_info->buf_size);
 			}
 			break;
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-		case IWL_UCODE_TLV_FW_FMAC_API_VERSION:
-			if (tlv_len != sizeof(u32))
-				goto invalid_tlv_len;
-			capa->fmac_api_version =
-				le32_to_cpup((const __le32 *)tlv_data);
-			break;
-#endif
 		case IWL_UCODE_TLV_FW_FSEQ_VERSION: {
 			const struct {
 				u8 version[32];
@@ -1596,11 +1576,6 @@ fw_dbg_conf:
 		iwl_print_hex_dump(drv, IWL_DL_FW, data, len);
 		return -EINVAL;
 	}
-
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-	if (fw_has_capa(capa, IWL_UCODE_TLV_CAPA_MLME_OFFLOAD))
-		drv->fw.type = IWL_FW_FMAC;
-#endif
 
 	return 0;
 
@@ -2006,11 +1981,6 @@ static void iwl_req_fw_callback(const struct firmware *ucode_raw, void *context)
 	case IWL_FW_MVM:
 		op = &iwlwifi_opmode_table[MVM_OP_MODE];
 		break;
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-	case IWL_FW_FMAC:
-		op = &iwlwifi_opmode_table[FMAC_OP_MODE];
-		break;
-#endif
 	}
 
 #if IS_ENABLED(CPTCFG_IWLXVT)

@@ -47,6 +47,12 @@
 #define ETH_P_PREAUTH   0x88C7          /* 802.11 Preauthentication */
 #endif
 
+#ifndef ETH_P_MAP
+#define ETH_P_MAP	0x00F9		/* Qualcomm multiplexing and
+					 * aggregation protocol
+					 */
+#endif
+
 #ifndef ETH_MIN_MTU
 #define ETH_MIN_MTU	68
 #endif

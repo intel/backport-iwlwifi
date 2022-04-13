@@ -22,6 +22,7 @@ config CFG80211
 if CFG80211
 
 config NL80211_TESTMODE
+	depends on !KERNEL_4_18
 	bool "nl80211 testmode command"
 	help
 	  The nl80211 testmode command helps implementing things like
@@ -73,7 +74,6 @@ config CFG80211_CERTIFICATION_ONUS
 	  and approved environment by your local regulatory agency.
 
 config CFG80211_REQUIRE_SIGNED_REGDB
-	depends on !KERNEL_3_13
 	bool "require regdb signature" if CFG80211_CERTIFICATION_ONUS
 	default y
 	select BPAUTO_SYSTEM_DATA_VERIFICATION

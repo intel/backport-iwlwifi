@@ -255,7 +255,6 @@ int mii_ethtool_get_link_ksettings(struct mii_if_info *mii,
 EXPORT_SYMBOL(mii_ethtool_get_link_ksettings);
 #endif /* LINUX_VERSION_IS_GEQ(4,6,0) */
 
-#if LINUX_VERSION_IS_GEQ(4,2,0)
 void __page_frag_cache_drain(struct page *page, unsigned int count)
 {
 	VM_BUG_ON_PAGE(page_ref_count(page) == 0, page);
@@ -273,4 +272,3 @@ void __page_frag_cache_drain(struct page *page, unsigned int count)
 	}
 }
 EXPORT_SYMBOL_GPL(__page_frag_cache_drain);
-#endif

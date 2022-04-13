@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
- * Copyright (C) 2013-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2013-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2015 Intel Deutschland GmbH
  */
 #ifndef __MVM_CONSTANTS_H
@@ -134,6 +134,7 @@
 #define IWL_MVM_DISABLE_AP_FILS			false
 #define IWL_MVM_6GHZ_PASSIVE_SCAN_TIMEOUT       3000 /* in seconds */
 #define IWL_MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT 60   /* in seconds */
+#define IWL_MVM_MEI_REPORT_RFKILL               false
 #else /* CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES */
 #define IWL_MVM_DEFAULT_PS_TX_DATA_TIMEOUT	(mvm->trans->dbg_cfg.MVM_DEFAULT_PS_TX_DATA_TIMEOUT)
 #define IWL_MVM_DEFAULT_PS_RX_DATA_TIMEOUT	(mvm->trans->dbg_cfg.MVM_DEFAULT_PS_RX_DATA_TIMEOUT)
@@ -258,6 +259,7 @@
 #define IWL_MVM_DISABLE_AP_FILS			(mvm->trans->dbg_cfg.MVM_DISABLE_AP_FILS)
 #define IWL_MVM_6GHZ_PASSIVE_SCAN_TIMEOUT       (mvm->trans->dbg_cfg.MVM_6GHZ_PASSIVE_SCAN_TIMEOUT)
 #define IWL_MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT (mvm->trans->dbg_cfg.MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT)
+#define IWL_MVM_MEI_REPORT_RFKILL               (mvm->trans->dbg_cfg.MVM_MEI_REPORT_RFKILL)
 
 #endif /* CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES */
 

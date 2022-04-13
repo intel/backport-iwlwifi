@@ -745,7 +745,7 @@ enum hwsim_multicast_groups {
 	HWSIM_MCGRP_CONFIG,
 };
 
-static __genl_const struct genl_multicast_group hwsim_mcgrps[] = {
+static const struct genl_multicast_group hwsim_mcgrps[] = {
 	[HWSIM_MCGRP_CONFIG] = { .name = "config", },
 };
 
@@ -1972,8 +1972,8 @@ mac80211_hwsim_beacon(struct hrtimer *timer)
 		bcn_int -= data->bcn_delta;
 		data->bcn_delta = 0;
 	}
-	hrtimer_forward(&data->beacon_timer, hrtimer_get_expires(timer),
-			ns_to_ktime(bcn_int * NSEC_PER_USEC));
+	hrtimer_forward_now(&data->beacon_timer,
+			    ns_to_ktime(bcn_int * NSEC_PER_USEC));
 	return HRTIMER_RESTART;
 }
 
@@ -2945,9 +2945,8 @@ out_err:
 	nlmsg_free(mcast_skb);
 }
 
-static const struct ieee80211_sband_iftype_data sband_capa_2ghz[] = {
+static const struct ieee80211_sband_iftype_data he_capa_2ghz[] = {
 	{
-		/* TODO: should we support other types, e.g., P2P?*/
 		.types_mask = BIT(NL80211_IFTYPE_STATION) |
 			      BIT(NL80211_IFTYPE_AP),
 		.he_cap = {
@@ -3056,7 +3055,6 @@ static const struct ieee80211_sband_iftype_data sband_capa_2ghz[] = {
 	},
 #ifdef CPTCFG_MAC80211_MESH
 	{
-		/* TODO: should we support other types, e.g., IBSS?*/
 		.types_mask = BIT(NL80211_IFTYPE_MESH_POINT),
 		.he_cap = {
 			.has_he = true,
@@ -3096,7 +3094,7 @@ static const struct ieee80211_sband_iftype_data sband_capa_2ghz[] = {
 #endif
 };
 
-static const struct ieee80211_sband_iftype_data sband_capa_5ghz[] = {
+static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
 	{
 		/* TODO: should we support other types, e.g., P2P?*/
 		.types_mask = BIT(NL80211_IFTYPE_STATION) |
@@ -3294,23 +3292,139 @@ static const struct ieee80211_sband_iftype_data sband_capa_5ghz[] = {
 #endif
 };
 
+static const struct ieee80211_sband_iftype_data he_capa_6ghz[] = {
+	{
+		/* TODO: should we support other types, e.g., P2P?*/
+		.types_mask = BIT(NL80211_IFTYPE_STATION) |
+			      BIT(NL80211_IFTYPE_AP),
+		.he_6ghz_capa = {
+			.capa = cpu_to_le16(IEEE80211_HE_6GHZ_CAP_MIN_MPDU_START |
+					    IEEE80211_HE_6GHZ_CAP_MAX_AMPDU_LEN_EXP |
+					    IEEE80211_HE_6GHZ_CAP_MAX_MPDU_LEN |
+					    IEEE80211_HE_6GHZ_CAP_SM_PS |
+					    IEEE80211_HE_6GHZ_CAP_RD_RESPONDER |
+					    IEEE80211_HE_6GHZ_CAP_TX_ANTPAT_CONS |
+					    IEEE80211_HE_6GHZ_CAP_RX_ANTPAT_CONS),
+		},
+		.he_cap = {
+			.has_he = true,
+			.he_cap_elem = {
+				.mac_cap_info[0] =
+					IEEE80211_HE_MAC_CAP0_HTC_HE,
+				.mac_cap_info[1] =
+					IEEE80211_HE_MAC_CAP1_TF_MAC_PAD_DUR_16US |
+					IEEE80211_HE_MAC_CAP1_MULTI_TID_AGG_RX_QOS_8,
+				.mac_cap_info[2] =
+					IEEE80211_HE_MAC_CAP2_BSR |
+					IEEE80211_HE_MAC_CAP2_MU_CASCADING |
+					IEEE80211_HE_MAC_CAP2_ACK_EN,
+				.mac_cap_info[3] =
+					IEEE80211_HE_MAC_CAP3_OMI_CONTROL |
+					IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3,
+				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMSDU_IN_AMPDU,
+				.phy_cap_info[0] =
+					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
+					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
+					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_80PLUS80_MHZ_IN_5G,
+				.phy_cap_info[1] =
+					IEEE80211_HE_PHY_CAP1_PREAMBLE_PUNC_RX_MASK |
+					IEEE80211_HE_PHY_CAP1_DEVICE_CLASS_A |
+					IEEE80211_HE_PHY_CAP1_LDPC_CODING_IN_PAYLOAD |
+					IEEE80211_HE_PHY_CAP1_MIDAMBLE_RX_TX_MAX_NSTS,
+				.phy_cap_info[2] =
+					IEEE80211_HE_PHY_CAP2_NDP_4x_LTF_AND_3_2US |
+					IEEE80211_HE_PHY_CAP2_STBC_TX_UNDER_80MHZ |
+					IEEE80211_HE_PHY_CAP2_STBC_RX_UNDER_80MHZ |
+					IEEE80211_HE_PHY_CAP2_UL_MU_FULL_MU_MIMO |
+					IEEE80211_HE_PHY_CAP2_UL_MU_PARTIAL_MU_MIMO,
+
+				/* Leave all the other PHY capability bytes
+				 * unset, as DCM, beam forming, RU and PPE
+				 * threshold information are not supported
+				 */
+			},
+			.he_mcs_nss_supp = {
+				.rx_mcs_80 = cpu_to_le16(0xfffa),
+				.tx_mcs_80 = cpu_to_le16(0xfffa),
+				.rx_mcs_160 = cpu_to_le16(0xfffa),
+				.tx_mcs_160 = cpu_to_le16(0xfffa),
+				.rx_mcs_80p80 = cpu_to_le16(0xfffa),
+				.tx_mcs_80p80 = cpu_to_le16(0xfffa),
+			},
+		},
+	},
+#ifdef CPTCFG_MAC80211_MESH
+	{
+		/* TODO: should we support other types, e.g., IBSS?*/
+		.types_mask = BIT(NL80211_IFTYPE_MESH_POINT),
+		.he_6ghz_capa = {
+			.capa = cpu_to_le16(IEEE80211_HE_6GHZ_CAP_MIN_MPDU_START |
+					    IEEE80211_HE_6GHZ_CAP_MAX_AMPDU_LEN_EXP |
+					    IEEE80211_HE_6GHZ_CAP_MAX_MPDU_LEN |
+					    IEEE80211_HE_6GHZ_CAP_SM_PS |
+					    IEEE80211_HE_6GHZ_CAP_RD_RESPONDER |
+					    IEEE80211_HE_6GHZ_CAP_TX_ANTPAT_CONS |
+					    IEEE80211_HE_6GHZ_CAP_RX_ANTPAT_CONS),
+		},
+		.he_cap = {
+			.has_he = true,
+			.he_cap_elem = {
+				.mac_cap_info[0] =
+					IEEE80211_HE_MAC_CAP0_HTC_HE,
+				.mac_cap_info[1] =
+					IEEE80211_HE_MAC_CAP1_MULTI_TID_AGG_RX_QOS_8,
+				.mac_cap_info[2] =
+					IEEE80211_HE_MAC_CAP2_ACK_EN,
+				.mac_cap_info[3] =
+					IEEE80211_HE_MAC_CAP3_OMI_CONTROL |
+					IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3,
+				.mac_cap_info[4] = IEEE80211_HE_MAC_CAP4_AMSDU_IN_AMPDU,
+				.phy_cap_info[0] =
+					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
+					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G |
+					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_80PLUS80_MHZ_IN_5G,
+				.phy_cap_info[1] =
+					IEEE80211_HE_PHY_CAP1_PREAMBLE_PUNC_RX_MASK |
+					IEEE80211_HE_PHY_CAP1_DEVICE_CLASS_A |
+					IEEE80211_HE_PHY_CAP1_LDPC_CODING_IN_PAYLOAD |
+					IEEE80211_HE_PHY_CAP1_MIDAMBLE_RX_TX_MAX_NSTS,
+				.phy_cap_info[2] = 0,
+
+				/* Leave all the other PHY capability bytes
+				 * unset, as DCM, beam forming, RU and PPE
+				 * threshold information are not supported
+				 */
+			},
+			.he_mcs_nss_supp = {
+				.rx_mcs_80 = cpu_to_le16(0xfffa),
+				.tx_mcs_80 = cpu_to_le16(0xfffa),
+				.rx_mcs_160 = cpu_to_le16(0xfffa),
+				.tx_mcs_160 = cpu_to_le16(0xfffa),
+				.rx_mcs_80p80 = cpu_to_le16(0xfffa),
+				.tx_mcs_80p80 = cpu_to_le16(0xfffa),
+			},
+		},
+	},
+#endif
+};
+
 static void mac80211_hwsim_he_capab(struct ieee80211_supported_band *sband)
 {
 	u16 n_iftype_data;
 
-	switch (sband->band) {
-	case NL80211_BAND_2GHZ:
-		n_iftype_data = ARRAY_SIZE(sband_capa_2ghz);
+	if (sband->band == NL80211_BAND_2GHZ) {
+		n_iftype_data = ARRAY_SIZE(he_capa_2ghz);
 		sband->iftype_data =
-			(struct ieee80211_sband_iftype_data *)sband_capa_2ghz;
-		break;
-	case NL80211_BAND_5GHZ:
-	case NL80211_BAND_6GHZ:
-		n_iftype_data = ARRAY_SIZE(sband_capa_5ghz);
+			(struct ieee80211_sband_iftype_data *)he_capa_2ghz;
+	} else if (sband->band == NL80211_BAND_5GHZ) {
+		n_iftype_data = ARRAY_SIZE(he_capa_5ghz);
 		sband->iftype_data =
-			(struct ieee80211_sband_iftype_data *)sband_capa_5ghz;
-		break;
-	default:
+			(struct ieee80211_sband_iftype_data *)he_capa_5ghz;
+	} else if (sband->band == NL80211_BAND_6GHZ) {
+		n_iftype_data = ARRAY_SIZE(he_capa_6ghz);
+		sband->iftype_data =
+			(struct ieee80211_sband_iftype_data *)he_capa_6ghz;
+	} else {
 		return;
 	}
 
@@ -3424,7 +3538,7 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
 	data->idx = idx;
 	data->destroy_on_close = param->destroy_on_close;
 	if (info)
-		data->portid = genl_info_snd_portid(info);
+		data->portid = info->snd_portid;
 
 	/* setup interface limits, only on interface types we support */
 	if (param->iftypes & BIT(NL80211_IFTYPE_ADHOC)) {
@@ -3859,17 +3973,16 @@ static const struct net_device_ops hwsim_netdev_ops = {
 
 static void hwsim_mon_setup(struct net_device *dev)
 {
+	u8 addr[ETH_ALEN];
+
 	dev->netdev_ops = &hwsim_netdev_ops;
 	netdev_set_def_destructor(dev);
 	ether_setup(dev);
-#if LINUX_VERSION_IS_GEQ(4,3,0)
 	dev->priv_flags |= IFF_NO_QUEUE;
-#else
-	dev->tx_queue_len = 0;
-#endif
 	dev->type = ARPHRD_IEEE80211_RADIOTAP;
-	eth_zero_addr(dev->dev_addr);
-	dev->dev_addr[0] = 0x12;
+	eth_zero_addr(addr);
+	addr[0] = 0x12;
+	eth_hw_addr_set(dev, addr);
 }
 
 static struct mac80211_hwsim_data *get_hwsim_data_ref_from_addr(const u8 *addr)
@@ -3928,7 +4041,7 @@ static int hwsim_tx_info_frame_received_nl(struct sk_buff *skb_2,
 		    data2->netgroup)
 			goto out;
 
-		if (genl_info_snd_portid(info) != data2->wmediumd)
+		if (info->snd_portid != data2->wmediumd)
 			goto out;
 	}
 
@@ -4037,7 +4150,7 @@ static int hwsim_cloned_frame_received_nl(struct sk_buff *skb_2,
 		    data2->netgroup)
 			goto out;
 
-		if (genl_info_snd_portid(info) != data2->wmediumd)
+		if (info->snd_portid != data2->wmediumd)
 			goto out;
 	}
 
@@ -4111,11 +4224,10 @@ static int hwsim_register_received_nl(struct sk_buff *skb_2,
 	if (hwsim_net_get_wmediumd(net))
 		return -EBUSY;
 
-	hwsim_register_wmediumd(net, genl_info_snd_portid(info));
+	hwsim_register_wmediumd(net, info->snd_portid);
 
 	pr_debug("mac80211_hwsim: received a REGISTER, "
-	       "switching to wmediumd mode with pid %d\n",
-	       genl_info_snd_portid(info));
+	       "switching to wmediumd mode with pid %d\n", info->snd_portid);
 
 	return 0;
 }
@@ -4334,8 +4446,7 @@ static int hwsim_get_radio_nl(struct sk_buff *msg, struct genl_info *info)
 			goto out_err;
 		}
 
-		res = mac80211_hwsim_get_radio(skb, data,
-					       genl_info_snd_portid(info),
+		res = mac80211_hwsim_get_radio(skb, data, info->snd_portid,
 					       info->snd_seq, NULL, 0);
 		if (res < 0) {
 			nlmsg_free(skb);
@@ -4374,7 +4485,7 @@ static int hwsim_dump_radio_nl(struct sk_buff *skb,
 			continue;
 
 		res = mac80211_hwsim_get_radio(skb, data,
-					       NETLINK_CB_PORTID(cb->skb),
+					       NETLINK_CB(cb->skb).portid,
 					       cb->nlh->nlmsg_seq, cb,
 					       NLM_F_MULTI);
 		if (res < 0)
@@ -4387,7 +4498,7 @@ static int hwsim_dump_radio_nl(struct sk_buff *skb,
 
 	/* list changed, but no new element sent, set interrupted flag */
 	if (skb->len == 0 && cb->prev_seq && cb->seq != cb->prev_seq) {
-		hdr = genlmsg_put(skb, NETLINK_CB_PORTID(cb->skb),
+		hdr = genlmsg_put(skb, NETLINK_CB(cb->skb).portid,
 				  cb->nlh->nlmsg_seq, &hwsim_genl_family,
 				  NLM_F_MULTI, HWSIM_CMD_GET_RADIO);
 		if (hdr) {
@@ -4495,9 +4606,9 @@ static int mac80211_hwsim_netlink_notify(struct notifier_block *nb,
 	if (state != NETLINK_URELEASE)
 		return NOTIFY_DONE;
 
-	remove_user_radios(netlink_notify_portid(notify));
+	remove_user_radios(notify->portid);
 
-	if (netlink_notify_portid(notify) == hwsim_net_get_wmediumd(notify->net)) {
+	if (notify->portid == hwsim_net_get_wmediumd(notify->net)) {
 		printk(KERN_INFO "mac80211_hwsim: wmediumd released netlink"
 		       " socket, switching to perfect channel medium\n");
 		hwsim_register_wmediumd(notify->net, 0);

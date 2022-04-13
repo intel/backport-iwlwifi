@@ -28,7 +28,7 @@ taken:
    file.
 
 #. Add the command ID to the ``fw/api/commands.h`` header file to the correct
-   group enum, or for FMAC to ``enum iwl_fmac_cmds``.
+   group enum.
 
 #. Link from the command ID to the structure(s) as described below.
 
@@ -52,9 +52,6 @@ C code in the driver.
  * To get the command IDs, the scripting starts from ``enum
    iwl_mvm_command_groups`` from which kernel-doc links point to the command
    ID enums defining the correct IDs within the group.
-
-   For FMAC, a special case adds the correct enum and group value for FMAC,
-   this isn't done in the code.
 
  * At the top level, kernel-doc links from the command to structures are used
    to determine which structures are possible for a given command/notification
@@ -195,7 +192,6 @@ The C code itself
  The following files are used:
 
   * mvm/fw-api*.h
-  * fmac/fw-api-fmac.h
   * iwl-fw-file.h
   * iwl-fw-api.h
   * ieee80211.h
@@ -211,8 +207,8 @@ The kernel-doc contained in the code
  then further parsed by the script to find the links.
 
 Some overrides within the script itself
- As described above, there are a few overrides, mostly for FMAC, in the
- script itself. This shouldn't be extended unless it can't be avoided.
+ As described above, there are a few overrides in the script itself.
+ This shouldn't be extended unless it can't be avoided.
 
 Run-time code when displaying the trace
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

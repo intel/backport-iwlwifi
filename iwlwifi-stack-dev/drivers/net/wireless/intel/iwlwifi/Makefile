@@ -13,7 +13,6 @@ iwlwifi-objs		+= queue/tx.o
 iwlwifi-objs		+= fw/img.o fw/notif-wait.o fw/rs.o
 iwlwifi-objs		+= fw/dbg.o fw/pnvm.o fw/dump.o
 iwlwifi-$(CPTCFG_IWLMVM)	+= fw/paging.o fw/smem.o fw/init.o
-iwlwifi-$(CPTCFG_IWLFMAC)	+= fw/paging.o fw/smem.o fw/init.o
 iwlwifi-$(CPTCFG_IWLXVT)	+= fw/init.o
 iwlwifi-$(CPTCFG_IWLWIFI_DEBUGFS) += fw/debugfs.o
 
@@ -32,7 +31,6 @@ iwlwifi-$(CPTCFG_IWLDVM) += cfg/1000.o cfg/2000.o
 iwlwifi-$(CPTCFG_IWLDVM) += cfg/5000.o cfg/6000.o
 iwlwifi-$(CPTCFG_IWLMVM) += cfg/7000.o cfg/8000.o
 iwlwifi-$(CPTCFG_IWLMVM) += cfg/9000.o cfg/22000.o
-iwlwifi-$(CPTCFG_IWLFMAC) += cfg/9000.o cfg/22000.o
 
 iwlwifi-$(CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES) += iwl-dbg-cfg.o
 
@@ -51,7 +49,6 @@ subdir-ccflags-$(CPTCFG_IWLWIFI_SIMULATION) += $(call cc-option,-Wpointer-arith)
 
 obj-$(CPTCFG_IWLDVM)	+= dvm/
 obj-$(CPTCFG_IWLMVM)	+= mvm/
-obj-$(CPTCFG_IWLFMAC)	+= fmac/
 obj-$(CPTCFG_IWLXVT)	+= xvt/
 
 obj-$(CPTCFG_IWLMEI)	+= mei/

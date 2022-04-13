@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -85,12 +85,6 @@
  *	The result output is sent back in &IWL_MVM_VENDOR_ATTR_FIPS_TEST_RESULT
  *	attribute. In case the function failed to produce an output for the
  *	requested test vector, &IWL_MVM_VENDOR_ATTR_FIPS_TEST_RESULT is not set.
- * @IWL_MVM_VENDOR_CMD_FMAC_CONNECT_PARAMS: set fmac specific parameters for
- *	future connect commands. These parameters will affect all following
- *	connect commands. To clear previous configuration, send the command with
- *	no attributes.
- * @IWL_MVM_VENDOR_CMD_FMAC_CONFIG: set one of the fmac configuration options.
- *	&IWL_MVM_VENDOR_ATTR_FMAC_CONFIG_STR specifies the configuration string.
  * @IWL_MVM_VENDOR_CMD_CSI_EVENT: CSI event, use as a command to enable unicast
  *	reporting to the calling socket
  * @IWL_MVM_VENDOR_CMD_ADD_PASN_STA: add a PASN station for and initiator or
@@ -167,8 +161,8 @@ enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_NEIGHBOR_REPORT_RESPONSE		= 0x1f,
 	IWL_MVM_VENDOR_CMD_GET_SAR_GEO_PROFILE			= 0x20,
 	IWL_MVM_VENDOR_CMD_TEST_FIPS				= 0x21,
-	IWL_MVM_VENDOR_CMD_FMAC_CONNECT_PARAMS			= 0x22,
-	IWL_MVM_VENDOR_CMD_FMAC_CONFIG				= 0x23,
+	IWL_MVM_VENDOR_CMD_RES_22				= 0x22,
+	IWL_MVM_VENDOR_CMD_RES_23				= 0x23,
 	IWL_MVM_VENDOR_CMD_CSI_EVENT				= 0x24,
 	IWL_MVM_VENDOR_CMD_ADD_PASN_STA				= 0x25,
 	IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA			= 0x26,
@@ -409,7 +403,6 @@ enum iwl_mvm_vendor_significant_change_result {
  * enum iwl_mvm_vendor_rxfilter_flags - the type of request rxfilter
  *
  * @IWL_MVM_VENDOR_RXFILTER_UNICAST: control unicast Rx filter
- * @IWL_MVM_VENDOR_RXFILTER_BCAST: control broadcast Rx filter
  * @IWL_MVM_VENDOR_RXFILTER_MCAST4: control IPv4 multicast Rx filter
  * @IWL_MVM_VENDOR_RXFILTER_MCAST6: control IPv4 multicast Rx filter
  * @IWL_MVM_VENDOR_RXFILTER_EINVAL: no Rx filter command was set
@@ -417,7 +410,6 @@ enum iwl_mvm_vendor_significant_change_result {
  */
 enum iwl_mvm_vendor_rxfilter_flags {
 	IWL_MVM_VENDOR_RXFILTER_UNICAST = 1 << 0,
-	IWL_MVM_VENDOR_RXFILTER_BCAST = 1 << 1,
 	IWL_MVM_VENDOR_RXFILTER_MCAST4 = 1 << 2,
 	IWL_MVM_VENDOR_RXFILTER_MCAST6 = 1 << 3,
 	IWL_MVM_VENDOR_RXFILTER_EINVAL = 1 << 7,
@@ -786,18 +778,6 @@ enum iwl_vendor_auth_akm_mode {
  *	test. &enum iwl_vendor_fips_test_vector_hw.
  * @IWL_MVM_VENDOR_ATTR_FIPS_TEST_VECTOR_HW_GCM: data vector for FIPS GCM HW
  *	test. &enum iwl_vendor_fips_test_vector_hw.
- * @IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_BLACKLIST: an array of BSSIDs to
- *	blocklist. The device shall not try to connect to blocklisted BSSIDs.
- *	This attribute shall not be set if
- *	IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_WHITELIST is set.
- * @IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_WHITELIST: an array of BSSIDs to
- *	passlist. The device shall only try to connect to BSSIDs from the list.
- *	This attribute shall not be set if
- *	IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_BLACKLIST is set.
- * @IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_MAX_RETRIES: number of APs to try
- *	before notifying connection failure.
- * @IWL_MVM_VENDOR_ATTR_FMAC_CONFIG_STR: a key=value string where key is an
- *	fmac configuration option.
  * @IWL_MVM_VENDOR_ATTR_CSI_HDR: CSI header
  * @IWL_MVM_VENDOR_ATTR_CSI_DATA: CSI data
  * @IWL_MVM_VENDOR_ATTR_STA_TK: the TK to use for PMF encryption for the
@@ -942,10 +922,10 @@ enum iwl_mvm_vendor_attr {
 	IWL_MVM_VENDOR_ATTR_FIPS_TEST_VECTOR_HW_AES		= 0x46,
 	IWL_MVM_VENDOR_ATTR_FIPS_TEST_VECTOR_HW_CCM		= 0x47,
 	IWL_MVM_VENDOR_ATTR_FIPS_TEST_VECTOR_HW_GCM		= 0x48,
-	IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_BLACKLIST	= 0x49,
-	IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_WHITELIST	= 0x4a,
-	IWL_MVM_VENDOR_ATTR_FMAC_CONNECT_PARAMS_MAX_RETRIES	= 0x4b,
-	IWL_MVM_VENDOR_ATTR_FMAC_CONFIG_STR			= 0x4c,
+	IWL_MVM_VENDOR_ATTR_RES_49				= 0x49,
+	IWL_MVM_VENDOR_ATTR_RES_4A				= 0x4a,
+	IWL_MVM_VENDOR_ATTR_RES_4B				= 0x4b,
+	IWL_MVM_VENDOR_ATTR_RES_4C				= 0x4c,
 	IWL_MVM_VENDOR_ATTR_CSI_HDR				= 0x4d,
 	IWL_MVM_VENDOR_ATTR_CSI_DATA				= 0x4e,
 	IWL_MVM_VENDOR_ATTR_STA_TK				= 0x4f,

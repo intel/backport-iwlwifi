@@ -11,6 +11,7 @@
 #include <net/addrconf.h>
 #include <net/ieee80211_radiotap.h>
 #include <crypto/hash.h>
+#include <net/dsfield.h>
 
 /* make sure we include iw_handler.h to get wireless_nlevent_flush() */
 #include <net/iw_handler.h>
@@ -2120,6 +2121,18 @@ cfg80211_find_ext_elem(u8 ext_eid, const u8 *ies, int len)
 	return (void *)cfg80211_find_ext_ie(ext_eid, ies, len);
 }
 
+static inline const struct element *
+ieee80211_bss_get_elem(struct cfg80211_bss *bss, u8 id)
+{
+	const struct cfg80211_bss_ies *ies;
+
+	ies = rcu_dereference(bss->ies);
+	if (!ies)
+		return NULL;
+
+	return cfg80211_find_elem(id, ies->data, ies->len);
+}
+
 #define IEEE80211_DEFAULT_AIRTIME_WEIGHT       256
 
 #endif /* CFG80211_VERSION < KERNEL_VERSION(5,1,0) */
@@ -2728,6 +2741,9 @@ static inline void __iwl7000_cfg80211_unregister_wdev(struct wireless_dev *wdev)
 		cfg80211_unregister_wdev(wdev);
 }
 #define cfg80211_unregister_wdev __iwl7000_cfg80211_unregister_wdev
+#define lockdep_is_wiphy_held(wiphy) 0
+#else
+#define lockdep_is_wiphy_held(wiphy) lockdep_is_held(&(wiphy)->mtx)
 #endif /* < 5.12 */
 
 #if CFG80211_VERSION < KERNEL_VERSION(5,18,0)
@@ -2743,3 +2759,37 @@ static inline int ieee80211_data_to_8023(struct sk_buff *skb, const u8 *addr,
 	return ieee80211_data_to_8023_exthdr(skb, NULL, addr, iftype, 0, false);
 }
 #endif /* CFG80211_VERSION < KERNEL_VERSION(5,18,0) */
+
+#if LINUX_VERSION_IS_LESS(5,15,0)
+/**
+ * eth_hw_addr_set - Assign Ethernet address to a net_device
+ * @dev: pointer to net_device structure
+ * @addr: address to assign
+ *
+ * Assign given address to the net_device, addr_assign_type is not changed.
+ */
+static inline void eth_hw_addr_set(struct net_device *dev, const u8 *addr)
+{
+	ether_addr_copy(dev->dev_addr, addr);
+}
+#endif /* LINUX_VERSION_IS_LESS(5,15,0) */
+
+#if LINUX_VERSION_IS_LESS(5,16,0)
+#define skb_ext_reset LINUX_BACKPORT(skb_get_dsfield)
+static inline int skb_get_dsfield(struct sk_buff *skb)
+{
+	switch (skb_protocol(skb, true)) {
+	case cpu_to_be16(ETH_P_IP):
+		if (!pskb_network_may_pull(skb, sizeof(struct iphdr)))
+			break;
+		return ipv4_get_dsfield(ip_hdr(skb));
+
+	case cpu_to_be16(ETH_P_IPV6):
+		if (!pskb_network_may_pull(skb, sizeof(struct ipv6hdr)))
+			break;
+		return ipv6_get_dsfield(ipv6_hdr(skb));
+	}
+
+	return -1;
+}
+#endif

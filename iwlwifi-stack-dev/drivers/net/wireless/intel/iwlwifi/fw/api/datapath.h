@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -25,6 +25,11 @@ enum iwl_data_path_subcmd_ids {
 	 * @TRIGGER_RX_QUEUES_NOTIF_CMD: &struct iwl_rxq_sync_cmd
 	 */
 	TRIGGER_RX_QUEUES_NOTIF_CMD = 0x2,
+
+	/**
+	 * @WNM_PLATFORM_PTM_REQUEST_CMD: &struct iwl_time_sync_cfg_cmd
+	 */
+	WNM_PLATFORM_PTM_REQUEST_CMD = 0x3,
 
 	/**
 	 * @WNM_80211V_TIMING_MEASUREMENT_CONFIG_CMD: &struct iwl_time_sync_cfg_cmd
@@ -70,7 +75,7 @@ enum iwl_data_path_subcmd_ids {
 	RFH_QUEUE_CONFIG_CMD = 0xD,
 
 	/**
-	 * @TLC_MNG_CONFIG_CMD: &struct iwl_tlc_config_cmd
+	 * @TLC_MNG_CONFIG_CMD: &struct iwl_tlc_config_cmd_v4
 	 */
 	TLC_MNG_CONFIG_CMD = 0xF,
 
@@ -92,6 +97,13 @@ enum iwl_data_path_subcmd_ids {
 	 *	command, and &struct iwl_rx_baid_cfg_resp as a response.
 	 */
 	RX_BAID_ALLOCATION_CONFIG_CMD = 0x16,
+
+	/**
+	 * @SCD_QUEUE_CONFIG_CMD: new scheduler queue allocation/config/removal
+	 *	command, uses &struct iwl_scd_queue_cfg_cmd and the response
+	 *	is (same as before) &struct iwl_tx_queue_cfg_rsp.
+	 */
+	SCD_QUEUE_CONFIG_CMD = 0x17,
 
 	/**
 	 * @MONITOR_NOTIF: Datapath monitoring notification, using
@@ -183,6 +195,48 @@ struct iwl_time_sync_cfg_cmd {
 	u8 peer_addr[ETH_ALEN];
 	u8 reserved[2];
 } __packed; /* WNM_80211V_TIMING_MEASUREMENT_CONFIG_CMD_API_S_VER_1 */
+
+/**
+ * enum iwl_synced_time_operation - PTM request options
+ *
+ * @IWL_SYNCED_TIME_OPERATION_READ_ARTB: read only the ARTB time
+ * @IWL_SYNCED_TIME_OPERATION_READ_GP2: read only the GP2 time
+ * @IWL_SYNCED_TIME_OPERATION_READ_BOTH: latch the ARTB and GP2 clocks and
+ *	provide timestamps from both clocks for the same time point
+ */
+enum iwl_synced_time_operation {
+	IWL_SYNCED_TIME_OPERATION_READ_ARTB = 1,
+	IWL_SYNCED_TIME_OPERATION_READ_GP2,
+	IWL_SYNCED_TIME_OPERATION_READ_BOTH,
+};
+
+/**
+ * struct iwl_synced_time_cmd - request synced GP2/ARTB timestamps
+ *
+ * @operation: one of &enum iwl_synced_time_operation
+ */
+struct iwl_synced_time_cmd {
+	__le32 operation;
+} __packed; /* WNM_80211V_TIMING_CMD_API_S_VER_1 */
+
+/**
+ * struct iwl_synced_time_rsp - response to iwl_synced_time_cmd
+ *
+ * @operation: one of &enum iwl_synced_time_operation
+ * @platform_timestamp_hi: high DWORD of the ARTB clock timestamp in nanoseconds
+ * @platform_timestamp_lo: low DWORD of the ARTB clock timestamp in nanoseconds
+ * @gp2_timestamp_hi: high DWORD of the GP2 clock timestamp in 10's of
+ *	nanoseconds
+ * @gp2_timestamp_lo: low DWORD of the GP2 clock timestamp in 10's of
+ *	nanoseconds
+ */
+struct iwl_synced_time_rsp {
+	__le32 operation;
+	__le32 platform_timestamp_hi;
+	__le32 platform_timestamp_lo;
+	__le32 gp2_timestamp_hi;
+	__le32 gp2_timestamp_lo;
+} __packed; /* WNM_80211V_TIMING_RSP_API_S_VER_1 */
 
 /**
  * struct iwl_time_msmt_cfm_notify - Time Sync measurement confirmation
@@ -515,21 +569,33 @@ struct iwl_rx_baid_cfg_cmd_alloc {
 
 /**
  * struct iwl_rx_baid_cfg_cmd_modify - BAID modification data
- * @sta_id_mask: station ID mask
- * @baid: the BAID to modify
+ * @old_sta_id_mask: old station ID mask
+ * @new_sta_id_mask: new station ID mask
+ * @tid: TID of the BAID
  */
 struct iwl_rx_baid_cfg_cmd_modify {
-	__le32 sta_id_mask;
+	__le32 old_sta_id_mask;
+	__le32 new_sta_id_mask;
+	__le32 tid;
+} __packed; /* RX_BAID_ALLOCATION_MODIFY_CMD_API_S_VER_2 */
+
+/**
+ * struct iwl_rx_baid_cfg_cmd_remove_v1 - BAID removal data
+ * @baid: the BAID to remove
+ */
+struct iwl_rx_baid_cfg_cmd_remove_v1 {
 	__le32 baid;
-} __packed; /* RX_BAID_ALLOCATION_MODIFY_CMD_API_S_VER_1 */
+} __packed; /* RX_BAID_ALLOCATION_REMOVE_CMD_API_S_VER_1 */
 
 /**
  * struct iwl_rx_baid_cfg_cmd_remove - BAID removal data
- * @baid: the BAID to remove
+ * @sta_id_mask: the station mask of the BAID to remove
+ * @tid: the TID of the BAID to remove
  */
 struct iwl_rx_baid_cfg_cmd_remove {
-	__le32 baid;
-} __packed; /* RX_BAID_ALLOCATION_REMOVE_CMD_API_S_VER_1 */
+	__le32 sta_id_mask;
+	__le32 tid;
+} __packed; /* RX_BAID_ALLOCATION_REMOVE_CMD_API_S_VER_2 */
 
 /**
  * struct iwl_rx_baid_cfg_cmd - BAID allocation/config command
@@ -540,9 +606,10 @@ struct iwl_rx_baid_cfg_cmd {
 	union {
 		struct iwl_rx_baid_cfg_cmd_alloc alloc;
 		struct iwl_rx_baid_cfg_cmd_modify modify;
+		struct iwl_rx_baid_cfg_cmd_remove_v1 remove_v1;
 		struct iwl_rx_baid_cfg_cmd_remove remove;
-	}; /* RX_BAID_ALLOCATION_OPERATION_API_U_VER_1 */
-} __packed; /* RX_BAID_ALLOCATION_CONFIG_CMD_API_S_VER_1 */
+	}; /* RX_BAID_ALLOCATION_OPERATION_API_U_VER_2 */
+} __packed; /* RX_BAID_ALLOCATION_CONFIG_CMD_API_S_VER_2 */
 
 /**
  * struct iwl_rx_baid_cfg_resp - BAID allocation response
@@ -551,5 +618,54 @@ struct iwl_rx_baid_cfg_cmd {
 struct iwl_rx_baid_cfg_resp {
 	__le32 baid;
 }; /* RX_BAID_ALLOCATION_RESPONSE_API_S_VER_1 */
+
+/**
+ * enum iwl_scd_queue_cfg_operation - scheduler queue operation
+ * @IWL_SCD_QUEUE_ADD: allocate a new queue
+ * @IWL_SCD_QUEUE_REMOVE: remove a queue
+ * @IWL_SCD_QUEUE_MODIFY: modify a queue
+ */
+enum iwl_scd_queue_cfg_operation {
+	IWL_SCD_QUEUE_ADD = 0,
+	IWL_SCD_QUEUE_REMOVE = 1,
+	IWL_SCD_QUEUE_MODIFY = 2,
+};
+
+/**
+ * struct iwl_scd_queue_cfg_cmd - scheduler queue allocation command
+ * @operation: the operation, see &enum iwl_scd_queue_cfg_operation
+ * @u.add.sta_mask: station mask
+ * @u.add.tid: TID
+ * @u.add.reserved: reserved
+ * @u.add.flags: flags from &enum iwl_tx_queue_cfg_actions, except
+ *	%TX_QUEUE_CFG_ENABLE_QUEUE is not valid
+ * @u.add.cb_size: size code
+ * @u.add.bc_dram_addr: byte-count table IOVA
+ * @u.add.tfdq_dram_addr: TFD queue IOVA
+ * @u.remove.queue: queue ID for removal
+ * @u.modify.sta_mask: new station mask for modify
+ * @u.modify.queue: queue ID to modify
+ */
+struct iwl_scd_queue_cfg_cmd {
+	__le32 operation;
+	union {
+		struct {
+			__le32 sta_mask;
+			u8 tid;
+			u8 reserved[3];
+			__le32 flags;
+			__le32 cb_size;
+			__le64 bc_dram_addr;
+			__le64 tfdq_dram_addr;
+		} __packed add; /* TX_QUEUE_CFG_CMD_ADD_API_S_VER_1 */
+		struct {
+			__le32 queue;
+		} __packed remove; /* TX_QUEUE_CFG_CMD_REMOVE_API_S_VER_1 */
+		struct {
+			__le32 sta_mask;
+			__le32 queue;
+		} __packed modify; /* TX_QUEUE_CFG_CMD_MODIFY_API_S_VER_1 */
+	} __packed u; /* TX_QUEUE_CFG_CMD_OPERATION_API_U_VER_1 */
+} __packed; /* TX_QUEUE_CFG_CMD_API_S_VER_3 */
 
 #endif /* __iwl_fw_api_datapath_h__ */

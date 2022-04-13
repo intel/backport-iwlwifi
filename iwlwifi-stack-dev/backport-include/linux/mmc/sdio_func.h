@@ -32,11 +32,6 @@
  *	This function should be called while the host is claimed.
  */
 #define sdio_retune_hold_now LINUX_BACKPORT(sdio_retune_hold_now)
-#if LINUX_VERSION_IS_LESS(4,3,0)
-static inline void sdio_retune_hold_now(struct sdio_func *func)
-{
-}
-#else
 static inline void sdio_retune_hold_now(struct sdio_func *func)
 {
 	struct mmc_host *host = func->card->host;
@@ -44,7 +39,6 @@ static inline void sdio_retune_hold_now(struct sdio_func *func)
 	host->retune_now = 0;
 	host->hold_retune += 1;
 }
-#endif /* < 4.3 */
 
 /**
  *	sdio_retune_release - signal that it's OK to retune now
@@ -57,11 +51,6 @@ static inline void sdio_retune_hold_now(struct sdio_func *func)
  *	This function should be called while the host is claimed.
  */
 #define sdio_retune_release LINUX_BACKPORT(sdio_retune_release)
-#if LINUX_VERSION_IS_LESS(4,3,0)
-static inline void sdio_retune_release(struct sdio_func *func)
-{
-}
-#else
 static inline void sdio_retune_release(struct sdio_func *func)
 {
 	struct mmc_host *host = func->card->host;
@@ -71,7 +60,6 @@ static inline void sdio_retune_release(struct sdio_func *func)
 	else
 		WARN_ON(1);
 }
-#endif
 
 #define sdio_retune_crc_disable LINUX_BACKPORT(sdio_retune_crc_disable)
 static inline void sdio_retune_crc_disable(struct sdio_func *func)

@@ -37,6 +37,7 @@
 #define IEEE80211_AUTH_TIMEOUT_SAE	(CPTCFG_IWL_TIMEOUT_FACTOR * HZ * 2)
 #define IEEE80211_AUTH_MAX_TRIES	3
 #define IEEE80211_AUTH_WAIT_ASSOC	(CPTCFG_IWL_TIMEOUT_FACTOR * HZ * 5)
+#define IEEE80211_AUTH_WAIT_SAE_RETRY	(CPTCFG_IWL_TIMEOUT_FACTOR * HZ * 2)
 #define IEEE80211_ASSOC_TIMEOUT		(CPTCFG_IWL_TIMEOUT_FACTOR * HZ / 5)
 #define IEEE80211_ASSOC_TIMEOUT_LONG	(CPTCFG_IWL_TIMEOUT_FACTOR * HZ / 2)
 #define IEEE80211_ASSOC_TIMEOUT_SHORT	(CPTCFG_IWL_TIMEOUT_FACTOR * HZ / 10)
@@ -1565,6 +1566,7 @@ ieee80211_find_80211h_pwr_constr(struct ieee80211_sub_if_data *sdata,
 		fallthrough;
 	case NL80211_BAND_2GHZ:
 	case NL80211_BAND_60GHZ:
+	case NL80211_BAND_LC:
 		chan_increment = 1;
 		break;
 	case NL80211_BAND_5GHZ:
@@ -2340,6 +2342,7 @@ static void ieee80211_set_disassoc(struct ieee80211_sub_if_data *sdata,
 {
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 	struct ieee80211_local *local = sdata->local;
+	struct ieee80211_bss_conf *bss_conf = &sdata->vif.bss_conf;
 	u32 changed = 0;
 	struct ieee80211_prep_tx_info info = {
 		.subtype = stype,
@@ -2489,6 +2492,10 @@ static void ieee80211_set_disassoc(struct ieee80211_sub_if_data *sdata,
 	cancel_delayed_work_sync(&ifmgd->tx_tspec_wk);
 
 	sdata->encrypt_headroom = IEEE80211_ENCRYPT_HEADROOM;
+
+	bss_conf->pwr_reduction = 0;
+	bss_conf->tx_pwr_env_num = 0;
+	memset(bss_conf->tx_pwr_env, 0, sizeof(bss_conf->tx_pwr_env));
 }
 
 static void ieee80211_reset_ap_probe(struct ieee80211_sub_if_data *sdata)
@@ -2598,7 +2605,7 @@ void ieee80211_mlme_send_probe_req(struct ieee80211_sub_if_data *sdata,
 static void ieee80211_mgd_probe_ap_send(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
-	const u8 *ssid;
+	const struct element *ssid;
 	u8 *dst = ifmgd->associated->bssid;
 	u8 unicast_limit = max(1, max_probe_tries - 3);
 	struct sta_info *sta;
@@ -2635,14 +2642,14 @@ static void ieee80211_mgd_probe_ap_send(struct ieee80211_sub_if_data *sdata)
 		int ssid_len;
 
 		rcu_read_lock();
-		ssid = ieee80211_bss_get_ie(ifmgd->associated, WLAN_EID_SSID);
+		ssid = ieee80211_bss_get_elem(ifmgd->associated, WLAN_EID_SSID);
 		if (WARN_ON_ONCE(ssid == NULL))
 			ssid_len = 0;
 		else
-			ssid_len = ssid[1];
+			ssid_len = ssid->datalen;
 
 		ieee80211_mlme_send_probe_req(sdata, sdata->vif.addr, dst,
-					      ssid + 2, ssid_len,
+					      ssid->data, ssid_len,
 					      ifmgd->associated->channel);
 		rcu_read_unlock();
 	}
@@ -2669,6 +2676,13 @@ static void ieee80211_mgd_probe_ap(struct ieee80211_sub_if_data *sdata,
 
 	if (sdata->local->tmp_channel || sdata->local->scanning) {
 		mutex_unlock(&sdata->local->mtx);
+		goto out;
+	}
+
+	if (sdata->local->suspending) {
+		/* reschedule after resume */
+		mutex_unlock(&sdata->local->mtx);
+		ieee80211_reset_ap_probe(sdata);
 		goto out;
 	}
 
@@ -2718,7 +2732,7 @@ struct sk_buff *ieee80211_ap_probereq_get(struct ieee80211_hw *hw,
 	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 	struct cfg80211_bss *cbss;
 	struct sk_buff *skb;
-	const u8 *ssid;
+	const struct element *ssid;
 	int ssid_len;
 
 	if (WARN_ON(sdata->vif.type != NL80211_IFTYPE_STATION))
@@ -2736,16 +2750,17 @@ struct sk_buff *ieee80211_ap_probereq_get(struct ieee80211_hw *hw,
 		return NULL;
 
 	rcu_read_lock();
-	ssid = ieee80211_bss_get_ie(cbss, WLAN_EID_SSID);
-	if (WARN_ONCE(!ssid || ssid[1] > IEEE80211_MAX_SSID_LEN,
-		      "invalid SSID element (len=%d)", ssid ? ssid[1] : -1))
+	ssid = ieee80211_bss_get_elem(cbss, WLAN_EID_SSID);
+	if (WARN_ONCE(!ssid || ssid->datalen > IEEE80211_MAX_SSID_LEN,
+		      "invalid SSID element (len=%d)",
+		      ssid ? ssid->datalen : -1))
 		ssid_len = 0;
 	else
-		ssid_len = ssid[1];
+		ssid_len = ssid->datalen;
 
 	skb = ieee80211_build_probe_req(sdata, sdata->vif.addr, cbss->bssid,
 					cbss->bssid, (u32)-1, cbss->channel,
-					ssid + 2, ssid_len,
+					ssid->data, ssid_len,
 					NULL, 0, IEEE80211_PROBE_FLAG_DIRECTED);
 	rcu_read_unlock();
 
@@ -3067,8 +3082,15 @@ static void ieee80211_rx_mgmt_auth(struct ieee80211_sub_if_data *sdata,
 		    (status_code == WLAN_STATUS_ANTI_CLOG_REQUIRED ||
 		     (auth_transaction == 1 &&
 		      (status_code == WLAN_STATUS_SAE_HASH_TO_ELEMENT ||
-		       status_code == WLAN_STATUS_SAE_PK))))
+		       status_code == WLAN_STATUS_SAE_PK)))) {
+			/* waiting for userspace now */
+			ifmgd->auth_data->waiting = true;
+			ifmgd->auth_data->timeout =
+				jiffies + IEEE80211_AUTH_WAIT_SAE_RETRY;
+			ifmgd->auth_data->timeout_started = true;
+			run_again(sdata, ifmgd->auth_data->timeout);
 			goto notify_driver;
+		}
 
 		sdata_info(sdata, "%pM denied authentication (status %d)\n",
 			   mgmt->sa, status_code);
@@ -4672,10 +4694,10 @@ void ieee80211_sta_work(struct ieee80211_sub_if_data *sdata)
 
 	if (ifmgd->auth_data && ifmgd->auth_data->timeout_started &&
 	    time_after(jiffies, ifmgd->auth_data->timeout)) {
-		if (ifmgd->auth_data->done) {
+		if (ifmgd->auth_data->done || ifmgd->auth_data->waiting) {
 			/*
-			 * ok ... we waited for assoc but userspace didn't,
-			 * so let's just kill the auth data
+			 * ok ... we waited for assoc or continuation but
+			 * userspace didn't do it, so kill the auth data
 			 */
 			ieee80211_destroy_auth_data(sdata, false);
 		} else if (ieee80211_auth(sdata)) {
@@ -5146,6 +5168,14 @@ ieee80211_verify_peer_he_mcs_support(struct ieee80211_sub_if_data *sdata,
 
 	ap_min_req_set = le16_to_cpu(he_op->he_mcs_nss_set);
 
+	/*
+	 * Apparently iPhone 13 (at least iOS version 15.3.1) sets this to all
+	 * zeroes, which is nonsense, and completely inconsistent with itself
+	 * (it doesn't have 8 streams). Accept the settings in this case anyway.
+	 */
+	if (!ap_min_req_set)
+		return true;
+
 	/* make sure the AP is consistent with itself
 	 *
 	 * P802.11-REVme/D0.3
@@ -5198,6 +5228,14 @@ ieee80211_verify_sta_he_mcs_support(struct ieee80211_sub_if_data *sdata,
 		return false;
 
 	ap_min_req_set = le16_to_cpu(he_op->he_mcs_nss_set);
+
+	/*
+	 * Apparently iPhone 13 (at least iOS version 15.3.1) sets this to all
+	 * zeroes, which is nonsense, and completely inconsistent with itself
+	 * (it doesn't have 8 streams). Accept the settings in this case anyway.
+	 */
+	if (!ap_min_req_set)
+		return true;
 
 	/* Need to go over for 80MHz, 160MHz and for 80+80 */
 	for (i = 0; i < 3; i++) {
@@ -5271,9 +5309,21 @@ static int ieee80211_prep_channel(struct ieee80211_sub_if_data *sdata,
 	bool is_6ghz = cbss->channel->band == NL80211_BAND_6GHZ;
 	bool is_5ghz = cbss->channel->band == NL80211_BAND_5GHZ;
 	struct ieee80211_bss *bss = (void *)cbss->priv;
+	struct ieee802_11_elems *elems;
+	const struct cfg80211_bss_ies *ies;
 	int ret;
 	u32 i;
 	bool have_80mhz;
+
+	rcu_read_lock();
+
+	ies = rcu_dereference(cbss->ies);
+	elems = ieee802_11_parse_elems(ies->data, ies->len, false,
+				       NULL, NULL);
+	if (!elems) {
+		rcu_read_unlock();
+		return -ENOMEM;
+	}
 
 	sband = local->hw.wiphy->bands[cbss->channel->band];
 
@@ -5310,18 +5360,9 @@ static int ieee80211_prep_channel(struct ieee80211_sub_if_data *sdata,
 		ifmgd->flags |= IEEE80211_STA_DISABLE_EHT;
 	}
 
-	rcu_read_lock();
-
 	if (!(ifmgd->flags & IEEE80211_STA_DISABLE_HT) && !is_6ghz) {
-		const u8 *ht_oper_ie, *ht_cap_ie;
-
-		ht_oper_ie = ieee80211_bss_get_ie(cbss, WLAN_EID_HT_OPERATION);
-		if (ht_oper_ie && ht_oper_ie[1] >= sizeof(*ht_oper))
-			ht_oper = (void *)(ht_oper_ie + 2);
-
-		ht_cap_ie = ieee80211_bss_get_ie(cbss, WLAN_EID_HT_CAPABILITY);
-		if (ht_cap_ie && ht_cap_ie[1] >= sizeof(*ht_cap))
-			ht_cap = (void *)(ht_cap_ie + 2);
+		ht_oper = elems->ht_operation;
+		ht_cap = elems->ht_cap_elem;
 
 		if (!ht_cap) {
 			ifmgd->flags |= IEEE80211_STA_DISABLE_HT;
@@ -5330,12 +5371,7 @@ static int ieee80211_prep_channel(struct ieee80211_sub_if_data *sdata,
 	}
 
 	if (!(ifmgd->flags & IEEE80211_STA_DISABLE_VHT) && !is_6ghz) {
-		const u8 *vht_oper_ie, *vht_cap;
-
-		vht_oper_ie = ieee80211_bss_get_ie(cbss,
-						   WLAN_EID_VHT_OPERATION);
-		if (vht_oper_ie && vht_oper_ie[1] >= sizeof(*vht_oper))
-			vht_oper = (void *)(vht_oper_ie + 2);
+		vht_oper = elems->vht_operation;
 		if (vht_oper && !ht_oper) {
 			vht_oper = NULL;
 			sdata_info(sdata,
@@ -5346,29 +5382,40 @@ static int ieee80211_prep_channel(struct ieee80211_sub_if_data *sdata,
 			ifmgd->flags |= IEEE80211_STA_DISABLE_EHT;
 		}
 
-		vht_cap = ieee80211_bss_get_ie(cbss, WLAN_EID_VHT_CAPABILITY);
-		if (!vht_cap || vht_cap[1] < sizeof(struct ieee80211_vht_cap)) {
-			if (vht_cap)
-				sdata_info(sdata,
-					   "bad VHT capabilities, disabling VHT\n");
+		if (!elems->vht_cap_elem) {
+			sdata_info(sdata,
+				   "bad VHT capabilities, disabling VHT\n");
 			ifmgd->flags |= IEEE80211_STA_DISABLE_VHT;
 			vht_oper = NULL;
 		}
 	}
 
 	if (!(ifmgd->flags & IEEE80211_STA_DISABLE_HE)) {
-		const struct cfg80211_bss_ies *ies;
-		const u8 *he_oper_ie;
+		he_oper = elems->he_operation;
 
-		ies = rcu_dereference(cbss->ies);
-		he_oper_ie = cfg80211_find_ext_ie(WLAN_EID_EXT_HE_OPERATION,
-						  ies->data, ies->len);
-		if (he_oper_ie &&
-		    he_oper_ie[1] >= sizeof(*he_oper) &&
-		    he_oper_ie[1] >= ieee80211_he_oper_size(&he_oper_ie[3]))
-			he_oper = (void *)(he_oper_ie + 3);
-		else
-			he_oper = NULL;
+		if (is_6ghz) {
+			struct ieee80211_bss_conf *bss_conf;
+			u8 j = 0;
+
+			bss_conf = &sdata->vif.bss_conf;
+
+			if (elems->pwr_constr_elem)
+				bss_conf->pwr_reduction = *elems->pwr_constr_elem;
+
+			BUILD_BUG_ON(ARRAY_SIZE(bss_conf->tx_pwr_env) !=
+				     ARRAY_SIZE(elems->tx_pwr_env));
+
+			for (i = 0; i < elems->tx_pwr_env_num; i++) {
+				if (elems->tx_pwr_env_len[i] >
+				    sizeof(bss_conf->tx_pwr_env[j]))
+					continue;
+
+				bss_conf->tx_pwr_env_num++;
+				memcpy(&bss_conf->tx_pwr_env[j], elems->tx_pwr_env[i],
+				       elems->tx_pwr_env_len[i]);
+				j++;
+			}
+		}
 
 		if (!ieee80211_verify_peer_he_mcs_support(sdata, ies, he_oper) ||
 		    !ieee80211_verify_sta_he_mcs_support(sdata, sband, he_oper))
@@ -5384,12 +5431,12 @@ static int ieee80211_prep_channel(struct ieee80211_sub_if_data *sdata,
 	 */
 	if (!(ifmgd->flags & (IEEE80211_STA_DISABLE_HE |
 			      IEEE80211_STA_DISABLE_EHT)) && he_oper) {
-		const struct cfg80211_bss_ies *ies;
+		const struct cfg80211_bss_ies *cbss_ies;
 		const u8 *eht_oper_ie;
 
-		ies = rcu_dereference(cbss->ies);
+		cbss_ies = rcu_dereference(cbss->ies);
 		eht_oper_ie = cfg80211_find_ext_ie(WLAN_EID_EXT_EHT_OPERATION,
-						   ies->data, ies->len);
+						   cbss_ies->data, cbss_ies->len);
 		if (eht_oper_ie && eht_oper_ie[1] >=
 		    1 + sizeof(struct ieee80211_eht_operation))
 			eht_oper = (void *)(eht_oper_ie + 3);
@@ -5414,13 +5461,8 @@ static int ieee80211_prep_channel(struct ieee80211_sub_if_data *sdata,
 	}
 
 	if (sband->band == NL80211_BAND_S1GHZ) {
-		const u8 *s1g_oper_ie;
-
-		s1g_oper_ie = ieee80211_bss_get_ie(cbss,
-						   WLAN_EID_S1G_OPERATION);
-		if (s1g_oper_ie && s1g_oper_ie[1] >= sizeof(*s1g_oper))
-			s1g_oper = (void *)(s1g_oper_ie + 2);
-		else
+		s1g_oper = elems->s1g_oper;
+		if (!s1g_oper)
 			sdata_info(sdata,
 				   "AP missing S1G operation element?\n");
 	}
@@ -5437,6 +5479,9 @@ static int ieee80211_prep_channel(struct ieee80211_sub_if_data *sdata,
 				      local->rx_chains);
 
 	rcu_read_unlock();
+	/* the element data was RCU protected so no longer valid anyway */
+	kfree(elems);
+	elems = NULL;
 
 	if (ifmgd->flags & IEEE80211_STA_DISABLE_HE && is_6ghz) {
 		sdata_info(sdata, "Rejecting non-HE 6/7 GHz connection");
@@ -5552,7 +5597,7 @@ static int ieee80211_prep_connection(struct ieee80211_sub_if_data *sdata,
 	 */
 	if (new_sta) {
 		u32 rates = 0, basic_rates = 0;
-		bool have_higher_than_11mbit;
+		bool have_higher_than_11mbit = false;
 		int min_rate = INT_MAX, min_rate_index = -1;
 		const struct cfg80211_bss_ies *ies;
 		int shift = ieee80211_vif_get_shift(&sdata->vif);
@@ -5841,7 +5886,7 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 	const struct cfg80211_bss_ies *beacon_ies;
 	struct ieee80211_supported_band *sband;
 	struct ieee80211_bss_conf *bss_conf = &sdata->vif.bss_conf;
-	const u8 *ssidie, *ht_ie, *vht_ie;
+	const struct element *ssid_elem, *ht_elem, *vht_elem;
 	int i, err;
 	bool override = false;
 
@@ -5850,14 +5895,14 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 		return -ENOMEM;
 
 	rcu_read_lock();
-	ssidie = ieee80211_bss_get_ie(req->bss, WLAN_EID_SSID);
-	if (!ssidie || ssidie[1] > sizeof(assoc_data->ssid)) {
+	ssid_elem = ieee80211_bss_get_elem(req->bss, WLAN_EID_SSID);
+	if (!ssid_elem || ssid_elem->datalen > sizeof(assoc_data->ssid)) {
 		rcu_read_unlock();
 		kfree(assoc_data);
 		return -EINVAL;
 	}
-	memcpy(assoc_data->ssid, ssidie + 2, ssidie[1]);
-	assoc_data->ssid_len = ssidie[1];
+	memcpy(assoc_data->ssid, ssid_elem->data, ssid_elem->datalen);
+	assoc_data->ssid_len = ssid_elem->datalen;
 	memcpy(bss_conf->ssid, assoc_data->ssid, assoc_data->ssid_len);
 	bss_conf->ssid_len = assoc_data->ssid_len;
 	rcu_read_unlock();
@@ -5973,15 +6018,15 @@ int ieee80211_mgd_assoc(struct ieee80211_sub_if_data *sdata,
 	assoc_data->supp_rates_len = bss->supp_rates_len;
 
 	rcu_read_lock();
-	ht_ie = ieee80211_bss_get_ie(req->bss, WLAN_EID_HT_OPERATION);
-	if (ht_ie && ht_ie[1] >= sizeof(struct ieee80211_ht_operation))
+	ht_elem = ieee80211_bss_get_elem(req->bss, WLAN_EID_HT_OPERATION);
+	if (ht_elem && ht_elem->datalen >= sizeof(struct ieee80211_ht_operation))
 		assoc_data->ap_ht_param =
-			((struct ieee80211_ht_operation *)(ht_ie + 2))->ht_param;
+			((struct ieee80211_ht_operation *)(ht_elem->data))->ht_param;
 	else if (!is_6ghz)
 		ifmgd->flags |= IEEE80211_STA_DISABLE_HT;
-	vht_ie = ieee80211_bss_get_ie(req->bss, WLAN_EID_VHT_CAPABILITY);
-	if (vht_ie && vht_ie[1] >= sizeof(struct ieee80211_vht_cap)) {
-		memcpy(&assoc_data->ap_vht_cap, vht_ie + 2,
+	vht_elem = ieee80211_bss_get_elem(req->bss, WLAN_EID_VHT_CAPABILITY);
+	if (vht_elem && vht_elem->datalen >= sizeof(struct ieee80211_vht_cap)) {
+		memcpy(&assoc_data->ap_vht_cap, vht_elem->data,
 		       sizeof(struct ieee80211_vht_cap));
 	} else if (is_5ghz) {
 		sdata_info(sdata,

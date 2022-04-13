@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
 #ifndef __iwl_xvt_h__
@@ -38,6 +38,7 @@ enum iwl_xvt_state {
 /**
  * tx_meta_data - Holds data and member needed for tx
  * @tx_mod_thread: thread dedicated for tx traffic
+ * @tx_mod_thread_completion: thread completion
  * @mod_tx_wq: send packets queue
  * @tx_task_operating: whether tx is active
  * @queue: FW queue ID for TX_CMD
@@ -49,6 +50,7 @@ enum iwl_xvt_state {
  */
 struct tx_meta_data {
 	struct task_struct *tx_mod_thread;
+	struct completion tx_mod_thread_completion;
 	wait_queue_head_t mod_tx_wq;
 	bool tx_task_operating;
 	int queue;
@@ -285,6 +287,7 @@ struct iwl_xvt {
 	/* members for enhanced tx command */
 	struct tx_payload *payloads[IWL_XVT_MAX_PAYLOADS_AMOUNT];
 	struct task_struct *tx_task;
+	struct completion tx_task_completion;
 	bool is_enhanced_tx;
 	bool send_tx_resp;
 	bool send_rx_mpdu;
@@ -400,3 +403,4 @@ static inline int iwl_xvt_dbgfs_register(struct iwl_xvt *xvt,
 
 int iwl_xvt_init_sar_tables(struct iwl_xvt *xvt);
 int iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b);
+int iwl_xvt_init_ppag_tables(struct iwl_xvt *xvt);

@@ -49,9 +49,9 @@ if IWLWIFI
 
 config IWLWIFI_LEDS
 	bool
-	depends on LEDS_CLASS=y || LEDS_CLASS=IWLWIFI
+	depends on LEDS_CLASS=y || LEDS_CLASS=MAC80211
 	depends on IWLMVM || IWLDVM
-	select BPAUTO_LEDS_TRIGGERS
+	depends on LEDS_TRIGGERS
 	select MAC80211_LEDS
 	default y
 
@@ -64,18 +64,6 @@ config IWLDVM
 	  This is the driver that supports the DVM firmware. The list
 	  of the devices that use this firmware is available here:
 	  https://wireless.wiki.kernel.org/en/users/drivers/iwlwifi#firmware
-
-config IWLFMAC
-	tristate "Intel Wireless WiFi full-MAC Firmware support"
-	depends on m
-	select BPAUTO_WANT_DEV_COREDUMP
-	help
-	  This is the driver that supports the full-MAC firmware. The list
-	  of devices supported by this firmware is available here:
-	  https://wireless.wiki.kernel.org/en/users/drivers/iwlwifi#firmware
-
-	  Note that all these are also supported by IWLMVM, but in certain
-	  cases the FMAC version might be the better choice.
 
 config IWLMVM
 	tristate "Intel Wireless WiFi MVM Firmware support"
@@ -93,23 +81,9 @@ config IWLWIFI_OPMODE_MODULAR
 	default y if IWLDVM=m
 	default y if IWLMVM=m
 	default y if IWLXVT=m
-	default y if IWLFMAC=m
 
-comment "WARNING: iwlwifi is useless without IWLDVM, IWLMVM or IWLFMAC"
-	depends on IWLDVM=n && IWLMVM=n && IWLFMAC=n
-
-config IWLWIFI_BCAST_FILTERING
-	bool "Enable broadcast filtering"
-	depends on IWLMVM
-	help
-	  Say Y here to enable default bcast filtering configuration.
-
-	  Enabling broadcast filtering will drop any incoming wireless
-	  broadcast frames, except some very specific predefined
-	  patterns (e.g. incoming arp requests).
-
-	  If unsure, don't enable this option, as some programs might
-	  expect incoming broadcasts for their normal operations.
+comment "WARNING: iwlwifi is useless without IWLDVM or IWLMVM"
+	depends on IWLDVM=n && IWLMVM=n
 
 menu "Debugging Options"
 

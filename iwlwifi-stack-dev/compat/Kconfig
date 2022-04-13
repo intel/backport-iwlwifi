@@ -67,39 +67,6 @@ config BPAUTO_BUILD_NLATTR
 	depends on KERNEL_5_2
 	#c-file lib/nlattr.c
 
-config BPAUTO_BUILD_CORDIC
-	depends on n
-	tristate
-	depends on m
-	depends on !CORDIC
-	depends on KERNEL_3_1
-	default m if BPAUTO_CORDIC
-	default m if BPAUTO_USERSEL_BUILD_ALL
-	#module-name cordic
-	#c-file lib/math/cordic.c
-
-config BPAUTO_CORDIC
-	bool
-
-config BPAUTO_MII
-	bool
-
-config BPAUTO_BUILD_LEDS
-	bool
-	depends on !NEW_LEDS || LEDS_CLASS=n || !LEDS_TRIGGERS
-	default y if BPAUTO_NEW_LEDS
-	default y if BPAUTO_LEDS_CLASS
-	default y if BPAUTO_LEDS_TRIGGERS
-
-config BPAUTO_NEW_LEDS
-	bool
-
-config BPAUTO_LEDS_CLASS
-	bool
-
-config BPAUTO_LEDS_TRIGGERS
-	bool
-
 config BPAUTO_USERSEL_BUILD_ALL
 	bool "Build all compat code"
 	help
@@ -111,14 +78,6 @@ config BPAUTO_USERSEL_BUILD_ALL
 
 config BPAUTO_WANT_DEV_COREDUMP
 	bool
-
-config BPAUTO_BUILD_WANT_DEV_COREDUMP
-	bool
-	default n if DEV_COREDUMP
-	default n if DISABLE_DEV_COREDUMP
-	default y if BPAUTO_WANT_DEV_COREDUMP
-	#h-file linux/devcoredump.h
-	#c-file drivers/base/devcoredump.c
 
 config BPAUTO_RHASHTABLE
 	bool
@@ -152,7 +111,6 @@ config BPAUTO_BUILD_SYSTEM_DATA_VERIFICATION
 	bool
 	default y if BPAUTO_SYSTEM_DATA_VERIFICATION
 	depends on (KERNEL_4_7 || !SYSTEM_DATA_VERIFICATION) && CRYPTO_HASH_INFO
-	depends on !KERNEL_3_13
 	select BPAUTO_ASN1_DECODER
 	select BPAUTO_PUBLIC_KEY
 	select BPAUTO_PKCS7

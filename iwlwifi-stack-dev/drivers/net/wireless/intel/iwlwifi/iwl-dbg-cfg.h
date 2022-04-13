@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2013-2015, 2018-2021 Intel Corporation
+ * Copyright (C) 2013-2015, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  */
 #if !defined(__IWL_DBG_CFG_H__) || defined(DBG_CFG_REINCLUDE)
@@ -45,7 +45,7 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(bool, disable_wrt_dump)
 	IWL_DBG_CFG_NODEF(bool, disable_52GHz)
 	IWL_DBG_CFG_NODEF(bool, disable_24GHz)
-#if IS_ENABLED(CPTCFG_IWLMVM) || IS_ENABLED(CPTCFG_IWLFMAC)
+#if IS_ENABLED(CPTCFG_IWLMVM)
 	IWL_DBG_CFG_NODEF(u32, MVM_CALIB_OVERRIDE_CONTROL)
 	IWL_DBG_CFG_NODEF(u32, MVM_CALIB_INIT_FLOW)
 	IWL_DBG_CFG_NODEF(u32, MVM_CALIB_INIT_EVENT)
@@ -191,6 +191,7 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(u32, system_features_control_2)
 	IWL_DBG_CFG_NODEF(u32, system_features_control_3)
 	IWL_DBG_CFG_NODEF(u32, system_features_control_4)
+	IWL_DBG_CFG(bool, MVM_MEI_REPORT_RFKILL)
 #endif /* CPTCFG_IWLMVM */
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
@@ -287,9 +288,6 @@ struct iwl_dbg_cfg {
 #ifdef CPTCFG_IWLWIFI_DISALLOW_OLDER_FW
 	IWL_DBG_CFG_NODEF(bool, load_old_fw)
 #endif /* CPTCFG_IWLWIFI_DISALLOW_OLDER_FW */
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-	IWL_DBG_CFG_NODEF(bool, intcmd_dbg)
-#endif /* CPTCFG_IWLFMAC */
 #undef IWL_DBG_CFG
 #undef IWL_DBG_CFG_STR
 #undef IWL_DBG_CFG_NODEF

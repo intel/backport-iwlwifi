@@ -1,0 +1,85 @@
+@color_change@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+	.color_change = fn,
++#endif
+...
+};
+
+@@
+identifier color_change.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+fn(...)
+{
+...
+}
++#endif
+
+@@
+expression sdata, resp, resp_len, csa, c;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+ieee80211_set_probe_resp(sdata, resp, resp_len, csa, c);
++#else
++ieee80211_set_probe_resp(sdata, resp, resp_len, csa);
++#endif
+
+@@
+expression x;
+statement s1, s2;
+@@
+if (x)
+s1
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+else if (cca)
+s2
++#endif
+
+@@
+identifier func =~ "ieee80211_color_change_abort|ieee80211_set_after_color_change_beacon|ieee80211_set_color_change_beacon";
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+func(...)
+{
+...
+}
++#endif
+
+@@
+identifier func =~ "ieee80211_color_change_bss_config_notify|ieee80211_color_change_finalize|ieee80211_color_change_finalize_work";
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+func(...)
+{
+...
+}
++#endif
+
+@@
+identifier func =~ "ieee80211_color_change_finish|ieeee80211_obss_color_collision_notify";
+@@
+func(...)
+{
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+...
++#endif
+}
+
+@@
+expression sdata;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+ieee80211_color_change_abort(sdata);
++#endif
+
+@@
+expression work;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+INIT_WORK(work, ieee80211_color_change_finalize_work);
++#endif

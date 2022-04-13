@@ -886,13 +886,8 @@ void iwl_mvm_vif_dbgfs_register(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 
 	mvmvif->dbgfs_dir = debugfs_create_dir("iwlmvm", dbgfs_dir);
 	if (IS_ERR_OR_NULL(mvmvif->dbgfs_dir)) {
-#if LINUX_VERSION_IS_GEQ(3,12,0)
 		IWL_ERR(mvm, "Failed to create debugfs directory under %pd\n",
 			dbgfs_dir);
-#else
-		IWL_ERR(mvm, "Failed to create debugfs directory under %s\n",
-			dbgfs_dir->d_name.name);
-#endif
 		return;
 	}
 
@@ -927,17 +922,9 @@ void iwl_mvm_vif_dbgfs_register(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	 * find
 	 * netdev:wlan0 -> ../../../ieee80211/phy0/netdev:wlan0/iwlmvm/
 	 */
-#if LINUX_VERSION_IS_GEQ(3,12,0)
 	snprintf(buf, 100, "../../../%pd3/%pd",
 		 dbgfs_dir,
 		 mvmvif->dbgfs_dir);
-#else
-	snprintf(buf, 100, "../../../%s/%s/%s/%s",
-		 dbgfs_dir->d_parent->d_parent->d_name.name,
-		 dbgfs_dir->d_parent->d_name.name,
-		 dbgfs_dir->d_name.name,
-		 mvmvif->dbgfs_dir->d_name.name);
-#endif
 
 	mvmvif->dbgfs_slink = debugfs_create_symlink(dbgfs_dir->d_name.name,
 						     mvm->debugfs_dir, buf);

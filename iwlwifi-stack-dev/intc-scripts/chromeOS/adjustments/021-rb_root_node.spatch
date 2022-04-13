@@ -1,0 +1,5 @@
+@@
+struct rb_root_cached *root;
+@@
+-root->rb_root.rb_node
++rb_root_node(root)

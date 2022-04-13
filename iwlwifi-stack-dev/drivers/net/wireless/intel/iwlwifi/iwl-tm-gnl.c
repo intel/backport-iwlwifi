@@ -462,7 +462,7 @@ enum iwl_tm_gnl_cmd_attr_t {
 
 /* TM GNL family definition */
 static struct genl_family iwl_tm_gnl_family;
-static __genl_const struct genl_multicast_group iwl_tm_gnl_mcgrps[] = {
+static const struct genl_multicast_group iwl_tm_gnl_mcgrps[] = {
 	{ .name = IWL_TM_GNL_MC_GRP_NAME, },
 };
 
@@ -612,7 +612,7 @@ static int iwl_tm_gnl_reply(struct genl_info *info,
 {
 	struct sk_buff *skb;
 
-	skb = iwl_tm_gnl_create_msg(genl_info_snd_portid(info), info->snd_seq,
+	skb = iwl_tm_gnl_create_msg(info->snd_portid, info->snd_seq,
 				    cmd_data, GFP_KERNEL);
 	if (!skb)
 		return -EINVAL;
@@ -1008,7 +1008,7 @@ static int iwl_tm_gnl_cmd_subscribe(struct sk_buff *skb, struct genl_info *info)
 		goto unlock;
 	}
 
-	dev->nl_events_portid = genl_info_snd_portid(info);
+	dev->nl_events_portid = info->snd_portid;
 	ret = 0;
 
  unlock:
@@ -1021,7 +1021,7 @@ static int iwl_tm_gnl_cmd_subscribe(struct sk_buff *skb, struct genl_info *info)
  * There is only one NL command, and only one callback,
  * which handles all NL messages.
  */
-static __genl_const struct genl_ops iwl_tm_gnl_ops[] = {
+static const struct genl_ops iwl_tm_gnl_ops[] = {
 	{
 	  .cmd = IWL_TM_GNL_CMD_EXECUTE,
 #if LINUX_VERSION_IS_GEQ(5,2,0)

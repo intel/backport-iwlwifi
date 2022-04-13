@@ -27,8 +27,7 @@ static inline int genl_err_attr(struct genl_info *info, int err,
 /* this is for patches we apply */
 static inline struct netlink_ext_ack *genl_info_extack(struct genl_info *info)
 {
-#if LINUX_VERSION_IS_GEQ(4,12,0) && \
-	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
+#if LINUX_VERSION_IS_GEQ(4,12,0)
 	return info->extack;
 #else
 	return info->userhdr;
@@ -50,27 +49,6 @@ static inline void *genl_info_userhdr(struct genl_info *info)
 {
 	return (u8 *)info->genlhdr + GENL_HDRLEN;
 }
-
-/* this is for patches we apply */
-#if LINUX_VERSION_IS_LESS(3,7,0)
-#define genl_info_snd_portid(__genl_info) (__genl_info->snd_pid)
-#else
-#define genl_info_snd_portid(__genl_info) (__genl_info->snd_portid)
-#endif
-
-#if LINUX_VERSION_IS_LESS(3,13,0)
-#define __genl_const
-#else /* < 3.13 */
-#define __genl_const const
-#endif /* < 3.13 */
-
-#ifndef GENLMSG_DEFAULT_SIZE
-#define GENLMSG_DEFAULT_SIZE (NLMSG_DEFAULT_SIZE - GENL_HDRLEN)
-#endif
-
-#if LINUX_VERSION_IS_LESS(3,1,0)
-#define genl_dump_check_consistent(cb, user_hdr) do { } while (0)
-#endif
 
 #if LINUX_VERSION_IS_LESS(4,10,0)
 #define __genl_ro_after_init
@@ -109,15 +87,12 @@ enum genl_validate_flags {
 	GENL_DONT_VALIDATE_DUMP_STRICT		= BIT(2),
 };
 
-#if LINUX_VERSION_IS_GEQ(3,13,0)
 struct backport_genl_ops {
 	void			*__dummy_was_policy_must_be_null;
 	int		       (*doit)(struct sk_buff *skb,
 				       struct genl_info *info);
 #if LINUX_VERSION_IS_GEQ(4,5,0) || \
-    LINUX_VERSION_IN_RANGE(4,4,104, 4,5,0) || \
-    LINUX_VERSION_IN_RANGE(4,1,48, 4,2,0) || \
-    LINUX_VERSION_IN_RANGE(3,18,86, 3,19,0)
+    LINUX_VERSION_IN_RANGE(4,4,104, 4,5,0)
 	int		       (*start)(struct netlink_callback *cb);
 #endif
 	int		       (*dumpit)(struct sk_buff *skb,
@@ -128,21 +103,6 @@ struct backport_genl_ops {
 	u8			flags;
 	u8			validate;
 };
-#else
-struct backport_genl_ops {
-	u8			cmd;
-	u8			internal_flags;
-	unsigned int		flags;
-	void			*__dummy_was_policy_must_be_null;
-	int		       (*doit)(struct sk_buff *skb,
-				       struct genl_info *info);
-	int		       (*dumpit)(struct sk_buff *skb,
-					 struct netlink_callback *cb);
-	int		       (*done)(struct netlink_callback *cb);
-	struct list_head	ops_list;
-	u8			validate;
-};
-#endif
 
 static inline int
 __real_backport_genl_register_family(struct genl_family *family)
@@ -152,9 +112,7 @@ __real_backport_genl_register_family(struct genl_family *family)
 		     offsetof(struct backport_genl_ops, f))
 	OPS_VALIDATE(doit);
 #if LINUX_VERSION_IS_GEQ(4,5,0) || \
-    LINUX_VERSION_IN_RANGE(4,4,104, 4,5,0) || \
-    LINUX_VERSION_IN_RANGE(4,1,48, 4,2,0) || \
-    LINUX_VERSION_IN_RANGE(3,18,86, 3,19,0)
+    LINUX_VERSION_IN_RANGE(4,4,104, 4,5,0)
 	OPS_VALIDATE(start);
 #endif
 	OPS_VALIDATE(dumpit);
@@ -186,10 +144,10 @@ struct backport_genl_family {
 	bool			netnsok;
 	bool			parallel_ops;
 	const struct nla_policy *policy;
-	int			(*pre_doit)(__genl_const struct genl_ops *ops,
+	int			(*pre_doit)(const struct genl_ops *ops,
 					    struct sk_buff *skb,
 					    struct genl_info *info);
-	void			(*post_doit)(__genl_const struct genl_ops *ops,
+	void			(*post_doit)(const struct genl_ops *ops,
 					     struct sk_buff *skb,
 					     struct genl_info *info);
 /*
@@ -198,8 +156,8 @@ struct backport_genl_family {
 	void			(*mcast_unbind)(struct net *net, int group);
  */
 	struct nlattr **	attrbuf;	/* private */
-	__genl_const struct genl_ops *	ops;
-	__genl_const struct genl_multicast_group *mcgrps;
+	const struct genl_ops *	ops;
+	const struct genl_multicast_group *mcgrps;
 	unsigned int		n_ops;
 	unsigned int		n_mcgrps;
 	struct module		*module;

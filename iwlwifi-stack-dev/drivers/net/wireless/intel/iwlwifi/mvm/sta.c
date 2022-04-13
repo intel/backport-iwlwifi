@@ -317,7 +317,7 @@ static int iwl_mvm_invalidate_sta_queue(struct iwl_mvm *mvm, int queue,
 }
 
 static int iwl_mvm_disable_txq(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
-			       u16 *queueptr, u8 tid, u8 flags)
+			       u16 *queueptr, u8 tid)
 {
 	int queue = *queueptr;
 	struct iwl_scd_txq_cfg_cmd cmd = {
@@ -326,11 +326,28 @@ static int iwl_mvm_disable_txq(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	};
 	int ret;
 
+	lockdep_assert_held(&mvm->mutex);
+
 	if (iwl_mvm_has_new_tx_api(mvm)) {
+		if (mvm->sta_remove_requires_queue_remove) {
+			u32 cmd_id = WIDE_ID(DATA_PATH_GROUP,
+					     SCD_QUEUE_CONFIG_CMD);
+			struct iwl_scd_queue_cfg_cmd remove_cmd = {
+				.operation = cpu_to_le32(IWL_SCD_QUEUE_REMOVE),
+				.u.remove.queue = cpu_to_le32(queue),
+			};
+
+			ret = iwl_mvm_send_cmd_pdu(mvm, cmd_id, 0,
+						   sizeof(remove_cmd),
+						   &remove_cmd);
+		} else {
+			ret = 0;
+		}
+
 		iwl_trans_txq_free(mvm->trans, queue);
 		*queueptr = IWL_MVM_INVALID_QUEUE;
 
-		return 0;
+		return ret;
 	}
 
 	if (WARN_ON(mvm->queue_info[queue].tid_bitmap == 0))
@@ -374,7 +391,7 @@ static int iwl_mvm_disable_txq(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	mvm->queue_info[queue].reserved = false;
 
 	iwl_trans_txq_disable(mvm->trans, queue, false);
-	ret = iwl_mvm_send_cmd_pdu(mvm, SCD_QUEUE_CFG, flags,
+	ret = iwl_mvm_send_cmd_pdu(mvm, SCD_QUEUE_CFG, 0,
 				   sizeof(struct iwl_scd_txq_cfg_cmd), &cmd);
 
 	if (ret)
@@ -513,7 +530,7 @@ static int iwl_mvm_free_inactive_queue(struct iwl_mvm *mvm, int queue,
 		iwl_mvm_invalidate_sta_queue(mvm, queue,
 					     disable_agg_tids, false);
 
-	ret = iwl_mvm_disable_txq(mvm, old_sta, &queue_tmp, tid, 0);
+	ret = iwl_mvm_disable_txq(mvm, old_sta, &queue_tmp, tid);
 	if (ret) {
 		IWL_ERR(mvm,
 			"Failed to free inactive queue %d (ret=%d)\n",
@@ -595,6 +612,39 @@ static int iwl_mvm_get_shared_queue(struct iwl_mvm *mvm,
 	}
 
 	return queue;
+}
+
+/* Re-configure the SCD for a queue that has already been configured */
+static int iwl_mvm_reconfig_scd(struct iwl_mvm *mvm, int queue, int fifo,
+				int sta_id, int tid, int frame_limit, u16 ssn)
+{
+	struct iwl_scd_txq_cfg_cmd cmd = {
+		.scd_queue = queue,
+		.action = SCD_CFG_ENABLE_QUEUE,
+		.window = frame_limit,
+		.sta_id = sta_id,
+		.ssn = cpu_to_le16(ssn),
+		.tx_fifo = fifo,
+		.aggregate = (queue >= IWL_MVM_DQA_MIN_DATA_QUEUE ||
+			      queue == IWL_MVM_DQA_BSS_CLIENT_QUEUE),
+		.tid = tid,
+	};
+	int ret;
+
+	if (WARN_ON(iwl_mvm_has_new_tx_api(mvm)))
+		return -EINVAL;
+
+	if (WARN(mvm->queue_info[queue].tid_bitmap == 0,
+		 "Trying to reconfig unallocated queue %d\n", queue))
+		return -ENXIO;
+
+	IWL_DEBUG_TX_QUEUES(mvm, "Reconfig SCD for TXQ #%d\n", queue);
+
+	ret = iwl_mvm_send_cmd_pdu(mvm, SCD_QUEUE_CFG, 0, sizeof(cmd), &cmd);
+	WARN_ONCE(ret, "Failed to re-configure queue %d on FIFO %d, ret=%d\n",
+		  queue, fifo, ret);
+
+	return ret;
 }
 
 /*
@@ -752,11 +802,8 @@ static int iwl_mvm_tvqm_enable_txq(struct iwl_mvm *mvm,
 	size = rounddown_pow_of_two(size);
 
 	do {
-		__le16 enable = cpu_to_le16(TX_QUEUE_CFG_ENABLE_QUEUE);
-
-		queue = iwl_trans_txq_alloc(mvm->trans, enable,
-					    sta_id, tid, SCD_QUEUE_CFG,
-					    size, timeout);
+		queue = iwl_trans_txq_alloc(mvm->trans, 0, BIT(sta_id),
+					    tid, size, timeout);
 
 		if (queue < 0)
 			IWL_DEBUG_TX_QUEUES(mvm,
@@ -1364,7 +1411,7 @@ static int iwl_mvm_sta_alloc_queue(struct iwl_mvm *mvm,
 
 out_err:
 	queue_tmp = queue;
-	iwl_mvm_disable_txq(mvm, sta, &queue_tmp, tid, 0);
+	iwl_mvm_disable_txq(mvm, sta, &queue_tmp, tid);
 
 	return ret;
 }
@@ -1811,8 +1858,7 @@ static void iwl_mvm_disable_sta_queues(struct iwl_mvm *mvm,
 		if (mvm_sta->tid_data[i].txq_id == IWL_MVM_INVALID_QUEUE)
 			continue;
 
-		iwl_mvm_disable_txq(mvm, sta, &mvm_sta->tid_data[i].txq_id, i,
-				    0);
+		iwl_mvm_disable_txq(mvm, sta, &mvm_sta->tid_data[i].txq_id, i);
 		mvm_sta->tid_data[i].txq_id = IWL_MVM_INVALID_QUEUE;
 	}
 
@@ -2020,7 +2066,7 @@ static int iwl_mvm_add_int_sta_with_queue(struct iwl_mvm *mvm, int macidx,
 	if (ret) {
 		if (!iwl_mvm_has_new_tx_api(mvm))
 			iwl_mvm_disable_txq(mvm, NULL, queue,
-					    IWL_MAX_TID_COUNT, 0);
+					    IWL_MAX_TID_COUNT);
 		return ret;
 	}
 
@@ -2092,7 +2138,7 @@ int iwl_mvm_rm_snif_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	if (WARN_ON_ONCE(mvm->snif_sta.sta_id == IWL_MVM_INVALID_STA))
 		return -EINVAL;
 
-	iwl_mvm_disable_txq(mvm, NULL, &mvm->snif_queue, IWL_MAX_TID_COUNT, 0);
+	iwl_mvm_disable_txq(mvm, NULL, &mvm->snif_queue, IWL_MAX_TID_COUNT);
 	ret = iwl_mvm_rm_sta_common(mvm, mvm->snif_sta.sta_id);
 	if (ret)
 		IWL_WARN(mvm, "Failed sending remove station\n");
@@ -2109,7 +2155,7 @@ int iwl_mvm_rm_aux_sta(struct iwl_mvm *mvm)
 	if (WARN_ON_ONCE(mvm->aux_sta.sta_id == IWL_MVM_INVALID_STA))
 		return -EINVAL;
 
-	iwl_mvm_disable_txq(mvm, NULL, &mvm->aux_queue, IWL_MAX_TID_COUNT, 0);
+	iwl_mvm_disable_txq(mvm, NULL, &mvm->aux_queue, IWL_MAX_TID_COUNT);
 	ret = iwl_mvm_rm_sta_common(mvm, mvm->aux_sta.sta_id);
 	if (ret)
 		IWL_WARN(mvm, "Failed sending remove station\n");
@@ -2226,7 +2272,7 @@ static void iwl_mvm_free_bcast_sta_queues(struct iwl_mvm *mvm,
 	}
 
 	queue = *queueptr;
-	iwl_mvm_disable_txq(mvm, NULL, queueptr, IWL_MAX_TID_COUNT, 0);
+	iwl_mvm_disable_txq(mvm, NULL, queueptr, IWL_MAX_TID_COUNT);
 	if (iwl_mvm_has_new_tx_api(mvm))
 		return;
 
@@ -2460,7 +2506,7 @@ int iwl_mvm_rm_mcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 
 	iwl_mvm_flush_sta(mvm, &mvmvif->mcast_sta, true);
 
-	iwl_mvm_disable_txq(mvm, NULL, &mvmvif->cab_queue, 0, 0);
+	iwl_mvm_disable_txq(mvm, NULL, &mvmvif->cab_queue, 0);
 
 	ret = iwl_mvm_rm_sta_common(mvm, mvmvif->mcast_sta.sta_id);
 	if (ret)
@@ -2618,8 +2664,12 @@ static int iwl_mvm_fw_baid_op_cmd(struct iwl_mvm *mvm,
 		cmd.alloc.ssn = cpu_to_le16(ssn);
 		cmd.alloc.win_size = cpu_to_le16(buf_size);
 		baid = -EIO;
+	} else if (iwl_fw_lookup_cmd_ver(mvm->fw, cmd_id, 1) == 1) {
+		cmd.remove_v1.baid = cpu_to_le32(baid);
+		BUILD_BUG_ON(sizeof(cmd.remove_v1) > sizeof(cmd.remove));
 	} else {
-		cmd.remove.baid = cpu_to_le32(baid);
+		cmd.remove.sta_id_mask = cpu_to_le32(BIT(mvm_sta->sta_id));
+		cmd.remove.tid = cpu_to_le32(tid);
 	}
 
 	ret = iwl_mvm_send_cmd_pdu_status(mvm, cmd_id, sizeof(cmd),

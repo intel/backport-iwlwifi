@@ -3,41 +3,6 @@
 #include_next <linux/debugfs.h>
 #include <linux/version.h>
 #include <linux/device.h>
-#include <generated/utsrelease.h>
-
-#if LINUX_VERSION_IS_LESS(3,19,0)
-#define debugfs_create_devm_seqfile LINUX_BACKPORT(debugfs_create_devm_seqfile)
-#if defined(CONFIG_DEBUG_FS)
-struct dentry *debugfs_create_devm_seqfile(struct device *dev, const char *name,
-					   struct dentry *parent,
-					   int (*read_fn)(struct seq_file *s,
-							  void *data));
-#else
-static inline struct dentry *debugfs_create_devm_seqfile(struct device *dev,
-							 const char *name,
-							 struct dentry *parent,
-					   int (*read_fn)(struct seq_file *s,
-							  void *data))
-{
-	return ERR_PTR(-ENODEV);
-}
-#endif /* CONFIG_DEBUG_FS */
-#endif /* LINUX_VERSION_IS_LESS(3,19,0) */
-
-#if LINUX_VERSION_IS_LESS(4,4,0)
-#define debugfs_create_bool LINUX_BACKPORT(debugfs_create_bool)
-#ifdef CONFIG_DEBUG_FS
-struct dentry *debugfs_create_bool(const char *name, umode_t mode,
-				   struct dentry *parent, bool *value);
-#else
-static inline struct dentry *
-debugfs_create_bool(const char *name, umode_t mode,
-		    struct dentry *parent, bool *value)
-{
-	return ERR_PTR(-ENODEV);
-}
-#endif
-#endif /* LINUX_VERSION_IS_LESS(4,4,0) */
 
 #if LINUX_VERSION_IS_LESS(4,9,0) && \
     !LINUX_VERSION_IN_RANGE(4,8,4, 4,9,0) && \
@@ -58,20 +23,6 @@ debugfs_real_fops(const struct file *filp)
 	DEFINE_SIMPLE_ATTRIBUTE(__fops, __get, __set, __fmt)
 #define debugfs_create_file_unsafe(name, mode, parent, data, fops) \
 	debugfs_create_file(name, mode, parent, data, fops)
-#endif
-
-#if LINUX_VERSION_IS_LESS(4,4,0)
-static inline struct dentry *
-debugfs_create_ulong(const char *name, umode_t mode,
-		     struct dentry *parent, unsigned long *value)
-{
-	if (sizeof(unsigned long) == sizeof(u64))
-		return debugfs_create_u64(name, mode, parent, (u64 *)value);
-	if (sizeof(unsigned long) == sizeof(u32))
-		return debugfs_create_u32(name, mode, parent, (u32 *)value);
-	WARN_ON(1);
-	return ERR_PTR(-EINVAL);
-}
 #endif
 
 #if LINUX_VERSION_IS_LESS(5,5,0)

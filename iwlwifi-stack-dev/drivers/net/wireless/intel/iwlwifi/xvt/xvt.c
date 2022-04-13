@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
 #include <linux/module.h>
@@ -241,6 +241,12 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 
 	trans_cfg.fw_reset_handshake = fw_has_capa(&xvt->fw->ucode_capa,
 						   IWL_UCODE_TLV_CAPA_FW_RESET_HANDSHAKE);
+
+	trans_cfg.queue_alloc_cmd_ver =
+		iwl_fw_lookup_cmd_ver(xvt->fw,
+				      WIDE_ID(DATA_PATH_GROUP,
+					      SCD_QUEUE_CONFIG_CMD),
+				      0);
 
 	/* Configure transport layer */
 	iwl_trans_configure(xvt->trans, &trans_cfg);
@@ -777,10 +783,8 @@ int iwl_xvt_allocate_tx_queue(struct iwl_xvt *xvt, u8 sta_id,
 	int ret, size = max_t(u32, IWL_DEFAULT_QUEUE_SIZE,
 			      xvt->trans->cfg->min_ba_txq_size);
 
-	ret = iwl_trans_txq_alloc(xvt->trans,
-				  cpu_to_le16(TX_QUEUE_CFG_ENABLE_QUEUE),
-				  sta_id, TX_QUEUE_CFG_TID, SCD_QUEUE_CFG,
-				  size, 0);
+	ret = iwl_trans_txq_alloc(xvt->trans, 0,
+				  BIT(sta_id), TX_QUEUE_CFG_TID, size, 0);
 	/* ret is positive when func returns the allocated the queue number */
 	if (ret > 0) {
 		xvt->tx_meta_data[lmac_id].queue = ret;
@@ -1010,4 +1014,41 @@ int iwl_xvt_init_sar_tables(struct iwl_xvt *xvt)
 	}
 
 	return ret;
+}
+
+static int iwl_xvt_ppag_send_cmd(struct iwl_xvt *xvt)
+{
+	union iwl_ppag_table_cmd cmd;
+	int ret, cmd_size;
+
+	ret = iwl_read_ppag_table(&xvt->fwrt, &cmd, &cmd_size);
+	if (ret < 0)
+		return ret;
+
+	IWL_DEBUG_RADIO(xvt, "Sending PER_PLATFORM_ANT_GAIN_CMD\n");
+	ret = iwl_xvt_send_cmd_pdu(xvt, WIDE_ID(PHY_OPS_GROUP,
+						PER_PLATFORM_ANT_GAIN_CMD),
+				   0, cmd_size, &cmd);
+	if (ret < 0)
+		IWL_ERR(xvt, "failed to send PER_PLATFORM_ANT_GAIN_CMD (%d)\n",
+			ret);
+
+	return ret;
+}
+
+int iwl_xvt_init_ppag_tables(struct iwl_xvt *xvt)
+{
+	int ret;
+
+	ret = iwl_acpi_get_ppag_table(&xvt->fwrt);
+	if (ret < 0) {
+		IWL_DEBUG_RADIO(xvt,
+				"PPAG BIOS table invalid or unavailable. (%d)\n",
+				ret);
+	}
+
+	if (!(iwl_acpi_is_ppag_approved(&xvt->fwrt)))
+		return 0;
+
+	return iwl_xvt_ppag_send_cmd(xvt);
 }

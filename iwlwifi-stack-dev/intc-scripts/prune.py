@@ -36,11 +36,14 @@ def parse_defconfig(deffile):
             enabled.append(l[7:-2])
             lines.append(l)
 
+    if lines[-1] == '':
+        lines = lines[:-1]
+
     # rewrite the file excluding disabled symbols
-    f = open(deffile, 'w')
-    for l in lines:
-        f.write(l)
-        f.write('\n')
+    with open(deffile, 'w') as f:
+        for l in lines:
+            f.write(l + '\n')
+
     return enabled, disabled
 
 def strip_defconfig(deffile, dis):
@@ -60,11 +63,13 @@ def strip_defconfig(deffile, dis):
             if l[7:-2] in dis:
                 continue
         lines.append(l)
-    f = open(deffile, 'w')
-    for l in lines:
-        f.write(l)
-        f.write('\n')
-    f.close()
+
+    if lines[-1] == '':
+        lines = lines[:-1]
+
+    with open(deffile, 'w') as f:
+        for l in lines:
+            f.write(l + '\n')
 
 def run_extras(basedir, dis):
     '''
@@ -110,15 +115,13 @@ def unifdef(f, dis):
         lines = lines[:-1]
 
     # write to the output file
-    outf = open(f, 'w')
-    for l in lines:
-        for s in syms:
-            # and while at it undo the IS_ENABLED() replacement
-            if l == '#if defined(%s) || defined(%s_MODULE)' % (s, s):
-                l = '#if IS_ENABLED(%s)' % s
-        outf.write(l)
-        outf.write('\n')
-    outf.close()
+    with open(f, 'w') as outf:
+        for l in lines:
+            for s in syms:
+                # and while at it undo the IS_ENABLED() replacement
+                if l == '#if defined(%s) || defined(%s_MODULE)' % (s, s):
+                    l = '#if IS_ENABLED(%s)' % s
+            outf.write(l + '\n')
 
     # clean up the child process (it must have exited in communicate())
     p.wait()

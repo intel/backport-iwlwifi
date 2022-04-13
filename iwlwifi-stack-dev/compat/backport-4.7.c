@@ -8,9 +8,11 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/devcoredump.h>
 #include <linux/export.h>
 #include <linux/list.h>
 #include <linux/rcupdate.h>
+#include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/skbuff.h>
@@ -116,15 +118,6 @@ int nla_put_64bit(struct sk_buff *skb, int attrtype, int attrlen,
 }
 EXPORT_SYMBOL_GPL(nla_put_64bit);
 
-/*
- * Below 3.18 or if the kernel has devcoredump disabled, we copied the
- * entire devcoredump, so no need to define these functions.
- */
-#if LINUX_VERSION_IS_GEQ(3,18,0) && \
-	!defined(CPTCFG_BPAUTO_BUILD_WANT_DEV_COREDUMP)
-#include <linux/devcoredump.h>
-#include <linux/scatterlist.h>
-
 static void devcd_free_sgtable(void *data)
 {
 	struct scatterlist *table = data;
@@ -181,4 +174,3 @@ void dev_coredumpsg(struct device *dev, struct scatterlist *table,
 		      (void *)devcd_free_sgtable);
 }
 EXPORT_SYMBOL_GPL(dev_coredumpsg);
-#endif /* >= 3.18.0 */

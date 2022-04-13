@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
@@ -12,6 +12,7 @@
 #include <linux/if_ether.h>
 #include <linux/etherdevice.h>
 #include <linux/limits.h>
+#include <linux/kthread.h>
 
 #include "iwl-drv.h"
 #include "iwl-prph.h"
@@ -450,6 +451,12 @@ static int iwl_xvt_continue_init_unified(struct iwl_xvt *xvt)
 				    XVT_UCODE_CALIB_TIMEOUT);
 	if (err)
 		goto init_error;
+
+	ret = iwl_xvt_init_ppag_tables(xvt);
+	if (ret < 0) {
+		err = ret;
+		goto init_error;
+	}
 
 	ret = iwl_xvt_init_sar_tables(xvt);
 	if (ret < 0) {
@@ -1351,7 +1358,7 @@ on_exit:
 		kfree(xvt->payloads[i]);
 		xvt->payloads[i] = NULL;
 	}
-	do_exit(err);
+	kthread_complete_and_exit(&xvt->tx_task_completion, err);
 }
 
 static int iwl_xvt_modulated_tx_handler(void *data)
@@ -1417,7 +1424,7 @@ static int iwl_xvt_modulated_tx_handler(void *data)
 
 	xvt_tx->tx_task_operating = false;
 	kfree(data);
-	do_exit(err);
+	kthread_complete_and_exit(task_data->completion, err);
 }
 
 static int iwl_xvt_modulated_tx_infinite_stop(struct iwl_xvt *xvt,
@@ -1430,6 +1437,7 @@ static int iwl_xvt_modulated_tx_infinite_stop(struct iwl_xvt *xvt,
 	if (xvt_tx->tx_mod_thread && xvt_tx->tx_task_operating) {
 		err = kthread_stop(xvt_tx->tx_mod_thread);
 		xvt_tx->tx_mod_thread = NULL;
+		wait_for_completion(&xvt_tx->tx_mod_thread_completion);
 	}
 
 	return err;
@@ -1496,6 +1504,7 @@ static int iwl_xvt_start_tx(struct iwl_xvt *xvt,
 	memcpy(&task_data->tx_start_data, req->input_data,
 	       sizeof(struct iwl_xvt_tx_start));
 
+	init_completion(&xvt->tx_task_completion);
 	xvt->tx_task = kthread_run(iwl_xvt_start_tx_handler,
 				   task_data, "start enhanced tx command");
 	if (!xvt->tx_task) {
@@ -1514,6 +1523,7 @@ static int iwl_xvt_stop_tx(struct iwl_xvt *xvt)
 	if (xvt->tx_task && xvt->is_enhanced_tx) {
 		err = kthread_stop(xvt->tx_task);
 		xvt->tx_task = NULL;
+		wait_for_completion(&xvt->tx_task_completion);
 	}
 
 	return err;
@@ -1593,6 +1603,8 @@ static int iwl_xvt_modulated_tx(struct iwl_xvt *xvt,
 		}
 	}
 
+	task_data->completion = &xvt_tx->tx_mod_thread_completion;
+	init_completion(task_data->completion);
 	xvt_tx->tx_mod_thread = kthread_run(iwl_xvt_modulated_tx_handler,
 					   task_data, "tx mod infinite");
 	if (!xvt_tx->tx_mod_thread) {
@@ -1776,9 +1788,9 @@ static int iwl_xvt_get_mac_addr_info(struct iwl_xvt *xvt,
 	return 0;
 }
 
-static int iwl_xvt_add_txq(struct iwl_xvt *xvt,
+static int iwl_xvt_add_txq(struct iwl_xvt *xvt, u32 sta_mask,
 			   struct iwl_scd_txq_cfg_cmd *cmd,
-			   u16 ssn, u16 flags, int size)
+			   u16 ssn, u32 flags, int size)
 {
 	int queue_id = cmd->scd_queue, ret;
 
@@ -1786,9 +1798,9 @@ static int iwl_xvt_add_txq(struct iwl_xvt *xvt,
 		/*TODO: add support for second lmac*/
 		queue_id =
 			iwl_trans_txq_alloc(xvt->trans,
-					    cpu_to_le16(flags),
-					    cmd->sta_id, cmd->tid,
-					    SCD_QUEUE_CFG, size, 0);
+					    flags & ~TX_QUEUE_CFG_ENABLE_QUEUE,
+					    sta_mask, cmd->tid,
+					    size, 0);
 		if (queue_id < 0)
 			return queue_id;
 	} else {
@@ -1811,9 +1823,20 @@ static int iwl_xvt_add_txq(struct iwl_xvt *xvt,
 static int iwl_xvt_remove_txq(struct iwl_xvt *xvt,
 			      struct iwl_scd_txq_cfg_cmd *cmd)
 {
+	u32 new_cmd_id = WIDE_ID(DATA_PATH_GROUP, SCD_QUEUE_CONFIG_CMD);
 	int ret = 0;
 
-	if (iwl_xvt_is_unified_fw(xvt)) {
+	if (iwl_fw_lookup_cmd_ver(xvt->fw, new_cmd_id, 0) == 3) {
+		struct iwl_scd_queue_cfg_cmd remove_cmd = {
+			.operation = cpu_to_le32(IWL_SCD_QUEUE_REMOVE),
+			.u.remove.queue = cpu_to_le32(cmd->scd_queue),
+		};
+
+		ret = iwl_xvt_send_cmd_pdu(xvt, new_cmd_id, 0,
+					   sizeof(remove_cmd),
+					   &remove_cmd);
+		iwl_trans_txq_free(xvt->trans, cmd->scd_queue);
+	} else if (iwl_xvt_is_unified_fw(xvt)) {
 		struct iwl_tx_queue_cfg_cmd queue_cfg_cmd = {
 			.flags = 0,
 			.sta_id = cmd->sta_id,
@@ -1838,9 +1861,9 @@ static int iwl_xvt_remove_txq(struct iwl_xvt *xvt,
 	return 0;
 }
 
-static int iwl_xvt_config_txq(struct iwl_xvt *xvt,
-			      struct iwl_xvt_driver_command_req *req,
-			      struct iwl_xvt_driver_command_resp *resp)
+static int iwl_xvt_config_txq_old(struct iwl_xvt *xvt,
+				  struct iwl_xvt_driver_command_req *req,
+				  struct iwl_xvt_driver_command_resp *resp)
 {
 	struct iwl_xvt_txq_config *conf =
 		(struct iwl_xvt_txq_config *)req->input_data;
@@ -1868,8 +1891,9 @@ static int iwl_xvt_config_txq(struct iwl_xvt *xvt,
 		if (WARN(error, "failed to remove queue"))
 			return error;
 	} else {
-		queue_id = iwl_xvt_add_txq(xvt, &cmd, conf->ssn,
-					   conf->flags, conf->queue_size);
+		queue_id = iwl_xvt_add_txq(xvt, BIT(conf->sta_id), &cmd,
+					   conf->ssn, conf->flags,
+					   conf->queue_size);
 		if (queue_id < 0)
 			return queue_id;
 	}
@@ -1880,6 +1904,85 @@ static int iwl_xvt_config_txq(struct iwl_xvt *xvt,
 	resp->length = sizeof(txq_resp);
 
 	return 0;
+}
+
+static int iwl_xvt_modify_txq(struct iwl_xvt *xvt, u32 queue, u32 sta_mask)
+{
+	u32 new_cmd_id = WIDE_ID(DATA_PATH_GROUP, SCD_QUEUE_CONFIG_CMD);
+
+	struct iwl_scd_queue_cfg_cmd modify_cmd = {
+		.operation = cpu_to_le32(IWL_SCD_QUEUE_MODIFY),
+		.u.modify.queue = cpu_to_le32(queue),
+		.u.modify.sta_mask = cpu_to_le32(sta_mask),
+	};
+
+	return iwl_xvt_send_cmd_pdu(xvt, new_cmd_id, 0,
+				    sizeof(modify_cmd),
+				    &modify_cmd);
+}
+
+static int iwl_xvt_config_txq_mld(struct iwl_xvt *xvt,
+				  struct iwl_xvt_driver_command_req *req,
+				  struct iwl_xvt_driver_command_resp *resp)
+{
+	struct iwl_xvt_txq_cfg_mld *conf = (void *)req->input_data;
+	struct iwl_xvt_txq_cfg_mld_resp txq_resp = {
+		.sta_mask = conf->sta_mask,
+		.tid = conf->tid,
+		.queue_id = conf->queue_id,
+	};
+	struct iwl_scd_txq_cfg_cmd legacy_cmd = {
+		.scd_queue = conf->queue_id,
+	};
+	int ret;
+
+	if (req->max_out_length < sizeof(txq_resp))
+		return -ENOBUFS;
+
+	switch (conf->action) {
+	case TX_QUEUE_CFG_REMOVE:
+		ret = iwl_xvt_remove_txq(xvt, &legacy_cmd);
+		if (ret)
+			return ret;
+		break;
+	case TX_QUEUE_CFG_ADD:
+		ret = iwl_xvt_add_txq(xvt, conf->sta_mask, &legacy_cmd, 0,
+				      conf->flags, conf->queue_size);
+		if (ret < 0)
+			return ret;
+		txq_resp.queue_id = ret;
+		break;
+	case TX_QUEUE_CFG_MODIFY:
+		ret = iwl_xvt_modify_txq(xvt, conf->queue_id, conf->sta_mask);
+		if (ret < 0)
+			return ret;
+		break;
+	}
+
+	memcpy(resp->resp_data, &txq_resp, sizeof(txq_resp));
+	resp->length = sizeof(txq_resp);
+
+	return 0;
+}
+
+static int iwl_xvt_config_txq(struct iwl_xvt *xvt, u32 req_len,
+			      struct iwl_xvt_driver_command_req *req,
+			      struct iwl_xvt_driver_command_resp *resp)
+{
+	switch (req_len) {
+	case sizeof(*req) + sizeof(struct iwl_xvt_txq_config):
+	/* some tools might have dword-alignment on this struct */
+	case sizeof(*req) + sizeof(struct iwl_xvt_txq_config) + 2:
+		return iwl_xvt_config_txq_old(xvt, req, resp);
+	case sizeof(*req) + sizeof(struct iwl_xvt_txq_cfg_mld):
+		return iwl_xvt_config_txq_mld(xvt, req, resp);
+	default:
+		IWL_ERR(xvt, "bad request length %d\n", req_len);
+		IWL_ERR(xvt, "expected %zu or %zu\n",
+			sizeof(*req) + sizeof(struct iwl_xvt_txq_config),
+			sizeof(*req) + sizeof(struct iwl_xvt_txq_cfg_mld));
+		return -EINVAL;
+	}
 }
 
 static int
@@ -1959,7 +2062,7 @@ static int iwl_xvt_handle_driver_cmd(struct iwl_xvt *xvt,
 	/* resp->length and resp->resp_data should be set in command handler */
 	switch (cmd_id) {
 	case IWL_DRV_CMD_CONFIG_TX_QUEUE:
-		err = iwl_xvt_config_txq(xvt, req, resp);
+		err = iwl_xvt_config_txq(xvt, data_in->len, req, resp);
 		break;
 	case IWL_DRV_CMD_SET_TX_PAYLOAD:
 		err = iwl_xvt_set_tx_payload(xvt, req);

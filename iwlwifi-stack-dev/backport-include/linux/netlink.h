@@ -3,8 +3,7 @@
 #include_next <linux/netlink.h>
 #include <linux/version.h>
 
-#if LINUX_VERSION_IS_LESS(4,14,0) && \
-	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,6)
+#if LINUX_VERSION_IS_LESS(4,14,0)
 struct nla_bitfield32 {
 	__u32 value;
 	__u32 selector;
@@ -44,13 +43,8 @@ struct netlink_ext_ack {
 #endif
 
 /* this is for patches we apply */
-#if LINUX_VERSION_IS_LESS(3,7,0)
-#define netlink_notify_portid(__notify) (__notify->pid)
-#define NETLINK_CB_PORTID(__skb) NETLINK_CB(__skb).pid
-#else
 #define netlink_notify_portid(__notify) (__notify->portid)
 #define NETLINK_CB_PORTID(__skb) NETLINK_CB(__skb).portid
-#endif
 
 #ifndef NL_SET_BAD_ATTR
 #define NL_SET_BAD_ATTR(extack, attr) do {		\

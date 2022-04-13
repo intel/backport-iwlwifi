@@ -60,7 +60,6 @@ void __iwl_err(struct device *dev, enum iwl_err_mode mode, const char *fmt, ...)
 	default:
 		break;
 	}
-	vaf.va = &args;
 	trace_iwlwifi_err(&vaf);
 	va_end(args);
 }

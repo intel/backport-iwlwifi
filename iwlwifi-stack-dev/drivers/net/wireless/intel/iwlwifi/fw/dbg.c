@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
@@ -2098,21 +2098,40 @@ static u32 iwl_dump_ini_mem(struct iwl_fw_runtime *fwrt, struct list_head *list,
 	struct iwl_fw_ini_error_dump_data *tlv;
 	struct iwl_fw_ini_error_dump_header *header;
 	u32 type = reg->type;
-	u32 id = le32_to_cpu(reg->id);
+	u32 id = le32_get_bits(reg->id, IWL_FW_INI_REGION_ID_MASK);
 	u32 num_of_ranges, i, size;
 	u8 *range;
 	u32 free_size;
 	u64 header_size;
+	u32 dump_policy = IWL_FW_INI_DUMP_VERBOSE;
 
-	/*
-	 * The higher part of the ID from 2 is irrelevant for
-	 * us, so mask it out.
-	 */
-	if (le32_to_cpu(reg->hdr.version) >= 2)
-		id &= IWL_FW_INI_REGION_V2_MASK;
+	IWL_DEBUG_FW(fwrt, "WRT: Collecting region: dump type=%d, id=%d, type=%d\n",
+		     dump_policy, id, type);
 
-	IWL_DEBUG_FW(fwrt, "WRT: Collecting region: id=%d, type=%d\n", id,
-		     type);
+	if (le32_to_cpu(reg->hdr.version) >= 2) {
+		u32 dp = le32_get_bits(reg->id,
+				       IWL_FW_INI_REGION_DUMP_POLICY_MASK);
+
+		if (dump_policy == IWL_FW_INI_DUMP_VERBOSE &&
+		    !(dp & IWL_FW_INI_DEBUG_DUMP_POLICY_NO_LIMIT)) {
+			IWL_DEBUG_FW(fwrt,
+				     "WRT: no dump - type %d and policy mismatch=%d\n",
+				     dump_policy, dp);
+			return 0;
+		} else if (dump_policy == IWL_FW_INI_DUMP_MEDIUM &&
+			   !(dp & IWL_FW_IWL_DEBUG_DUMP_POLICY_MAX_LIMIT_5MB)) {
+			IWL_DEBUG_FW(fwrt,
+				     "WRT: no dump - type %d and policy mismatch=%d\n",
+				     dump_policy, dp);
+			return 0;
+		} else if (dump_policy == IWL_FW_INI_DUMP_BRIEF &&
+			   !(dp & IWL_FW_INI_DEBUG_DUMP_POLICY_MAX_LIMIT_600KB)) {
+			IWL_DEBUG_FW(fwrt,
+				     "WRT: no dump - type %d and policy mismatch=%d\n",
+				     dump_policy, dp);
+			return 0;
+		}
+	}
 
 	if (!ops->get_num_of_ranges || !ops->get_size || !ops->fill_mem_hdr ||
 	    !ops->fill_range) {
@@ -2805,7 +2824,7 @@ int iwl_fw_start_dbg_conf(struct iwl_fw_runtime *fwrt, u8 conf_id)
 			 fwrt->dump.conf);
 
 #if IS_ENABLED(CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES) && \
-	(IS_ENABLED(CPTCFG_IWLMVM) || IS_ENABLED(CPTCFG_IWLFMAC))
+	IS_ENABLED(CPTCFG_IWLMVM)
 	/* start default config marker cmd for syncing logs */
 	if (fwrt->trans->dbg_cfg.enable_timestamp_marker_cmd)
 		iwl_fw_trigger_timestamp(fwrt, 1);

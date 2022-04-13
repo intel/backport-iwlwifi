@@ -1,0 +1,20 @@
+@@
+identifier sdata, params;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,16,0)
+static int ieee80211_set_ap_mbssid_options(struct ieee80211_sub_if_data *sdata,
+					   struct cfg80211_mbssid_config params)
+{
+...
+}
++#endif
+
+@@
+struct cfg80211_ap_settings *params;
+identifier elem;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,16,0)
+if (... && params->mbssid_config.elem) {
+...
+}
++#endif

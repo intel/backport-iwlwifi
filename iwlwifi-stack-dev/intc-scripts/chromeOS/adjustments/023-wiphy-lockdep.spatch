@@ -1,0 +1,11 @@
+@@
+struct wiphy *wiphy;
+@@
+-lockdep_is_held(&wiphy->mtx)
++lockdep_is_wiphy_held(wiphy)
+
+@@
+struct ieee80211_local *local;
+@@
+-lockdep_is_held(&local->hw.wiphy->mtx)
++lockdep_is_wiphy_held(local->hw.wiphy)

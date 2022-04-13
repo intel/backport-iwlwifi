@@ -483,6 +483,42 @@ err:
 
 FWRT_DEBUGFS_READ_FILE_OPS(tpc_stats, 150);
 
+#define PS_REPORT_FIELDS \
+		PS_FIELD(le32, total_sleep_counter) \
+		PS_FIELD(le32, total_sleep_duration) \
+		PS_FIELD(le32, report_duration) \
+		PS_FIELD(le32, total_missed_beacon_counter) \
+		PS_FIELD(le32, missed_3_consecutive_beacon_count) \
+		PS_FIELD(le32, ps_flags) \
+		PS_FIELD(le32, phy_inactive_duration) \
+		PS_FIELD(le32, mac_ctdp_sum) \
+		PS_FIELD(le32, ppm_offset_vs_ap_sum) \
+		PS_FIELD(le32, deep_sleep_duration) \
+		PS_FIELD(le32, received_beacon_counter) \
+		PS_FIELD(le16, bcon_in_lprx_counter) \
+		PS_FIELD(le16, bcon_abort_counter) \
+		PS_FIELD(le16, multicast_indication_tim_counter) \
+		PS_FIELD(le16, missed_multicast_counter) \
+		PS_FIELD(le32, misbehave_counter) \
+		PS_FIELD(le32, max_sleep_duration) \
+		PS_FIELD(le32, total_page_faults) \
+		PS_FIELD(le32, sleep_abort_count) \
+		PS_FIELD(le32, max_active_duration) \
+		PS_FIELD(le16, max_pu_duration) \
+		PS_FIELD(le16, max_pd_duration) \
+		PS_FIELD(le16, max_phy_pu_duration[0]) \
+		PS_FIELD(le16, max_phy_pu_duration[1]) \
+		PS_FIELD(le16, max_phy_pd_duration[0]) \
+		PS_FIELD(le16, max_phy_pd_duration[1]) \
+		PS_FIELD(le32, ltr.tx_active_time) \
+		PS_FIELD(le32, ltr.rx_active_time) \
+		PS_FIELD(le32, ltr.rx_listen_time) \
+		PS_FIELD(le32, ltr.power_save_time) \
+		PS_FIELD(le32, ltr.total_time) \
+		PS_FIELD(le32, ps_duration[0]) \
+		PS_FIELD(le32, ps_duration[1]) \
+		PS_FIELD(le32, ps_duration[2])
+
 static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 					size_t size, char *buf, int mac_mask)
 {
@@ -532,57 +568,15 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 
 	ret = scnprintf(buf, size, "power-save report\n");
 
-#define PRINT_PS_REPORT_32(_f)						\
-	({ BUILD_BUG_ON(sizeof(ps_report->_f) != 4);			\
-	   offsetofend(typeof(*ps_report), _f) <= report_size ?		\
-		       scnprintf(buf + ret, size - ret, #_f " %u\n",	\
-				 le32_to_cpu(ps_report->_f)) :		\
-		       0; })
-#define PRINT_PS_REPORT_16(_f)						\
-	({ BUILD_BUG_ON(sizeof(ps_report->_f) != 2);			\
-	   offsetofend(typeof(*ps_report), _f) <= report_size ?		\
-		       scnprintf(buf + ret, size - ret, #_f " %u\n",	\
-				 le16_to_cpu(ps_report->_f)) :		\
-		       0; })
+#define PS_FIELD(_t, _f)							\
+	ret += ({ BUILD_BUG_ON(sizeof(ps_report->_f) != sizeof(__ ##_t ));	\
+			offsetofend(typeof(*ps_report), _f) <= report_size ?	\
+				scnprintf(buf + ret, size - ret, #_f " %u\n",	\
+					  _t## _to_cpu(ps_report->_f)) :	\
+				sizeof(__ ##_t );});
 
-	ret += PRINT_PS_REPORT_32(total_sleep_counter);
-	ret += PRINT_PS_REPORT_32(total_sleep_duration);
-	ret += PRINT_PS_REPORT_32(report_duration);
-	ret += PRINT_PS_REPORT_32(total_missed_beacon_counter);
-	ret += PRINT_PS_REPORT_32(missed_3_consecutive_beacon_count);
-	ret += PRINT_PS_REPORT_32(ps_flags);
-	ret += PRINT_PS_REPORT_32(phy_inactive_duration);
-	ret += PRINT_PS_REPORT_32(mac_ctdp_sum);
-	ret += PRINT_PS_REPORT_32(ppm_offset_vs_ap_sum);
-	ret += PRINT_PS_REPORT_32(deep_sleep_duration);
-	ret += PRINT_PS_REPORT_32(received_beacon_counter);
-	ret += PRINT_PS_REPORT_16(bcon_in_lprx_counter);
-	ret += PRINT_PS_REPORT_16(bcon_abort_counter);
-	ret += PRINT_PS_REPORT_16(multicast_indication_tim_counter);
-	ret += PRINT_PS_REPORT_16(missed_multicast_counter);
-	ret += PRINT_PS_REPORT_32(misbehave_counter);
-	ret += PRINT_PS_REPORT_32(max_sleep_duration);
-	ret += PRINT_PS_REPORT_32(total_page_faults);
-	ret += PRINT_PS_REPORT_32(sleep_abort_count);
-	ret += PRINT_PS_REPORT_32(max_active_duration);
-	ret += PRINT_PS_REPORT_16(max_pu_duration);
-	ret += PRINT_PS_REPORT_16(max_pd_duration);
-	ret += PRINT_PS_REPORT_16(max_phy_pu_duration[0]);
-	ret += PRINT_PS_REPORT_16(max_phy_pu_duration[1]);
-	ret += PRINT_PS_REPORT_16(max_phy_pd_duration[0]);
-	ret += PRINT_PS_REPORT_16(max_phy_pd_duration[1]);
-
-	/* LTR statistics */
-	ret += PRINT_PS_REPORT_32(ltr.tx_active_time);
-	ret += PRINT_PS_REPORT_32(ltr.rx_active_time);
-	ret += PRINT_PS_REPORT_32(ltr.rx_listen_time);
-	ret += PRINT_PS_REPORT_32(ltr.power_save_time);
-	ret += PRINT_PS_REPORT_32(ltr.total_time);
-
-	/* PS durations */
-	ret += PRINT_PS_REPORT_32(ps_duration[0]);
-	ret += PRINT_PS_REPORT_32(ps_duration[1]);
-	ret += PRINT_PS_REPORT_32(ps_duration[2]);
+	PS_REPORT_FIELDS
+#undef PS_FIELD
 
 	return ret;
 
@@ -598,10 +592,13 @@ static ssize_t iwl_dbgfs_ps_report_umac_read
 	return iwl_dbgfs_ps_report_read(fwrt, size, buf, DHC_TARGET_UMAC);
 }
 
+#define PS_FIELD(x, y) + 1
 /* We set the size of the ps_report_umac file to be according to the ps report size.
  10 -> indicates the maximun char that can be added by 4 byte int converted to string
  20 -> indicates the avarege chars in a field*/
-FWRT_DEBUGFS_READ_FILE_OPS(ps_report_umac, (sizeof(struct iwl_ps_report) / 4) * (10 + 20));
+FWRT_DEBUGFS_READ_FILE_OPS(ps_report_umac,
+			   (PS_REPORT_FIELDS) * (10 + 20));
+#undef PS_FIELD
 
 static ssize_t iwl_dbgfs_send_ps_test_write(struct iwl_fw_runtime *fwrt,
 					    struct iwl_ps_test_req *ps_test_req)

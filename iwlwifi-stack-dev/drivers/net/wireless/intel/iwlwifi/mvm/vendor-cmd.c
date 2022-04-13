@@ -429,8 +429,7 @@ static int iwl_vendor_rfim_get_capa(struct wiphy *wiphy,
 
 	if (mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210 &&
 	    mvm->trans->trans_cfg->integrated) {
-		if (fw_has_capa(&mvm->fw->ucode_capa,
-				IWL_UCODE_TLV_CAPA_RFIM_SUPPORT))
+		if (iwl_rfi_supported(mvm))
 			capa = IWL_MVM_RFIM_CAPA_ALL;
 		else
 			capa = IWL_MVM_RFIM_CAPA_CNVI;
@@ -808,7 +807,6 @@ static int iwl_mvm_vendor_rxfilter(struct wiphy *wiphy,
 	op = nla_get_u32(tb[IWL_MVM_VENDOR_ATTR_RXFILTER_OP]);
 
 	if (filter != IWL_MVM_VENDOR_RXFILTER_UNICAST &&
-	    filter != IWL_MVM_VENDOR_RXFILTER_BCAST &&
 	    filter != IWL_MVM_VENDOR_RXFILTER_MCAST4 &&
 	    filter != IWL_MVM_VENDOR_RXFILTER_MCAST6) {
 		err = -EINVAL;
@@ -848,10 +846,6 @@ static int iwl_mvm_vendor_rxfilter(struct wiphy *wiphy,
 		iwl_mvm_active_rx_filters(mvm);
 		iwl_mvm_recalc_multicast(mvm);
 	}
-
-	mask = IWL_MVM_VENDOR_RXFILTER_BCAST;
-	if ((old_rx_filters & mask) != (rx_filters & mask) || first_set)
-		iwl_mvm_configure_bcast_filter(mvm);
 
 	mutex_unlock(&mvm->mutex);
 

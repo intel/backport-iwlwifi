@@ -121,15 +121,6 @@ config REJECT_NONUPSTREAM_NL80211
 	help
 	  Say Y to disable non-upstream commands.
 
-config IWLFMAC_9000_SUPPORT
-	bool
-	depends on IWLFMAC
-	default y
-	help
-	  Say N to disable support for 9000-series devices in FMAC.
-	  This option is mostly used for code pruning & documentation
-	  purposes.
-
 config IWLWIFI_DHC_PRIVATE
 	bool "enable *private* DHC commands"
 	select IWLWIFI_DHC

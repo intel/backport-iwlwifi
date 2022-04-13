@@ -2369,23 +2369,12 @@ void iwl_dbgfs_register(struct iwl_priv *priv, struct dentry *dbgfs_dir)
 	 */
 	if (priv->mac80211_registered) {
 		char buf[100];
-#if LINUX_VERSION_IS_GEQ(3,12,0)
 		struct dentry *mac80211_dir, *dev_dir;
 
 		dev_dir = dbgfs_dir->d_parent;
 		mac80211_dir = priv->hw->wiphy->debugfsdir;
 
 		snprintf(buf, 100, "../../%pd2", dev_dir);
-#else
-		struct dentry *mac80211_dir, *dev_dir, *root_dir;
-
-		dev_dir = dbgfs_dir->d_parent;
-		root_dir = dev_dir->d_parent;
-		mac80211_dir = priv->hw->wiphy->debugfsdir;
-
-		snprintf(buf, 100, "../../%s/%s", root_dir->d_name.name,
-			 dev_dir->d_name.name);
-#endif
 
 		debugfs_create_symlink("iwlwifi", mac80211_dir, buf);
 	}

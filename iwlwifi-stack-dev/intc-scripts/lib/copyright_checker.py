@@ -16,7 +16,8 @@ import subprocess
 import re
 import time
 
-COPYRIGHT_CURRENT_OWNER = "Intel Corporation"
+COPYRIGHT_CURRENT_OWNER_S = "Intel Corporation"
+COPYRIGHT_CURRENT_OWNER = COPYRIGHT_CURRENT_OWNER_S.encode('ascii')
 
 class Copyright(object):
     def __init__(self):
@@ -25,33 +26,34 @@ class Copyright(object):
         self.owner = None
 
 def check_copyright(file_types, missing_fn=None):
+    file_types = [ft.encode('ascii') for ft in file_types]
     err = 0
     curyear = time.gmtime().tm_year
 
     p = subprocess.Popen(["git", "show", "-U100000", "-M", "HEAD"],
-                         stdout=subprocess.PIPE, universal_newlines=True)
+                         stdout=subprocess.PIPE)
     c = p.communicate()[0]
     p.wait()
 
-    changetype = r'(?P<type>[-+ ])'
-    pfx = '.*'
-    copyright = r'Copyright[()Cc ]*'
-    year_or_range = r'((2[0-9]{3})\s*-\s*)?(2[0-9]{3})\s*,?\s*'
-    years = r'(?P<years>(' + year_or_range + ')+)'
-    owner = r'(?P<owner>.*?)'
-    reserved = r'(\. All rights reserved\.)?'
-    copyright_re = re.compile(r'^' + changetype + pfx + copyright + years + owner + reserved + '$')
+    changetype = br'(?P<type>[-+ ])'
+    pfx = b'.*'
+    copyright = br'Copyright[()Cc ]*'
+    year_or_range = br'((2[0-9]{3})\s*-\s*)?(2[0-9]{3})\s*,?\s*'
+    years = br'(?P<years>(' + year_or_range + b')+)'
+    owner = br'(?P<owner>.*?)'
+    reserved = br'(\. All rights reserved\.)?'
+    copyright_re = re.compile(br'^' + changetype + pfx + copyright + years + owner + reserved + b'$')
 
-    diffs = c.split('\n+++ ')
+    diffs = c.split(b'\n+++ ')
     for d in diffs:
         # don't check deleted files or other garbage
-        lines = d.split('\n')
-        if not lines[0].startswith('b/'):
+        lines = d.split(b'\n')
+        if not lines[0].startswith(b'b/'):
             continue
         filename = lines[0][2:]
-        if not filename.split('.')[-1] in file_types:
+        if not filename.split(b'.')[-1] in file_types:
             continue
-        lines = [x for x in lines if len(x) and x[0] in ' +-']
+        lines = [x for x in lines if len(x) and x[0] in b' +-']
         done = False
         lines_iter = iter(lines)
         next_section = ""
@@ -61,7 +63,7 @@ def check_copyright(file_types, missing_fn=None):
             section = next_section
             for line in lines_iter:
                 # stupid trick to avoid it falling over itself
-                if ('BSD ' + 'LICENSE') in line:
+                if (b'BSD ' + b'LICENSE') in line:
                     done = False
                     next_section = " (BSD section)"
                     break
@@ -71,13 +73,13 @@ def check_copyright(file_types, missing_fn=None):
                 c = Copyright()
                 c.type = m.group('type')
                 years = m.group('years')
-                for g in years.split(','):
+                for g in years.split(b','):
                     g = g.strip()
                     if not g:
                         # nothing to do, found a trailing "," in the year list
                         pass
-                    elif '-' in g:
-                        beginyear, endyear = [int(x.strip()) for x in g.split('-')]
+                    elif b'-' in g:
+                        beginyear, endyear = [int(x.strip()) for x in g.split(b'-')]
                         c.years |= set(range(beginyear, endyear + 1))
                     else:
                         c.years |= set([int(g)])
@@ -96,9 +98,9 @@ def check_copyright(file_types, missing_fn=None):
                 if not c.owner in new_owners:
                     new_owners[c.owner] = set()
 
-                if c.type in ' +':
+                if c.type in b' +':
                     new_owners[c.owner] |= c.years
-                if c.type in ' -':
+                if c.type in b' -':
                     old_owners[c.owner] |= c.years
 
             for owner in new_owners:
@@ -108,15 +110,15 @@ def check_copyright(file_types, missing_fn=None):
                     ign = set()
                 if new_owners[owner] | ign != old_owners[owner] | ign:
                     err = 2
-                    print("%s: please do not modify old copyright lines/add past years%s" % (filename, section))
+                    print("%s: please do not modify old copyright lines/add past years%s" % (filename.decode(), section))
                     new_owners[owner] = old_owners[owner]
                     break
             if not curyear in new_owners[COPYRIGHT_CURRENT_OWNER]:
                 err = 2
                 if (curyear - 1) in new_owners[COPYRIGHT_CURRENT_OWNER]:
-                    print('%s: please extend %s Copyright for %d%s' % (filename, COPYRIGHT_CURRENT_OWNER, curyear, section))
+                    print('%s: please extend %s Copyright for %d%s' % (filename.decode(), COPYRIGHT_CURRENT_OWNER_S, curyear, section))
                 else:
-                    print('%s: please add "Copyright (C) %d %s"%s' % (filename, curyear, COPYRIGHT_CURRENT_OWNER, section))
+                    print('%s: please add "Copyright (C) %d %s"%s' % (filename.decode(), curyear, COPYRIGHT_CURRENT_OWNER_S, section))
                 if missing_fn:
                     missing_fn(filename)
 

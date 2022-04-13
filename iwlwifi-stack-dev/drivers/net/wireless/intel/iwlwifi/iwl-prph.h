@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016 Intel Deutschland GmbH
  */
@@ -391,6 +391,13 @@ enum {
 #define UREG_LMAC1_CURRENT_PC		0xa05c1c
 #define UREG_LMAC2_CURRENT_PC		0xa05c20
 
+#define WFPM_LMAC1_PD_NOTIFICATION      0xa0338c
+#define WFPM_ARC1_PD_NOTIFICATION       0xa03044
+#define HPM_SECONDARY_DEVICE_STATE      0xa03404
+#define WFPM_MAC_OTP_CFG7_ADDR		0xa03338
+#define WFPM_MAC_OTP_CFG7_DATA		0xa0333c
+
+
 /* For UMAG_GEN_HW_STATUS reg check */
 enum {
 	UMAG_GEN_HW_IS_FPGA = BIT(1),
@@ -401,6 +408,22 @@ enum {
 enum {
 	LMPM_CHICK_EXTENDED_ADDR_SPACE = BIT(0),
 };
+
+/*
+ * CRF ID register
+ *
+ * type: bits 0-11
+ * reserved: bits 12-18
+ * slave_exist: bit 19
+ * dash: bits 20-23
+ * step: bits 24-26
+ * flavor: bits 27-31
+ */
+#define REG_CRF_ID_TYPE(val)		(((val) & 0x00000FFF) >> 0)
+#define REG_CRF_ID_SLAVE(val)		(((val) & 0x00080000) >> 19)
+#define REG_CRF_ID_DASH(val)		(((val) & 0x00F00000) >> 20)
+#define REG_CRF_ID_STEP(val)		(((val) & 0x07000000) >> 24)
+#define REG_CRF_ID_FLAVOR(val)		(((val) & 0xF8000000) >> 27)
 
 /*
  * CRF ID register

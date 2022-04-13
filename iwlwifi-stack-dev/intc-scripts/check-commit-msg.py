@@ -23,7 +23,8 @@ def run_checkpatch(output_dir, http_root):
         'SYMBOLIC_PERMS',
     ]
     p = subprocess.Popen(["git", "format-patch", "-U20", "--stdout", "HEAD~1.."],
-                         stdout=subprocess.PIPE, universal_newlines=True)
+                         stdout=subprocess.PIPE, universal_newlines=True,
+                         encoding='utf-8')
     c = p.communicate()[0]
     p.wait()
 

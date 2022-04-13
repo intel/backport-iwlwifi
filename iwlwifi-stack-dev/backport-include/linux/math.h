@@ -1,10 +1,12 @@
-#ifndef __BACKPORT_LINUX_MATH_H
-#define __BACKPORT_LINUX_MATH_H
+/* SPDX-License-Identifier: GPL-2.0 */
+#ifndef __BACKPORTS_LINUX_MATH_H
+#define __BACKPORTS_LINUX_MATH_H
+#include <linux/version.h>
 
-#if LINUX_VERSION_IS_LESS(5,11,0)
-#include <linux/kernel.h>
-#else /* LINUX_VERSION_IS_LESS(5,11,0) */
+#if LINUX_VERSION_IS_GEQ(5,11,0)
 #include_next <linux/math.h>
-#endif /* LINUX_VERSION_IS_LESS(5,11,0) */
+#else
+#include <linux/kernel.h>
+#endif
 
-#endif /* __BACKPORT_LINUX_MATH_H */
+#endif /* __BACKPORTS_LINUX_MATH_H */

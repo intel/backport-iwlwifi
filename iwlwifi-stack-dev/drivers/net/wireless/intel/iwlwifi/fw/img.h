@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016 Intel Deutschland GmbH
  */
@@ -51,9 +51,6 @@ struct iwl_ucode_capabilities {
 	u32 error_log_addr;
 	u32 error_log_size;
 	u32 num_stations;
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-	u32 fmac_api_version;
-#endif
 	unsigned long _api[BITS_TO_LONGS(NUM_IWL_UCODE_TLV_API)];
 	unsigned long _capa[BITS_TO_LONGS(NUM_IWL_UCODE_TLV_CAPA)];
 
@@ -154,9 +151,6 @@ struct iwl_fw_cscheme_list {
 enum iwl_fw_type {
 	IWL_FW_DVM,
 	IWL_FW_MVM,
-#if IS_ENABLED(CPTCFG_IWLFMAC)
-	IWL_FW_FMAC,
-#endif
 };
 
 /**

@@ -52,6 +52,8 @@ void __iwl_crit(struct device *dev, const char *fmt, ...) __printf(2, 3);
 		CHECK_FOR_NEWLINE(f);					\
 		__iwl_warn((d), f, ## a);				\
 	} while (0)
+#define IWL_ERR_DEV(d, f, a...)						\
+	__IWL_ERR_DEV(d, IWL_ERR_MODE_REGULAR, f, ## a)
 #define IWL_ERR(m, f, a...)						\
 	IWL_ERR_DEV((m)->dev, f, ## a)
 #define IWL_ERR_LIMIT(m, f, a...)					\

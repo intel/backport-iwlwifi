@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2003-2015, 2018-2021 Intel Corporation
+ * Copyright (C) 2003-2015, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -112,7 +112,7 @@ struct iwl_rx_completion_desc {
 struct iwl_rx_completion_desc_bz {
 	__le16 rbid;
 	u8 flags;
-	u8 reserved[29];
+	u8 reserved[1];
 } __packed;
 
 /**

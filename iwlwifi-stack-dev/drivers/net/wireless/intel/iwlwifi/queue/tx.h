@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2020-2021 Intel Corporation
+ * Copyright (C) 2020-2022 Intel Corporation
  */
 #ifndef __iwl_trans_queue_tx_h__
 #define __iwl_trans_queue_tx_h__
@@ -112,10 +112,9 @@ void iwl_txq_gen2_tfd_unmap(struct iwl_trans *trans,
 			    struct iwl_cmd_meta *meta,
 			    struct iwl_tfh_tfd *tfd);
 
-int iwl_txq_dyn_alloc(struct iwl_trans *trans,
-		      __le16 flags, u8 sta_id, u8 tid,
-		      int cmd_id, int size,
-		      unsigned int timeout);
+int iwl_txq_dyn_alloc(struct iwl_trans *trans, u32 flags,
+		      u32 sta_mask, u8 tid,
+		      int size, unsigned int timeout);
 
 int iwl_txq_gen2_tx(struct iwl_trans *trans, struct sk_buff *skb,
 		    struct iwl_device_tx_cmd *dev_cmd, int txq_id);
