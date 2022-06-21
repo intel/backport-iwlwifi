@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -572,10 +572,6 @@ static const struct ieee80211_sband_iftype_data iwl_he_eht_capa[] = {
 					IEEE80211_HE_MAC_CAP5_UL_2x996_TONE_RU |
 					IEEE80211_HE_MAC_CAP5_HE_DYNAMIC_SM_PS |
 					IEEE80211_HE_MAC_CAP5_HT_VHT_TRIG_FRAME_RX,
-				.phy_cap_info[0] =
-					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_IN_2G |
-					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G |
-					IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G,
 				.phy_cap_info[1] =
 					IEEE80211_HE_PHY_CAP1_PREAMBLE_PUNC_RX_MASK |
 					IEEE80211_HE_PHY_CAP1_DEVICE_CLASS_A |
@@ -636,67 +632,61 @@ static const struct ieee80211_sband_iftype_data iwl_he_eht_capa[] = {
 			.has_eht = true,
 			.eht_cap_elem = {
 				.mac_cap_info[0] =
-					IEEE80211_EHT_MAC_CAP0_NSEP_PRIO_ACCESS_SUPP  |
-					IEEE80211_EHT_MAC_CAP0_OM_CONTROL_SUPP |
-					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_SUPP |
-					IEEE80211_EHT_MAC_CAP0_ARR_CONTROL_SUPP,
+					IEEE80211_EHT_MAC_CAP0_NSEP_PRIO_ACCESS |
+					IEEE80211_EHT_MAC_CAP0_OM_CONTROL |
+					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_MODE1 |
+					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_MODE2,
 				.phy_cap_info[0] =
-					IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ         |
-					IEEE80211_EHT_PHY_CAP0_242_TONE_RU            |
-					IEEE80211_EHT_PHY_CAP0_NDP_4_EHT_LFT_32_GI    |
-					IEEE80211_EHT_PHY_CAP0_PARTIAL_BW_UL_MU_MIMO  |
-					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMEE          |
-					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMEE_SS_80MHZ,
+					IEEE80211_EHT_PHY_CAP0_242_TONE_RU_GT20MHZ |
+					IEEE80211_EHT_PHY_CAP0_NDP_4_EHT_LFT_32_GI |
+					IEEE80211_EHT_PHY_CAP0_PARTIAL_BW_UL_MU_MIMO |
+					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMEE |
+					IEEE80211_EHT_PHY_CAP0_BEAMFORMEE_SS_80MHZ_MASK,
 				.phy_cap_info[1] =
-					IEEE80211_EHT_PHY_CAP1_SU_BEAMFORMEE_SS_80MHZ  |
-					IEEE80211_EHT_PHY_CAP1_SU_BEAMFORMEE_SS_160MHZ |
-					IEEE80211_EHT_PHY_CAP1_SU_BEAMFORMEE_SS_320MHZ,
+					IEEE80211_EHT_PHY_CAP1_BEAMFORMEE_SS_80MHZ_MASK  |
+					IEEE80211_EHT_PHY_CAP1_BEAMFORMEE_SS_160MHZ_MASK |
+					IEEE80211_EHT_PHY_CAP1_BEAMFORMEE_SS_320MHZ_MASK,
 				.phy_cap_info[3] =
-					IEEE80211_EHT_PHY_CAP3_NG_16_SU_FEEDBACK           |
-					IEEE80211_EHT_PHY_CAP3_NG_16_MU_FEEDBACK           |
-					IEEE80211_EHT_PHY_CAP3_CODEBOOK_4_2_SU_FEEDBACK    |
-					IEEE80211_EHT_PHY_CAP3_CODEBOOK_7_5_MU_FEEDBACK    |
-					IEEE80211_EHT_PHY_CAP3_TRIG_SU_BF_FEEDBACK         |
-					IEEE80211_EHT_PHY_CAP3_TRIG_MU_BF_PART_BW_FEEDBACK |
-					IEEE80211_EHT_PHY_CAP3_TRIG_CQI_FEEDBACK,
+					IEEE80211_EHT_PHY_CAP3_NG_16_SU_FEEDBACK |
+					IEEE80211_EHT_PHY_CAP3_NG_16_MU_FEEDBACK |
+					IEEE80211_EHT_PHY_CAP3_CODEBOOK_4_2_SU_FDBK |
+					IEEE80211_EHT_PHY_CAP3_CODEBOOK_7_5_MU_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_SU_BF_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_MU_BF_PART_BW_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_CQI_FDBK,
 
 				.phy_cap_info[4] =
-					IEEE80211_EHT_PHY_CAP4_PART_BW_DL_MU_MIMO          |
-					IEEE80211_EHT_PHY_CAP4_POWER_BOOST_FACT_SUPP       |
+					IEEE80211_EHT_PHY_CAP4_PART_BW_DL_MU_MIMO |
+					IEEE80211_EHT_PHY_CAP4_POWER_BOOST_FACT_SUPP |
 					IEEE80211_EHT_PHY_CAP4_EHT_MU_PPDU_4_EHT_LTF_08_GI,
 				.phy_cap_info[5] =
-					IEEE80211_EHT_PHY_CAP5_NON_TRIG_CQI_FEEDBACK    |
+					IEEE80211_EHT_PHY_CAP5_NON_TRIG_CQI_FEEDBACK |
 					IEEE80211_EHT_PHY_CAP5_TX_LESS_242_TONE_RU_SUPP |
 					IEEE80211_EHT_PHY_CAP5_RX_LESS_242_TONE_RU_SUPP |
 					IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT,
 				.phy_cap_info[6] =
-					IEEE80211_EHT_PHY_CAP6_MCS15_SUPP |
+					IEEE80211_EHT_PHY_CAP6_MCS15_SUPP_MASK |
 					IEEE80211_EHT_PHY_CAP6_EHT_DUP_6GHZ_SUPP,
 				.phy_cap_info[7] =
 					IEEE80211_EHT_PHY_CAP7_20MHZ_STA_RX_NDP_WIDER_BW,
 			},
 
 			/* For all MCS and bandwidth, set 2 NSS for both Tx and
-			 * Rx
+			 * Rx - note we don't set the only_20mhz, but due to this
+			 * being a union, it gets set correctly anyway.
 			 */
 			.eht_mcs_nss_supp = {
-				.only_20mhz = {
-					.rx_tx_mcs7_max_nss = 0x22,
+				.bw._80 = {
 					.rx_tx_mcs9_max_nss = 0x22,
 					.rx_tx_mcs11_max_nss = 0x22,
 					.rx_tx_mcs13_max_nss = 0x22,
 				},
-				.bw_80 = {
+				.bw._160 = {
 					.rx_tx_mcs9_max_nss = 0x22,
 					.rx_tx_mcs11_max_nss = 0x22,
 					.rx_tx_mcs13_max_nss = 0x22,
 				},
-				.bw_160 = {
-					.rx_tx_mcs9_max_nss = 0x22,
-					.rx_tx_mcs11_max_nss = 0x22,
-					.rx_tx_mcs13_max_nss = 0x22,
-				},
-				.bw_320 = {
+				.bw._320 = {
 					.rx_tx_mcs9_max_nss = 0x22,
 					.rx_tx_mcs11_max_nss = 0x22,
 					.rx_tx_mcs13_max_nss = 0x22,
@@ -772,38 +762,33 @@ static const struct ieee80211_sband_iftype_data iwl_he_eht_capa[] = {
 			.has_eht = true,
 			.eht_cap_elem = {
 				.mac_cap_info[0] =
-					IEEE80211_EHT_MAC_CAP0_NSEP_PRIO_ACCESS_SUPP  |
-					IEEE80211_EHT_MAC_CAP0_OM_CONTROL_SUPP |
-					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_SUPP,
+					IEEE80211_EHT_MAC_CAP0_NSEP_PRIO_ACCESS |
+					IEEE80211_EHT_MAC_CAP0_OM_CONTROL |
+					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_MODE1 |
+					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_MODE2,
 				.phy_cap_info[0] =
-					IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ         |
-					IEEE80211_EHT_PHY_CAP0_242_TONE_RU            |
+					IEEE80211_EHT_PHY_CAP0_242_TONE_RU_GT20MHZ |
 					IEEE80211_EHT_PHY_CAP0_NDP_4_EHT_LFT_32_GI,
 				.phy_cap_info[5] =
 					IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT,
 			},
 
 			/* For all MCS and bandwidth, set 2 NSS for both Tx and
-			 * Rx
+			 * Rx - note we don't set the only_20mhz, but due to this
+			 * being a union, it gets set correctly anyway.
 			 */
 			.eht_mcs_nss_supp = {
-				.only_20mhz = {
-					.rx_tx_mcs7_max_nss = 0x22,
+				.bw._80 = {
 					.rx_tx_mcs9_max_nss = 0x22,
 					.rx_tx_mcs11_max_nss = 0x22,
 					.rx_tx_mcs13_max_nss = 0x22,
 				},
-				.bw_80 = {
+				.bw._160 = {
 					.rx_tx_mcs9_max_nss = 0x22,
 					.rx_tx_mcs11_max_nss = 0x22,
 					.rx_tx_mcs13_max_nss = 0x22,
 				},
-				.bw_160 = {
-					.rx_tx_mcs9_max_nss = 0x22,
-					.rx_tx_mcs11_max_nss = 0x22,
-					.rx_tx_mcs13_max_nss = 0x22,
-				},
-				.bw_320 = {
+				.bw._320 = {
 					.rx_tx_mcs9_max_nss = 0x22,
 					.rx_tx_mcs11_max_nss = 0x22,
 					.rx_tx_mcs13_max_nss = 0x22,
@@ -888,13 +873,38 @@ iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
 		iftype_data->he_cap.he_cap_elem.mac_cap_info[3] |=
 			IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_EXT_3;
 
-#ifdef CPTCFG_IWLWIFI_FPGA
-	if (is_ap)
-#else
-	if (is_ap && iwlwifi_mod_params.nvm_file)
-#endif
+	switch (sband->band) {
+	case NL80211_BAND_2GHZ:
 		iftype_data->he_cap.he_cap_elem.phy_cap_info[0] |=
-			IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G;
+			IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_IN_2G;
+		iftype_data->eht_cap.eht_cap_elem.mac_cap_info[0] |=
+			u8_encode_bits(IEEE80211_EHT_MAC_CAP0_MAX_AMPDU_LEN_11454,
+				       IEEE80211_EHT_MAC_CAP0_MAX_AMPDU_LEN_MASK);
+		break;
+	case NL80211_BAND_6GHZ:
+#ifdef CPTCFG_IWLWIFI_FPGA
+		if (true)
+#else
+		if (!is_ap || iwlwifi_mod_params.nvm_file)
+#endif
+			iftype_data->eht_cap.eht_cap_elem.phy_cap_info[0] |=
+				IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ;
+		fallthrough;
+	case NL80211_BAND_5GHZ:
+		iftype_data->he_cap.he_cap_elem.phy_cap_info[0] |=
+			IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G;
+#ifdef CPTCFG_IWLWIFI_FPGA
+		if (true)
+#else
+		if (!is_ap || iwlwifi_mod_params.nvm_file)
+#endif
+			iftype_data->he_cap.he_cap_elem.phy_cap_info[0] |=
+				IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G;
+		break;
+	default:
+		WARN_ON(1);
+		break;
+	}
 
 	if ((tx_chains & rx_chains) == ANT_AB) {
 		iftype_data->he_cap.he_cap_elem.phy_cap_info[2] |=
@@ -926,22 +936,7 @@ iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
 			struct ieee80211_eht_mcs_nss_supp *mcs_nss =
 				&iftype_data->eht_cap.eht_mcs_nss_supp;
 
-			mcs_nss->only_20mhz.rx_tx_mcs7_max_nss = 0x11;
-			mcs_nss->only_20mhz.rx_tx_mcs9_max_nss = 0x11;
-			mcs_nss->only_20mhz.rx_tx_mcs11_max_nss = 0x11;
-			mcs_nss->only_20mhz.rx_tx_mcs13_max_nss = 0x11;
-
-			mcs_nss->bw_80.rx_tx_mcs9_max_nss = 0x11;
-			mcs_nss->bw_80.rx_tx_mcs11_max_nss = 0x11;
-			mcs_nss->bw_80.rx_tx_mcs13_max_nss = 0x11;
-
-			mcs_nss->bw_160.rx_tx_mcs9_max_nss = 0x11;
-			mcs_nss->bw_160.rx_tx_mcs11_max_nss = 0x11;
-			mcs_nss->bw_160.rx_tx_mcs13_max_nss = 0x11;
-
-			mcs_nss->bw_320.rx_tx_mcs9_max_nss = 0x11;
-			mcs_nss->bw_320.rx_tx_mcs11_max_nss = 0x11;
-			mcs_nss->bw_320.rx_tx_mcs13_max_nss = 0x11;
+			memset(mcs_nss, 0x11, sizeof(*mcs_nss));
 		}
 
 		if (!is_ap) {

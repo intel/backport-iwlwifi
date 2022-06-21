@@ -30,6 +30,7 @@ asymmetric_key_generate_id(const void *val_1, size_t len_1,
 extern struct key *find_asymmetric_key(struct key *keyring,
 				       const struct asymmetric_key_id *id_0,
 				       const struct asymmetric_key_id *id_1,
+				       const struct asymmetric_key_id *id_2,
 				       bool partial);
 #endif
 #endif /* __BP_ASYMMETRIC_TYPE_H */

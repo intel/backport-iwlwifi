@@ -62,12 +62,12 @@ enum iwl_data_path_subcmd_ids {
 	 * @AX_SOFTAP_TESTMODE_UL: &struct ax_softap_testmode_ul_cmd
 	 */
 	AX_SOFTAP_TESTMODE_UL = 0xB,
-#endif
 
 	/**
 	 * @AX_SOFTAP_CLIENT_TESTMODE: &struct ax_softap_client_testmode_cmd
 	 */
 	AX_SOFTAP_CLIENT_TESTMODE = 0xC,
+#endif
 
 	/**
 	 * @RFH_QUEUE_CONFIG_CMD: &struct iwl_rfh_queue_config

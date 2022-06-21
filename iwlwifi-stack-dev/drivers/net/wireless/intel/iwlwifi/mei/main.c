@@ -9,7 +9,11 @@
 #include <linux/rtnetlink.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#ifdef CPTCFG_IWLWIFI_SIMULATION
+#include "mei_sim/mei_sim_bus.h"
+#else
 #include <linux/mei_cl_bus.h>
+#endif
 #include <linux/rcupdate.h>
 #include <linux/debugfs.h>
 #include <linux/skbuff.h>
@@ -683,7 +687,7 @@ iwl_mei_handle_conn_status(struct mei_cl_device *cldev,
 						     status->link_prot_state);
 	else
 		iwl_mei_cache.ops->rfkill(iwl_mei_cache.priv,
-					  status->link_prot_state);
+					  status->link_prot_state, false);
 }
 
 static void iwl_mei_set_init_conf(struct iwl_mei *mei)
@@ -761,7 +765,8 @@ static void iwl_mei_handle_amt_state(struct mei_cl_device *cldev,
 		iwl_mei_set_init_conf(mei);
 	} else {
 		if (iwl_mei_cache.ops)
-			iwl_mei_cache.ops->rfkill(iwl_mei_cache.priv, false);
+			iwl_mei_cache.ops->rfkill(iwl_mei_cache.priv, false,
+						  false);
 		if (netdev)
 			netdev_rx_handler_unregister(netdev);
 	}
@@ -804,7 +809,7 @@ static void iwl_mei_handle_csme_taking_ownership(struct mei_cl_device *cldev,
 	mei->csme_taking_ownership = true;
 
 	if (iwl_mei_cache.ops)
-		iwl_mei_cache.ops->rfkill(iwl_mei_cache.priv, true);
+		iwl_mei_cache.ops->rfkill(iwl_mei_cache.priv, true, true);
 }
 
 static void iwl_mei_handle_nvm(struct mei_cl_device *cldev,
@@ -853,7 +858,7 @@ static void iwl_mei_handle_rx_host_own_req(struct mei_cl_device *cldev,
 
 	/* We can now start the connection, unblock rfkill */
 	if (iwl_mei_cache.ops)
-		iwl_mei_cache.ops->rfkill(iwl_mei_cache.priv, false);
+		iwl_mei_cache.ops->rfkill(iwl_mei_cache.priv, false, false);
 }
 
 static void iwl_mei_handle_ping(struct mei_cl_device *cldev,
@@ -1668,7 +1673,7 @@ int iwl_mei_register(void *priv, const struct iwl_mei_ops *ops)
 		if (iwl_mei_is_connected()) {
 			iwl_mei_send_sap_msg(mei->cldev,
 					     SAP_MSG_NOTIF_WIFIDR_UP);
-			ops->rfkill(priv, mei->link_prot_state);
+			ops->rfkill(priv, mei->link_prot_state, false);
 		}
 	}
 	ret = 0;
@@ -1771,7 +1776,7 @@ static void iwl_mei_dbgfs_register(struct iwl_mei *mei)
 			     mei->dbgfs_dir, &iwl_mei_status);
 	debugfs_create_file("send_start_message", S_IWUSR, mei->dbgfs_dir,
 			    mei, &iwl_mei_dbgfs_send_start_message_ops);
-	debugfs_create_file("req_ownserhip", S_IWUSR, mei->dbgfs_dir,
+	debugfs_create_file("req_ownership", S_IWUSR, mei->dbgfs_dir,
 			    mei, &iwl_mei_dbgfs_req_ownership_ops);
 }
 
@@ -1956,7 +1961,7 @@ static void iwl_mei_remove(struct mei_cl_device *cldev)
 	spin_unlock_bh(&mei->data_q_lock);
 
 	if (iwl_mei_cache.ops)
-		iwl_mei_cache.ops->rfkill(iwl_mei_cache.priv, false);
+		iwl_mei_cache.ops->rfkill(iwl_mei_cache.priv, false, false);
 
 	/*
 	 * mei_cldev_disable will return only after all the MEI Rx is done.

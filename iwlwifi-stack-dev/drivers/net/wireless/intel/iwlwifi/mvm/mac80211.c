@@ -455,28 +455,6 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 		hw->wiphy->n_cipher_suites++;
 	}
 
-	/* currently FW API supports only one optional cipher scheme */
-	if (mvm->fw->cs[0].cipher) {
-		const struct iwl_fw_cipher_scheme *fwcs = &mvm->fw->cs[0];
-		struct ieee80211_cipher_scheme *cs = &mvm->cs[0];
-
-		mvm->hw->n_cipher_schemes = 1;
-
-		cs->cipher = le32_to_cpu(fwcs->cipher);
-		cs->iftype = BIT(NL80211_IFTYPE_STATION);
-		cs->hdr_len = fwcs->hdr_len;
-		cs->pn_len = fwcs->pn_len;
-		cs->pn_off = fwcs->pn_off;
-		cs->key_idx_off = fwcs->key_idx_off;
-		cs->key_idx_mask = fwcs->key_idx_mask;
-		cs->key_idx_shift = fwcs->key_idx_shift;
-		cs->mic_len = fwcs->mic_len;
-
-		mvm->hw->cipher_schemes = mvm->cs;
-		mvm->ciphers[hw->wiphy->n_cipher_suites] = cs->cipher;
-		hw->wiphy->n_cipher_suites++;
-	}
-
 	if (fw_has_capa(&mvm->fw->ucode_capa,
 			IWL_UCODE_TLV_CAPA_FTM_CALIBRATED)) {
 		wiphy_ext_feature_set(hw->wiphy,
@@ -1387,7 +1365,9 @@ static int iwl_mvm_set_tx_power(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	if (tx_power == IWL_DEFAULT_MAX_TX_POWER)
 		cmd.common.pwr_restriction = cpu_to_le16(IWL_DEV_MAX_TX_POWER);
 
-	if (cmd_ver == 6)
+	if (cmd_ver == 7)
+		len = sizeof(cmd.v7);
+	else if (cmd_ver == 6)
 		len = sizeof(cmd.v6);
 	else if (fw_has_api(&mvm->fw->ucode_capa,
 			    IWL_UCODE_TLV_API_REDUCE_TX_POWER))
@@ -2119,16 +2099,16 @@ static void iwl_mvm_set_pkt_ext_from_nominal_padding(struct iwl_he_pkt_ext_v2 *p
 
 	/* all the macros are the same for EHT and HE */
 	switch (nominal_padding) {
-	case IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_0US:
+	case IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_0US:
 		low_th = IWL_HE_PKT_EXT_NONE;
 		high_th = IWL_HE_PKT_EXT_NONE;
 		break;
-	case IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_8US:
+	case IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_8US:
 		low_th = IWL_HE_PKT_EXT_BPSK;
 		high_th = IWL_HE_PKT_EXT_NONE;
 		break;
-	case IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_16US:
-	case IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_20US:
+	case IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_16US:
+	case IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_20US:
 		low_th = IWL_HE_PKT_EXT_NONE;
 		high_th = IWL_HE_PKT_EXT_BPSK;
 		break;
@@ -2164,11 +2144,11 @@ static void iwl_mvm_get_optimal_ppe_info(struct iwl_he_pkt_ext_v2 *pkt_ext,
 			u8 *qam_th = &pkt_ext->pkt_ext_qam_th[i][bw][0];
 
 			if (nominal_padding >
-			    IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_8US &&
+			    IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_8US &&
 			    qam_th[1] == IWL_HE_PKT_EXT_NONE)
 				qam_th[1] = IWL_HE_PKT_EXT_4096QAM;
 			else if (nominal_padding ==
-				 IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_8US &&
+				 IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_8US &&
 				 qam_th[0] == IWL_HE_PKT_EXT_NONE &&
 				 qam_th[1] == IWL_HE_PKT_EXT_NONE)
 				qam_th[0] = IWL_HE_PKT_EXT_4096QAM;
@@ -2176,8 +2156,8 @@ static void iwl_mvm_get_optimal_ppe_info(struct iwl_he_pkt_ext_v2 *pkt_ext,
 	}
 }
 
-static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
-			       struct ieee80211_vif *vif, u8 sta_id)
+void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
+			struct ieee80211_vif *vif, u8 sta_id)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	struct iwl_he_sta_context_cmd_v3 sta_ctxt_cmd = {
@@ -2292,7 +2272,7 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 	if (sta->eht_cap.has_eht) {
 		nominal_padding =
 			u8_get_bits(sta->eht_cap.eht_cap_elem.phy_cap_info[5],
-				    IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL);
+				    IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_MASK);
 
 		/* If PPE Thresholds exists, parse them into a FW-familiar format. */
 		if (sta->eht_cap.eht_cap_elem.phy_cap_info[5] &
@@ -2423,6 +2403,10 @@ static void iwl_mvm_cfg_he_sta(struct iwl_mvm *mvm,
 			(vif->bss_conf.uora_ocw_range >> 3) & 0x7;
 	}
 
+	if (vif->bss_conf.eht_puncturing)
+		flags |= STA_CTXT_EHT_PUNCTURE_MASK_VALID;
+	sta_ctxt_cmd.puncture_mask = cpu_to_le16(vif->bss_conf.eht_puncturing);
+
 	if (own_he_cap && !(own_he_cap->he_cap_elem.mac_cap_info[2] &
 			    IEEE80211_HE_MAC_CAP2_ACK_EN))
 		flags |= STA_CTXT_HE_NIC_NOT_ACK_ENABLED;
@@ -2539,10 +2523,11 @@ static void iwl_mvm_protect_assoc(struct iwl_mvm *mvm,
 static void iwl_mvm_bss_info_changed_station(struct iwl_mvm *mvm,
 					     struct ieee80211_vif *vif,
 					     struct ieee80211_bss_conf *bss_conf,
-					     u32 changes)
+					     u64 changes)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	int ret;
+	bool send_he_cmd = false;
 
 	/*
 	 * Re-calculate the tsf id, as the leader-follower relations depend
@@ -2554,7 +2539,7 @@ static void iwl_mvm_bss_info_changed_station(struct iwl_mvm *mvm,
 		     !iwlwifi_mod_params.disable_11ax) ||
 		    (vif->bss_conf.eht_support &&
 		     !iwlwifi_mod_params.disable_11be))
-			iwl_mvm_cfg_he_sta(mvm, vif, mvmvif->ap_sta_id);
+			send_he_cmd = true;
 
 		iwl_mvm_mac_ctxt_recalc_tsf_id(mvm, vif);
 	}
@@ -2566,6 +2551,15 @@ static void iwl_mvm_bss_info_changed_station(struct iwl_mvm *mvm,
 	      !iwlwifi_mod_params.disable_11ax) ||
 	     (vif->bss_conf.eht_support &&
 	      !iwlwifi_mod_params.disable_11be)))
+		send_he_cmd = true;
+
+	/* Update EHT Puncturing info */
+	if (changes & BSS_CHANGED_EHT_PUNCTURING && mvmvif->associated &&
+	    bss_conf->assoc && vif->bss_conf.eht_support &&
+	    !iwlwifi_mod_params.disable_11be)
+		send_he_cmd = true;
+
+	if (send_he_cmd)
 		iwl_mvm_cfg_he_sta(mvm, vif, mvmvif->ap_sta_id);
 
 	/*
@@ -2984,7 +2978,7 @@ iwl_mvm_bss_info_changed_ap_ibss(struct iwl_mvm *mvm,
 static void iwl_mvm_bss_info_changed(struct ieee80211_hw *hw,
 				     struct ieee80211_vif *vif,
 				     struct ieee80211_bss_conf *bss_conf,
-				     u32 changes)
+				     u64 changes)
 {
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 
@@ -3409,7 +3403,7 @@ static void iwl_mvm_mei_host_associated(struct iwl_mvm *mvm,
 	default:
 		/* cipher not supported, don't send anything to iwlmei */
 		return;
-	};
+	}
 
 	switch (mvmvif->rekey_data.akm) {
 	case WLAN_AKM_SUITE_SAE & 0xff:
@@ -3500,7 +3494,7 @@ static int iwl_mvm_mac_sta_state(struct ieee80211_hw *hw,
 		 * blocklist the AP...
 		 */
 		if (vif->type == NL80211_IFTYPE_STATION &&
-		    vif->bss_conf.beacon_int < 16) {
+		    vif->bss_conf.beacon_int < IWL_MVM_MIN_BEACON_INTERVAL_TU) {
 			IWL_ERR(mvm,
 				"AP %pM beacon interval is %d, refusing due to firmware bug!\n",
 				sta->addr, vif->bss_conf.beacon_int);
@@ -3844,12 +3838,7 @@ static int __iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
 		/* support HW crypto on TX */
 		return 0;
 	default:
-		/* currently FW supports only one optional cipher scheme */
-		if (hw->n_cipher_schemes &&
-		    hw->cipher_schemes->cipher == key->cipher)
-			key->flags |= IEEE80211_KEY_FLAG_PUT_IV_SPACE;
-		else
-			return -EOPNOTSUPP;
+		return -EOPNOTSUPP;
 	}
 
 	switch (cmd) {
@@ -5313,6 +5302,7 @@ static int iwl_mvm_mac_get_survey(struct ieee80211_hw *hw, int idx,
 static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
 {
 	u32 format = rate_n_flags & RATE_MCS_MOD_TYPE_MSK;
+	u32 gi_ltf;
 
 	switch (rate_n_flags & RATE_MCS_CHAN_WIDTH_MSK) {
 	case RATE_MCS_CHAN_WIDTH_20:
@@ -5326,6 +5316,9 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
 		break;
 	case RATE_MCS_CHAN_WIDTH_160:
 		rinfo->bw = RATE_INFO_BW_160;
+		break;
+	case RATE_MCS_CHAN_WIDTH_320:
+		rinfo->bw = RATE_INFO_BW_320;
 		break;
 	}
 
@@ -5383,9 +5376,16 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
 		RATE_HT_MCS_INDEX(rate_n_flags) :
 		u32_get_bits(rate_n_flags, RATE_MCS_CODE_MSK);
 
-	if (format == RATE_MCS_HE_MSK) {
-		u32 gi_ltf = u32_get_bits(rate_n_flags,
-					  RATE_MCS_HE_GI_LTF_MSK);
+	if (rate_n_flags & RATE_MCS_SGI_MSK)
+		rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
+
+	switch (format) {
+	case RATE_MCS_EHT_MSK:
+		/* TODO: GI/LTF/RU. How does the firmware encode them? */
+		rinfo->flags |= RATE_INFO_FLAGS_EHT_MCS;
+		break;
+	case RATE_MCS_HE_MSK:
+		gi_ltf = u32_get_bits(rate_n_flags, RATE_MCS_HE_GI_LTF_MSK);
 
 		rinfo->flags |= RATE_INFO_FLAGS_HE_MCS;
 
@@ -5424,19 +5424,14 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
 
 		if (rate_n_flags & RATE_HE_DUAL_CARRIER_MODE_MSK)
 			rinfo->he_dcm = 1;
-		return;
-	}
-
-	if (rate_n_flags & RATE_MCS_SGI_MSK)
-		rinfo->flags |= RATE_INFO_FLAGS_SHORT_GI;
-
-	if (format == RATE_MCS_HT_MSK) {
+		break;
+	case RATE_MCS_HT_MSK:
 		rinfo->flags |= RATE_INFO_FLAGS_MCS;
-
-	} else if (format == RATE_MCS_VHT_MSK) {
+		break;
+	case RATE_MCS_VHT_MSK:
 		rinfo->flags |= RATE_INFO_FLAGS_VHT_MCS;
+		break;
 	}
-
 }
 
 static void iwl_mvm_mac_sta_statistics(struct ieee80211_hw *hw,

@@ -1727,12 +1727,13 @@ static int iwl_mvm_vendor_host_get_ownership(struct wiphy *wiphy,
 {
 	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
+	int ret;
 
 	mutex_lock(&mvm->mutex);
-	iwl_mvm_mei_get_ownership(mvm);
+	ret = iwl_mvm_mei_get_ownership(mvm);
 	mutex_unlock(&mvm->mutex);
 
-	return 0;
+	return ret;
 }
 
 static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
@@ -2045,7 +2046,7 @@ enum iwl_mvm_vendor_events_idx {
 	IWL_MVM_VENDOR_EVENT_IDX_CSI = 1,
 	IWL_MVM_VENDOR_EVENT_IDX_TSM_CFM,
 	IWL_MVM_VENDOR_EVENT_IDX_TSM_MSMT,
-	IWL_MVM_VENDOR_EVENT_IDX_ROAMING_FORBIDDEN,
+	IWL_MVM_VENDOR_EVENT_IDX_ROAMING_FORBIDDEN = 4,
 	NUM_IWL_MVM_VENDOR_EVENT_IDX
 };
 

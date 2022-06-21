@@ -11,6 +11,7 @@ iwlmvm-y += nan.o
 iwlmvm-$(CPTCFG_IWLWIFI_DEBUGFS) += debugfs.o debugfs-vif.o
 iwlmvm-$(CPTCFG_IWLWIFI_LEDS) += led.o
 iwlmvm-$(CONFIG_PM) += d3.o
+iwlmvm-$(CPTCFG_IWLMEI) += vendor-cmd.o
 
 ccflags-y += -I$(src)/../
 

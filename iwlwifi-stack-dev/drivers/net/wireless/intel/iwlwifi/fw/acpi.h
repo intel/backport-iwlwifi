@@ -98,6 +98,9 @@
 #define ACPI_PPAG_MASK 3
 #define IWL_PPAG_ETSI_MASK BIT(0)
 
+#define IWL_SAR_ENABLE_MSK		BIT(0)
+#define IWL_REDUCE_POWER_FLAGS_POS	1
+
 /*
  * The profile for revision 2 is a superset of revision 1, which is in
  * turn a superset of revision 0.  So we can store all revisions

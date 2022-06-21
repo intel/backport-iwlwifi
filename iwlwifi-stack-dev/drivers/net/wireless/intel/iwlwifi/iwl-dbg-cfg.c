@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
- * Copyright (C) 2013-2015, 2019-2020 Intel Corporation
+ * Copyright (C) 2013-2015, 2019-2020, 2022 Intel Corporation
  * Copyright (C) 2016 Intel Deutschland GmbH
  */
 #include <linux/types.h>
@@ -229,7 +229,7 @@ static void iwl_dbg_cfg_parse_fw_dbg_preset(struct iwl_dbg_cfg *dbgcfg,
 		return;
 	}
 
-	if (preset > 15) {
+	if (preset > IWL_DBG_TLV_MAX_PRESET) {
 		printk(KERN_INFO "iwlwifi debug config: Invalid value for FW_DBG_PRESET: %d\n",
 		       preset);
 		return;

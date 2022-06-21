@@ -192,6 +192,8 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(u32, system_features_control_3)
 	IWL_DBG_CFG_NODEF(u32, system_features_control_4)
 	IWL_DBG_CFG(bool, MVM_MEI_REPORT_RFKILL)
+	IWL_DBG_CFG(u8, MVM_MIN_BEACON_INTERVAL_TU)
+	IWL_DBG_CFG_RANGE(u8, MVM_ADAPTIVE_DWELL_NUM_APS_OVERRIDE, 0, 10)
 #endif /* CPTCFG_IWLMVM */
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
@@ -270,7 +272,7 @@ struct iwl_dbg_cfg {
 	IWL_MOD_PARAM(int, amsdu_size)
 	IWL_MOD_PARAM(int, swcrypto)
 	IWL_MOD_PARAM(uint, disable_11n)
-	IWL_MOD_PARAM(bool, enable_ini)
+	IWL_MOD_PARAM(u32, enable_ini)
 	IWL_DBG_CFG_BIN(he_ppe_thres)
 	IWL_DBG_CFG_NODEF(u8, he_chan_width_dis)
 	IWL_DBG_CFG_NODEF(u32, vht_cap_flip)

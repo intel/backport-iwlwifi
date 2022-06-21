@@ -1334,6 +1334,9 @@ static int iwl_xvt_start_tx_handler(void *data)
 
 				sent_packets++;
 				++frag_idx;
+
+				if (kthread_should_stop())
+					goto on_exit;
 			}
 		}
 	}
@@ -1341,10 +1344,12 @@ static int iwl_xvt_start_tx_handler(void *data)
 on_exit:
 	if (sent_packets > 0 && !xvt->fw_error) {
 		time_remain = wait_event_interruptible_timeout(xvt->tx_done_wq,
-					xvt->num_of_tx_resp == sent_packets,
+					xvt->num_of_tx_resp == sent_packets ||
+					kthread_should_stop(),
 					5 * HZ * CPTCFG_IWL_TIMEOUT_FACTOR);
 		if (time_remain <= 0) {
-			IWL_ERR(xvt, "Not all Tx messages were sent\n");
+			IWL_ERR(xvt, "err %d: Not all Tx messages were sent\n",
+				time_remain);
 			if (status == 0)
 				status = XVT_TX_DRIVER_TIMEOUT;
 		}
@@ -1522,6 +1527,7 @@ static int iwl_xvt_stop_tx(struct iwl_xvt *xvt)
 
 	if (xvt->tx_task && xvt->is_enhanced_tx) {
 		err = kthread_stop(xvt->tx_task);
+		wake_up_interruptible(&xvt->tx_done_wq);
 		xvt->tx_task = NULL;
 		wait_for_completion(&xvt->tx_task_completion);
 	}

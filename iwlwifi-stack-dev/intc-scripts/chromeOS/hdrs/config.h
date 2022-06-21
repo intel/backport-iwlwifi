@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2018-2021 Intel Corporation
+ * Copyright(c) 2018-2022 Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -56,15 +56,9 @@
 #define CPTCFG_IWLXVT_MODULE 1
 #endif
 
-/* cfg80211 version specific backward compat code follows */
-#ifdef CONFIG_WIRELESS_38
-#define CFG80211_VERSION KERNEL_VERSION(3,8,0)
-#else
 #define CFG80211_VERSION LINUX_VERSION_CODE
-#endif
 
-#if defined(CONFIG_IWL7000_VENDOR_CMDS) && \
-	(CFG80211_VERSION >= KERNEL_VERSION(3, 14, 0))
+#if defined(CONFIG_IWL7000_VENDOR_CMDS)
 #define CPTCFG_IWLMVM_VENDOR_CMDS 1
 #endif
 

@@ -128,6 +128,7 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	u32 lmac_error_event_table, umac_error_table;
 	u32 version = iwl_fw_lookup_notif_ver(mvm->fw, LEGACY_GROUP,
 					      UCODE_ALIVE_NTFY, 0);
+	u32 i;
 
 	if (version == 6) {
 		struct iwl_alive_ntf_v6 *palive;
@@ -150,6 +151,28 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 			     mvm->trans->dbg.imr_data.imr_enable,
 			     mvm->trans->dbg.imr_data.imr_size,
 			     le64_to_cpu(mvm->trans->dbg.imr_data.imr_base_addr));
+
+		if (!mvm->trans->dbg.imr_data.imr_enable) {
+			for (i = 0; i < ARRAY_SIZE(mvm->trans->dbg.active_regions); i++) {
+				struct iwl_ucode_tlv *reg_tlv;
+				struct iwl_fw_ini_region_tlv *reg;
+
+				reg_tlv = mvm->trans->dbg.active_regions[i];
+				if (!reg_tlv)
+					continue;
+
+				reg = (void *)reg_tlv->data;
+				/*
+				 * We have only one DRAM IMR region, so we
+				 * can break as soon as we find the first
+				 * one.
+				 */
+				if (reg->type == IWL_FW_INI_REGION_DRAM_IMR) {
+					mvm->trans->dbg.unsupported_region_msk |= BIT(i);
+					break;
+				}
+			}
+		}
 	}
 
 	if (version >= 5) {
@@ -917,8 +940,12 @@ int iwl_mvm_sar_select_profile(struct iwl_mvm *mvm, int prof_a, int prof_b)
 	u32 n_subbands;
 	u8 cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw, cmd_id,
 					   IWL_FW_CMD_VER_UNKNOWN);
-
-	if (cmd_ver == 6) {
+	if (cmd_ver == 7) {
+		len = sizeof(cmd.v7);
+		n_subbands = IWL_NUM_SUB_BANDS_V2;
+		per_chain = cmd.v7.per_chain[0][0];
+		cmd.v7.flags = cpu_to_le32(mvm->fwrt.reduced_power_flags);
+	} else if (cmd_ver == 6) {
 		len = sizeof(cmd.v6);
 		n_subbands = IWL_NUM_SUB_BANDS_V2;
 		per_chain = cmd.v6.per_chain[0][0];
@@ -1700,8 +1727,10 @@ int iwl_mvm_up(struct iwl_mvm *mvm)
 	while (!sband && i < NUM_NL80211_BANDS)
 		sband = mvm->hw->wiphy->bands[i++];
 
-	if (WARN_ON_ONCE(!sband))
+	if (WARN_ON_ONCE(!sband)) {
+		ret = -ENODEV;
 		goto error;
+	}
 
 	chan = &sband->channels[0];
 

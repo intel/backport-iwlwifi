@@ -48,7 +48,6 @@ mkdir "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/"
 cp "$source_path/Kconfig" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/"
 cp "$source_path/Makefile" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/"
 cp -ar "$driver_path/net/mac80211/" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/"
-cp -ar "$source_path/reg.c" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/"
 cp -ar "$source_path/cfg-utils.c" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/"
 cp -ar "$source_path/backports.c" "$kernel_path/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/"
 rm -f "$kernel_path"/drivers/net/wireless$WIFIVERSION/iwl7000/mac80211/mesh*c

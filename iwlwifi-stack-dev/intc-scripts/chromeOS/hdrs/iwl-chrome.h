@@ -54,18 +54,6 @@ static inline struct net *get_net_ns_by_fd(int fd)
 }
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0)
-static inline u64 ktime_get_ns(void)
-{
-	return ktime_to_ns(ktime_get());
-}
-
-static inline u64 ktime_get_real_ns(void)
-{
-	return ktime_to_ns(ktime_get_real());
-}
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0) */
-
 #ifndef DECLARE_FLEX_ARRAY
 /**
  * __DECLARE_FLEX_ARRAY() - Declare a flexible array usable in a union
@@ -135,240 +123,11 @@ static inline struct netlink_ext_ack *genl_info_extack(struct genl_info *info)
 
 #if LINUX_VERSION_IS_LESS(5,3,0)
 #define ktime_get_boottime_ns ktime_get_boot_ns
-#endif
-
-#if LINUX_VERSION_IS_GEQ(5,3,0)
-/*
- * In v5.3, this function was renamed, so rename it here for v5.3+.
- * When we merge v5.3 back from upstream, the opposite should be done
- * (i.e. we will have _boottime_ and need to rename to _boot_ in <
- * v5.3 instead).
-*/
-#define ktime_get_boot_ns ktime_get_boottime_ns
-#endif /* > 5.3.0 */
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0)
-#define kvfree __iwl7000_kvfree
-static inline void kvfree(const void *addr)
-{
-	if (is_vmalloc_addr(addr))
-		vfree(addr);
-	else
-		kfree(addr);
-}
-
-static inline u64 ktime_get_boot_ns(void)
-{
-	return ktime_to_ns(ktime_get_boottime());
-}
-
-/* interface name assignment types (sysfs name_assign_type attribute) */
-#define NET_NAME_UNKNOWN	0	/* unknown origin (not exposed to userspace) */
-#define NET_NAME_ENUM		1	/* enumerated by kernel */
-#define NET_NAME_PREDICTABLE	2	/* predictably named by the kernel */
-#define NET_NAME_USER		3	/* provided by user-space */
-#define NET_NAME_RENAMED	4	/* renamed by user-space */
-
-static inline struct net_device *
-backport_alloc_netdev_mqs(int sizeof_priv, const char *name,
-			  unsigned char name_assign_type,
-			  void (*setup)(struct net_device *),
-			  unsigned int txqs, unsigned int rxqs)
-{
-	return alloc_netdev_mqs(sizeof_priv, name, setup, txqs, rxqs);
-}
-
-#define alloc_netdev_mqs backport_alloc_netdev_mqs
-
-#undef alloc_netdev
-static inline struct net_device *
-backport_alloc_netdev(int sizeof_priv, const char *name,
-		      unsigned char name_assign_type,
-		      void (*setup)(struct net_device *))
-{
-	return backport_alloc_netdev_mqs(sizeof_priv, name, name_assign_type,
-					 setup, 1, 1);
-}
-#define alloc_netdev backport_alloc_netdev
-
-char *devm_kvasprintf(struct device *dev, gfp_t gfp, const char *fmt,
-		      va_list ap);
-char *devm_kasprintf(struct device *dev, gfp_t gfp, const char *fmt, ...);
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,17,0) */
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0)
-#include <crypto/scatterwalk.h>
-#include <crypto/aead.h>
-
-static inline struct scatterlist *scatterwalk_ffwd(struct scatterlist dst[2],
-					    struct scatterlist *src,
-					    unsigned int len)
-{
-	for (;;) {
-		if (!len)
-			return src;
-
-		if (src->length > len)
-			break;
-
-		len -= src->length;
-		src = sg_next(src);
-	}
-
-	sg_init_table(dst, 2);
-	sg_set_page(dst, sg_page(src), src->length - len, src->offset + len);
-	scatterwalk_crypto_chain(dst, sg_next(src), 0, 2);
-
-	return dst;
-}
-
-
-
-struct aead_old_request {
-	struct scatterlist srcbuf[2];
-	struct scatterlist dstbuf[2];
-	struct aead_request subreq;
-};
-
-static inline unsigned int iwl7000_crypto_aead_reqsize(struct crypto_aead *tfm)
-{
-	return crypto_aead_crt(tfm)->reqsize + sizeof(struct aead_old_request);
-}
-#define crypto_aead_reqsize iwl7000_crypto_aead_reqsize
-
-static inline struct aead_request *
-crypto_backport_convert(struct aead_request *req)
-{
-	struct aead_old_request *nreq = aead_request_ctx(req);
-	struct crypto_aead *aead = crypto_aead_reqtfm(req);
-	struct scatterlist *src, *dst;
-
-	src = scatterwalk_ffwd(nreq->srcbuf, req->src, req->assoclen);
-	dst = req->src == req->dst ?
-	      src : scatterwalk_ffwd(nreq->dstbuf, req->dst, req->assoclen);
-
-	aead_request_set_tfm(&nreq->subreq, aead);
-	aead_request_set_callback(&nreq->subreq, aead_request_flags(req),
-				  req->base.complete, req->base.data);
-	aead_request_set_crypt(&nreq->subreq, src, dst, req->cryptlen,
-			       req->iv);
-	aead_request_set_assoc(&nreq->subreq, req->src, req->assoclen);
-
-	return &nreq->subreq;
-}
-
-static inline int iwl7000_crypto_aead_encrypt(struct aead_request *req)
-{
-	return crypto_aead_encrypt(crypto_backport_convert(req));
-}
-#define crypto_aead_encrypt iwl7000_crypto_aead_encrypt
-
-static inline int iwl7000_crypto_aead_decrypt(struct aead_request *req)
-{
-	return crypto_aead_decrypt(crypto_backport_convert(req));
-}
-#define crypto_aead_decrypt iwl7000_crypto_aead_decrypt
-
-#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0) */
-
-/* Note: this stuff is included in in chromeos-3.14 and 3.18.
- * Additionally, we check for <4.2, since that's when it was
- * added upstream.
- */
-#if (LINUX_VERSION_CODE != KERNEL_VERSION(3,14,0)) &&	\
-    (LINUX_VERSION_CODE != KERNEL_VERSION(3,18,0)) &&	\
-    (LINUX_VERSION_CODE < KERNEL_VERSION(4,2,0))
-static inline void aead_request_set_ad(struct aead_request *req,
-				       unsigned int assoclen)
-{
-	req->assoclen = assoclen;
-}
-
-static inline void kernel_param_lock(struct module *mod)
-{
-	__kernel_param_lock();
-}
-
-static inline void kernel_param_unlock(struct module *mod)
-{
-	__kernel_param_unlock();
-}
-#endif /* !3.14 && <4.2 */
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
-#ifdef CONFIG_DEBUG_FS
-struct dentry *iwl_debugfs_create_bool(const char *name, umode_t mode,
-				       struct dentry *parent, bool *value);
-#else
-static inline struct dentry *
-iwl_debugfs_create_bool(const char *name, umode_t mode,
-			struct dentry *parent, bool *value)
-{
-	return ERR_PTR(-ENODEV);
-}
-#endif /* CONFIG_DEBUG_FS */
-#define debugfs_create_bool iwl_debugfs_create_bool
-
-#define tso_t __iwl7000_tso_t
-struct tso_t {
-	int next_frag_idx;
-	void *data;
-	size_t size;
-	u16 ip_id;
-	bool ipv6;
-	u32 tcp_seq;
-};
-
-int tso_count_descs(struct sk_buff *skb);
-void tso_build_hdr(struct sk_buff *skb, char *hdr, struct tso_t *tso,
-		   int size, bool is_last);
-void tso_start(struct sk_buff *skb, struct tso_t *tso);
-void tso_build_data(struct sk_buff *skb, struct tso_t *tso, int size);
-
-#endif /* < 4.4.0 */
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,19,0))
-static inline int
-skb_ensure_writable(struct sk_buff *skb, int write_len)
-{
-	if (!pskb_may_pull(skb, write_len))
-		return -ENOMEM;
-
-	if (!skb_cloned(skb) || skb_clone_writable(skb, write_len))
-		return 0;
-
-	return pskb_expand_head(skb, 0, 0, GFP_ATOMIC);
-}
+#define ktime_get_coarse_boottime_ns ktime_get_boot_ns
 #endif
 
 #ifndef NETIF_F_CSUM_MASK
 #define NETIF_F_CSUM_MASK (NETIF_F_V4_CSUM | NETIF_F_V6_CSUM)
-#endif
-
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0))
-static inline int
-pci_enable_msix_range(struct pci_dev *dev, struct msix_entry *entries,
-		      int minvec, int maxvec)
-{
-	return -EOPNOTSUPP;
-}
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
-void netdev_rss_key_fill(void *buffer, size_t len);
-#endif
-
-#if CFG80211_VERSION < KERNEL_VERSION(4, 1, 0) &&	\
-	CFG80211_VERSION >= KERNEL_VERSION(3, 14, 0)
-static inline struct sk_buff *
-iwl7000_cfg80211_vendor_event_alloc(struct wiphy *wiphy,
-				    struct wireless_dev *wdev,
-				    int approxlen, int event_idx, gfp_t gfp)
-{
-	return cfg80211_vendor_event_alloc(wiphy, approxlen, event_idx, gfp);
-}
-
-#define cfg80211_vendor_event_alloc iwl7000_cfg80211_vendor_event_alloc
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0)
@@ -377,19 +136,6 @@ int __must_check kstrtobool_from_user(const char __user *s, size_t count, bool *
 #endif /* < 4.6 */
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,7,0)
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,5,0) ||	\
-     LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0))
-/* We don't really care much about alignment, since nl80211 isn't using
- * this for hot paths. So just implement it using nla_put_u64().
- */
-static inline int nla_put_u64_64bit(struct sk_buff *skb, int attrtype,
-				    u64 value, int padattr)
-{
-	return nla_put_u64(skb, attrtype, value);
-}
-#endif /* < 4.4 && > 4.5 */
-
 #define nla_put_s64 iwl7000_nla_put_s64
 static inline int nla_put_s64(struct sk_buff *skb, int attrtype, s64 value,
 			      int padattr)
@@ -406,11 +152,7 @@ static inline bool backport_napi_complete_done(struct napi_struct *n, int work_d
 	if (unlikely(test_bit(NAPI_STATE_NPSVC, &n->state)))
 		return false;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,19,0)
-	napi_complete(n);
-#else
 	napi_complete_done(n, work_done);
-#endif /* < 3.19 */
 	return true;
 }
 
@@ -459,10 +201,6 @@ static const struct attribute_group _name##_group = {		\
 static inline void init_##_name##_attrs(void) {}		\
 __ATTRIBUTE_GROUPS(_name)
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
-#define __print_array(array, count, el_size) ""
-#endif
-
 #if LINUX_VERSION_IS_LESS(4,10,0)
 static inline void *nla_memdup(const struct nlattr *src, gfp_t gfp)
 {
@@ -483,13 +221,6 @@ void backport_genl_dump_check_consistent(struct netlink_callback *cb,
 }
 #define genl_dump_check_consistent LINUX_BACKPORT(genl_dump_check_consistent)
 #endif /* LINUX_VERSION_IS_LESS(4,15,0) */
-
-#if LINUX_VERSION_IS_LESS(4,4,0)
-#define genl_notify(_fam, _skb, _info, _group, _flags)			\
-	genl_notify(_fam, _skb, genl_info_net(_info),			\
-		    genl_info_snd_portid(_info),			\
-		    _group, _info->nlhdr, _flags)
-#endif /* < 4.4 */
 
 #if LINUX_VERSION_IS_LESS(4,10,0)
 /**

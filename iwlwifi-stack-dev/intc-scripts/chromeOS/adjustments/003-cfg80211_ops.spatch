@@ -20,50 +20,6 @@ fn(...)
 }
 +#endif
 
-@join_ocb@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
-	.join_ocb = fn,
-+#endif
-...
-};
-
-@@
-identifier join_ocb.fn;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
-fn(...)
-{
-...
-}
-+#endif
-
-@leave_ocb@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
-	.leave_ocb = fn,
-+#endif
-...
-};
-
-@@
-identifier leave_ocb.fn;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
-fn(...)
-{
-...
-}
-+#endif
-
 @perform_msrment@
 identifier ops;
 identifier fn;
@@ -107,187 +63,6 @@ fn(...)
 ...
 }
 +#endif
-
-@add_tx_ts@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,18,0)
-	.add_tx_ts = fn,
-+#endif
-...
-};
-
-@@
-identifier add_tx_ts.fn;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,18,0)
-fn(...)
-{
-...
-}
-+#endif
-
-@del_tx_ts@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,18,0)
-	.del_tx_ts = fn,
-+#endif
-...
-};
-
-@@
-identifier del_tx_ts.fn;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,18,0)
-fn(...)
-{
-...
-}
-+#endif
-
-@set_ap_chanwidth@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,16,0)
-	.set_ap_chanwidth = fn,
-+#endif
-...
-};
-
-@@
-identifier set_ap_chanwidth.fn;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,16,0)
-fn(...)
-{
-...
-}
-+#endif
-
-@set_qos_map@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,14,0)
-	.set_qos_map = fn,
-+#endif
-...
-};
-
-@@
-identifier set_qos_map.fn;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,14,0)
-fn(...)
-{
-...
-}
-+#endif
-
-@channel_switch@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,12,0)
-	.channel_switch = fn,
-+#endif
-...
-};
-
-@start_radar_detection@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,15,0)
-	.start_radar_detection = fn,
-+#endif
-...
-};
-
-@@
-identifier start_radar_detection.fn;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,15,0)
-fn(...)
-{
-...
-}
-+#endif
-
-@tdls_channel_switch@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
-	.tdls_channel_switch = fn,
-+#endif
-...
-};
-
-@tdls_cancel_channel_switch@
-identifier ops;
-identifier fn;
-@@
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,19,0)
-	.tdls_cancel_channel_switch = fn,
-+#endif
-...
-};
-
-@@
-identifier ops;
-identifier fn;
-typedef u8;
-@@
-+#if CFG80211_VERSION < KERNEL_VERSION(3,14,0)
-+static int _wrap_mgmt_tx(struct wiphy *wiphy, struct wireless_dev *wdev,
-+			 struct ieee80211_channel *chan, bool offchan,
-+			 unsigned int wait, const u8 *buf, size_t len,
-+			 bool no_cck, bool dont_wait_for_ack, u64 *cookie)
-+{
-+	struct cfg80211_mgmt_tx_params params = {
-+		.chan = chan,
-+		.offchan = offchan,
-+		.wait = wait,
-+		.buf = buf,
-+		.len = len,
-+		.no_cck = no_cck,
-+		.dont_wait_for_ack = dont_wait_for_ack,
-+	};
-+
-+	return fn(wiphy, wdev, &params, cookie);
-+}
-+#endif
-+
-struct cfg80211_ops ops = {
-...,
-+#if CFG80211_VERSION >= KERNEL_VERSION(3,14,0)
-	.mgmt_tx = fn,
-+#else
-+	.mgmt_tx = _wrap_mgmt_tx,
-+#endif
-...
-};
 
 @start_nan@
 identifier ops;
@@ -462,18 +237,11 @@ identifier cfg_vif_ops.add_vif;
 typedef u32;
 @@
 add_vif(...,
-+#if CFG80211_VERSION > KERNEL_VERSION(4,0,0)
-unsigned char name_assign_type,
-+#endif
-...,
 +#if CFG80211_VERSION < KERNEL_VERSION(4,12,0)
 +u32 *flags,
 +#endif
 struct vif_params *params)
 {
-+#if CFG80211_VERSION <= KERNEL_VERSION(4,0,0)
-+unsigned char name_assign_type = NET_NAME_UNKNOWN;
-+#endif
 ...
 }
 
@@ -517,6 +285,28 @@ struct cfg80211_ops ops = {
 identifier tx_control_port.fn;
 @@
 +#if CFG80211_VERSION >= KERNEL_VERSION(4,17,0)
+fn(...)
+{
+...
+}
++#endif
+
+@radar_bg@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,17,0)
+	.set_radar_background = fn,
++#endif
+...
+};
+
+@@
+identifier radar_bg.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,17,0)
 fn(...)
 {
 ...

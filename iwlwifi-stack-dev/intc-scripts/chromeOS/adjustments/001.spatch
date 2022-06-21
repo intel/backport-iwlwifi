@@ -1,9 +1,3 @@
-@tso_header@
-@@
-+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
-#include <net/tso.h>
-+#endif
-
 @@
 @@
 +#if CFG80211_VERSION >= KERNEL_VERSION(99,0,0)
@@ -115,40 +109,6 @@ identifier hw;
 +#else
 hw->wiphy->max_sched_scan_reqs = 1;
 +#endif
-
-@@
-struct rate_info *rinfo;
-expression E, F;
-@@
-{
-...
--rinfo->bw = E;
-+set_rate_info_bw(rinfo, E);
-<...
--rinfo->flags = F;
-+rinfo->flags |= F;
-...>
-}
-
-@@
-struct rate_info rinfo;
-expression E, F;
-@@
-{
-...
--rinfo.bw = E;
-+set_rate_info_bw(&rinfo, E);
-<...
--rinfo.flags = F;
-+rinfo.flags |= F;
-...>
-}
-
-@@
-struct ieee80211_tx_status *status;
-@@
--status->rate->bw
-+get_rate_info_bw(status->rate)
 
 @@
 identifier params;

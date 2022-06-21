@@ -1,0 +1,2 @@
+KERNEL_GIT_REVISION=v5.12.6
+IWLWIFI_DEFCONFIG=iwlwifi-nomockups

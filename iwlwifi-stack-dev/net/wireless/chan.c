@@ -275,14 +275,14 @@ bool cfg80211_chandef_valid(const struct cfg80211_chan_def *chandef)
 		/* all checked above */
 		break;
 	case NL80211_CHAN_WIDTH_320:
-		if (chandef->center_freq1 != control_freq + 150 ||
-		    chandef->center_freq1 != control_freq + 130 ||
-		    chandef->center_freq1 != control_freq + 110 ||
-		    chandef->center_freq1 != control_freq + 90 ||
-		    chandef->center_freq1 != control_freq - 90 ||
-		    chandef->center_freq1 != control_freq - 110 ||
-		    chandef->center_freq1 != control_freq - 130 ||
-		    chandef->center_freq1 != control_freq - 150)
+		if (chandef->center_freq1 == control_freq + 150 ||
+		    chandef->center_freq1 == control_freq + 130 ||
+		    chandef->center_freq1 == control_freq + 110 ||
+		    chandef->center_freq1 == control_freq + 90 ||
+		    chandef->center_freq1 == control_freq - 90 ||
+		    chandef->center_freq1 == control_freq - 110 ||
+		    chandef->center_freq1 == control_freq - 130 ||
+		    chandef->center_freq1 == control_freq - 150)
 			break;
 		fallthrough;
 	case NL80211_CHAN_WIDTH_160:
@@ -333,6 +333,7 @@ static void chandef_primary_freqs(const struct cfg80211_chan_def *c,
 		break;
 	case NL80211_CHAN_WIDTH_80:
 	case NL80211_CHAN_WIDTH_80P80:
+		*pri160 = 0;
 		*pri80 = c->center_freq1;
 		/* n_P20 */
 		tmp = (30 + c->chan->center_freq - c->center_freq1)/20;
@@ -340,7 +341,6 @@ static void chandef_primary_freqs(const struct cfg80211_chan_def *c,
 		tmp /= 2;
 		/* freq_P40 */
 		*pri40 = c->center_freq1 - 20 + 40 * tmp;
-		*pri160 = 0;
 		break;
 	case NL80211_CHAN_WIDTH_160:
 		*pri160 = c->center_freq1;
@@ -415,27 +415,26 @@ cfg80211_chandef_compatible(const struct cfg80211_chan_def *c1,
 	chandef_primary_freqs(c1, &c1_pri40, &c1_pri80, &c1_pri160);
 	chandef_primary_freqs(c2, &c2_pri40, &c2_pri80, &c2_pri160);
 
-	WARN_ON(!c1_pri40 && !c2_pri40);
 	if (c1_pri40 != c2_pri40)
 		return NULL;
 
-	/*
-	 * the channels are not identical, do not have the same width and
-	 * have the same 40 MHz primary, so at least one of them needs to be a
-	 * 80 MHz.
-	 */
-	WARN_ON(!c1_pri80 && !c2_pri80);
-	if (c1_pri80 && c2_pri80 && c1_pri80 != c2_pri80)
-		return NULL;
-	else if (!c1_pri80)
+	if (c1->width == NL80211_CHAN_WIDTH_40)
 		return c2;
-	else if (!c2_pri80)
+
+	if (c2->width == NL80211_CHAN_WIDTH_40)
 		return c1;
 
-	/*
-	 * The channels have the same 80 MHz primary, so at least one of them
-	 * needs to be 160 MHz.
-	 */
+	if (c1_pri80 != c2_pri80)
+		return NULL;
+
+	if (c1->width == NL80211_CHAN_WIDTH_80 &&
+	    c2->width > NL80211_CHAN_WIDTH_80)
+		return c2;
+
+	if (c2->width == NL80211_CHAN_WIDTH_80 &&
+	    c1->width > NL80211_CHAN_WIDTH_80)
+		return c1;
+
 	WARN_ON(!c1_pri160 && !c2_pri160);
 	if (c1_pri160 && c2_pri160 && c1_pri160 != c2_pri160)
 		return NULL;
@@ -763,6 +762,19 @@ static bool cfg80211_is_wiphy_oper_chan(struct wiphy *wiphy,
 	return false;
 }
 
+static bool
+cfg80211_offchan_chain_is_active(struct cfg80211_registered_device *rdev,
+				 struct ieee80211_channel *channel)
+{
+	if (!rdev->background_radar_wdev)
+		return false;
+
+	if (!cfg80211_chandef_valid(&rdev->background_radar_chandef))
+		return false;
+
+	return cfg80211_is_sub_chan(&rdev->background_radar_chandef, channel);
+}
+
 bool cfg80211_any_wiphy_oper_chan(struct wiphy *wiphy,
 				  struct ieee80211_channel *chan)
 {
@@ -778,6 +790,9 @@ bool cfg80211_any_wiphy_oper_chan(struct wiphy *wiphy,
 			continue;
 
 		if (cfg80211_is_wiphy_oper_chan(&rdev->wiphy, chan))
+			return true;
+
+		if (cfg80211_offchan_chain_is_active(rdev, chan))
 			return true;
 	}
 
@@ -993,7 +1008,10 @@ bool cfg80211_chandef_usable(struct wiphy *wiphy,
 	struct ieee80211_sta_vht_cap *vht_cap;
 	struct ieee80211_edmg *edmg_cap;
 	u32 width, control_freq, cap;
-	bool ext_nss_cap, support_80_80 = false;
+	bool ext_nss_cap, support_80_80 = false, support_320 = false;
+	const struct ieee80211_sband_iftype_data *iftd;
+	struct ieee80211_supported_band *sband;
+	int i;
 
 	if (WARN_ON(!cfg80211_chandef_valid(chandef)))
 		return false;
@@ -1096,16 +1114,30 @@ bool cfg80211_chandef_usable(struct wiphy *wiphy,
 			return false;
 		break;
 	case NL80211_CHAN_WIDTH_320:
+		prohibited_flags |= IEEE80211_CHAN_NO_320MHZ;
+		width = 320;
+
 		if (chandef->chan->band != NL80211_BAND_6GHZ)
 			return false;
 
-		/*
-		 * TODO: need to check EHT supported and 320MHz supported for
-		 * the specific interface type.
-		 */
-		prohibited_flags |= IEEE80211_CHAN_NO_320MHZ |
-			IEEE80211_CHAN_NO_EHT;
-		width = 320;
+		sband = wiphy->bands[NL80211_BAND_6GHZ];
+		if (!sband)
+			return false;
+
+		for (i = 0; i < sband->n_iftype_data; i++) {
+			iftd = &sband->iftype_data[i];
+			if (!iftd->eht_cap.has_eht)
+				continue;
+
+			if (iftd->eht_cap.eht_cap_elem.phy_cap_info[0] &
+			    IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ) {
+				support_320 = true;
+				break;
+			}
+		}
+
+		if (!support_320)
+			return false;
 		break;
 	default:
 		WARN_ON_ONCE(1);

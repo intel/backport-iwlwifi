@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -1636,6 +1636,9 @@ iwl_mvm_umac_scan_cfg_channels_v6(struct iwl_mvm *mvm,
 			iwl_mvm_scan_ch_n_aps_flag(vif_type,
 						   channels[i]->hw_value);
 
+		if (IWL_MVM_ADAPTIVE_DWELL_NUM_APS_OVERRIDE)
+			n_aps_flag = IWL_SCAN_ADWELL_N_APS_GO_FRIENDLY_BIT;
+
 		cfg->flags = cpu_to_le32(flags | n_aps_flag);
 		cfg->v2.channel_num = channels[i]->hw_value;
 		cfg->v2.band = iwl_mvm_phy_band_from_nl80211(band);
@@ -2358,6 +2361,9 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
 	cp->count = params->n_channels;
 	cp->n_aps_override[0] = IWL_SCAN_ADWELL_N_APS_GO_FRIENDLY;
 	cp->n_aps_override[1] = IWL_SCAN_ADWELL_N_APS_SOCIAL_CHS;
+
+	if (IWL_MVM_ADAPTIVE_DWELL_NUM_APS_OVERRIDE)
+		cp->n_aps_override[0] = IWL_MVM_ADAPTIVE_DWELL_NUM_APS_OVERRIDE;
 
 	iwl_mvm_umac_scan_cfg_channels_v6(mvm, params->channels, cp,
 					  params->n_channels,
@@ -3107,7 +3113,7 @@ static int iwl_scan_req_umac_get_size(u8 scan_ver)
 	case 14:
 	case 15:
 		return sizeof(struct iwl_scan_req_umac_v15);
-	};
+	}
 
 	return 0;
 }

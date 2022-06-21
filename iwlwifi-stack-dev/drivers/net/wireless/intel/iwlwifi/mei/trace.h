@@ -3,7 +3,7 @@
  * Copyright(c) 2021        Intel Corporation
  */
 
-#if !defined(CONFIG_IWLWIFI_DEVICE_TRACING)
+#if !defined(CPTCFG_IWLWIFI_DEVICE_TRACING)
 
 #define trace_iwlmei_sap_cmd(...)
 #define trace_iwlmei_me_msg(...)
@@ -62,7 +62,7 @@ TRACE_EVENT(iwlmei_me_msg,
 
 /*
  * If you add something here, add a stub in case
- * !defined(CONFIG_IWLWIFI_DEVICE_TRACING)
+ * !defined(CPTCFG_IWLWIFI_DEVICE_TRACING)
  */
 
 #endif /* __IWLWIFI_DEVICE_TRACE_IWLWIFI_SAP_CMD */
@@ -73,4 +73,4 @@ TRACE_EVENT(iwlmei_me_msg,
 #define TRACE_INCLUDE_FILE trace
 #include <trace/define_trace.h>
 
-#endif /* CONFIG_IWLWIFI_DEVICE_TRACING */
+#endif /* CPTCFG_IWLWIFI_DEVICE_TRACING */

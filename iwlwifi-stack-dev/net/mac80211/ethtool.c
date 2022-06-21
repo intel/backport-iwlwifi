@@ -16,7 +16,8 @@
 static int ieee80211_set_ringparam(struct net_device *dev,
 				   struct ethtool_ringparam *rp
 #if LINUX_VERSION_IS_GEQ(5,17,0)
-				   , struct kernel_ethtool_ringparam *krp,
+,
+				   struct kernel_ethtool_ringparam *kernel_rp,
 				   struct netlink_ext_ack *extack
 #endif
 )
@@ -32,7 +33,8 @@ static int ieee80211_set_ringparam(struct net_device *dev,
 static void ieee80211_get_ringparam(struct net_device *dev,
 				    struct ethtool_ringparam *rp
 #if LINUX_VERSION_IS_GEQ(5,17,0)
-				    , struct kernel_ethtool_ringparam *krp,
+,
+				    struct kernel_ethtool_ringparam *kernel_rp,
 				    struct netlink_ext_ack *extack
 #endif
 )

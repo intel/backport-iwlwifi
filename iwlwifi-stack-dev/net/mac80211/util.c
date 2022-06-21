@@ -6,7 +6,7 @@
  * Copyright 2007	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017	Intel Deutschland GmbH
- * Copyright (C) 2018-2021 Intel Corporation
+ * Copyright (C) 2018-2022 Intel Corporation
  *
  * utilities for mac80211
  */
@@ -862,6 +862,19 @@ static void __iterate_stations(struct ieee80211_local *local,
 	}
 }
 
+void ieee80211_iterate_stations(struct ieee80211_hw *hw,
+				void (*iterator)(void *data,
+						 struct ieee80211_sta *sta),
+				void *data)
+{
+	struct ieee80211_local *local = hw_to_local(hw);
+
+	mutex_lock(&local->sta_mtx);
+	__iterate_stations(local, iterator, data);
+	mutex_unlock(&local->sta_mtx);
+}
+EXPORT_SYMBOL_GPL(ieee80211_iterate_stations);
+
 void ieee80211_iterate_stations_atomic(struct ieee80211_hw *hw,
 			void (*iterator)(void *data,
 					 struct ieee80211_sta *sta),
@@ -960,8 +973,10 @@ static void ieee80211_parse_extension_element(u32 *crc,
 		}
 		break;
 	case WLAN_EID_EXT_HE_CAPABILITY:
-		elems->he_cap = data;
-		elems->he_cap_len = len;
+		if (ieee80211_he_capa_size_ok(data, len)) {
+			elems->he_cap = data;
+			elems->he_cap_len = len;
+		}
 		break;
 	case WLAN_EID_EXT_HE_OPERATION:
 		if (len >= sizeof(*elems->he_operation) &&
@@ -994,13 +1009,14 @@ static void ieee80211_parse_extension_element(u32 *crc,
 			elems->he_6ghz_capa = data;
 		break;
 	case WLAN_EID_EXT_EHT_CAPABILITY:
-		if (len >= sizeof(struct ieee80211_eht_cap_elem)) {
+		if (ieee80211_eht_capa_size_ok(elems->he_cap,
+					       data, len)) {
 			elems->eht_cap = data;
 			elems->eht_cap_len = len;
 		}
 		break;
 	case WLAN_EID_EXT_EHT_OPERATION:
-		if (len >= sizeof(*elems->eht_operation))
+		if (ieee80211_eht_oper_size_ok(data, len))
 			elems->eht_operation = data;
 		break;
 	}
@@ -2524,6 +2540,9 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 			    sdata->vif.bss_conf.protected_keep_alive)
 				changed |= BSS_CHANGED_KEEP_ALIVE;
 
+			if (sdata->vif.bss_conf.eht_puncturing)
+				changed |= BSS_CHANGED_EHT_PUNCTURING;
+
 			sdata_lock(sdata);
 			ieee80211_bss_info_change_notify(sdata, changed);
 			sdata_unlock(sdata);
@@ -3830,6 +3849,19 @@ u64 ieee80211_calculate_rx_timestamp(struct ieee80211_local *local,
 
 	/* Fill cfg80211 rate info */
 	switch (status->encoding) {
+	case RX_ENC_EHT:
+		ri.flags |= RATE_INFO_FLAGS_EHT_MCS;
+		ri.mcs = status->rate_idx;
+		ri.nss = status->nss;
+		ri.eht_ru_alloc = status->eht.ru;
+		if (status->enc_flags & RX_ENC_FLAG_SHORT_GI)
+			ri.flags |= RATE_INFO_FLAGS_SHORT_GI;
+		/* TODO/FIXME: is this right? handle other PPDUs */
+		if (status->flag & RX_FLAG_MACTIME_PLCP_START) {
+			mpdu_offset += 2;
+			ts += 36;
+		}
+		break;
 	case RX_ENC_HE:
 		ri.flags |= RATE_INFO_FLAGS_HE_MCS;
 		ri.mcs = status->rate_idx;
@@ -4209,76 +4241,6 @@ int ieee80211_send_action_csa(struct ieee80211_sub_if_data *sdata,
 
 	ieee80211_tx_skb(sdata, skb);
 	return 0;
-}
-
-bool ieee80211_cs_valid(const struct ieee80211_cipher_scheme *cs)
-{
-	return !(cs == NULL || cs->cipher == 0 ||
-		 cs->hdr_len < cs->pn_len + cs->pn_off ||
-		 cs->hdr_len <= cs->key_idx_off ||
-		 cs->key_idx_shift > 7 ||
-		 cs->key_idx_mask == 0);
-}
-
-bool ieee80211_cs_list_valid(const struct ieee80211_cipher_scheme *cs, int n)
-{
-	int i;
-
-	/* Ensure we have enough iftype bitmap space for all iftype values */
-	WARN_ON((NUM_NL80211_IFTYPES / 8 + 1) > sizeof(cs[0].iftype));
-
-	for (i = 0; i < n; i++)
-		if (!ieee80211_cs_valid(&cs[i]))
-			return false;
-
-	return true;
-}
-
-const struct ieee80211_cipher_scheme *
-ieee80211_cs_get(struct ieee80211_local *local, u32 cipher,
-		 enum nl80211_iftype iftype)
-{
-	const struct ieee80211_cipher_scheme *l = local->hw.cipher_schemes;
-	int n = local->hw.n_cipher_schemes;
-	int i;
-	const struct ieee80211_cipher_scheme *cs = NULL;
-
-	for (i = 0; i < n; i++) {
-		if (l[i].cipher == cipher) {
-			cs = &l[i];
-			break;
-		}
-	}
-
-	if (!cs || !(cs->iftype & BIT(iftype)))
-		return NULL;
-
-	return cs;
-}
-
-int ieee80211_cs_headroom(struct ieee80211_local *local,
-			  struct cfg80211_crypto_settings *crypto,
-			  enum nl80211_iftype iftype)
-{
-	const struct ieee80211_cipher_scheme *cs;
-	int headroom = IEEE80211_ENCRYPT_HEADROOM;
-	int i;
-
-	for (i = 0; i < crypto->n_ciphers_pairwise; i++) {
-		cs = ieee80211_cs_get(local, crypto->ciphers_pairwise[i],
-				      iftype);
-
-		if (cs && headroom < cs->hdr_len)
-			headroom = cs->hdr_len;
-	}
-
-	for (i = 0; i < crypto->n_ciphers_group; i++) {
-		cs = ieee80211_cs_get(local, crypto->ciphers_group[i], iftype);
-		if (cs && headroom < cs->hdr_len)
-			headroom = cs->hdr_len;
-	}
-
-	return headroom;
 }
 
 static bool
@@ -4797,33 +4759,8 @@ u8 *ieee80211_ie_build_eht_cap(u8 *pos,
 	memcpy(pos, &eht_cap->eht_cap_elem, sizeof(eht_cap->eht_cap_elem));
 	pos += sizeof(eht_cap->eht_cap_elem);
 
-	if (!(he_cap->he_cap_elem.phy_cap_info[0] &
-	      IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_MASK_ALL)) {
-		memcpy(pos, &eht_cap->eht_mcs_nss_supp.only_20mhz,
-		       sizeof(eht_cap->eht_mcs_nss_supp.only_20mhz));
-		pos += sizeof(eht_cap->eht_mcs_nss_supp.only_20mhz);
-	} else {
-		if (he_cap->he_cap_elem.phy_cap_info[0] &
-		    IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G) {
-			memcpy(pos, &eht_cap->eht_mcs_nss_supp.bw_80,
-			       sizeof(eht_cap->eht_mcs_nss_supp.bw_80));
-			pos += sizeof(eht_cap->eht_mcs_nss_supp.bw_80);
-		}
-
-		if (he_cap->he_cap_elem.phy_cap_info[0] &
-		    IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G) {
-			memcpy(pos, &eht_cap->eht_mcs_nss_supp.bw_160,
-			       sizeof(eht_cap->eht_mcs_nss_supp.bw_160));
-			pos += sizeof(eht_cap->eht_mcs_nss_supp.bw_160);
-		}
-
-		if (eht_cap->eht_cap_elem.phy_cap_info[0] &
-		    IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ) {
-			memcpy(pos, &eht_cap->eht_mcs_nss_supp.bw_320,
-			       sizeof(eht_cap->eht_mcs_nss_supp.bw_320));
-			pos += sizeof(eht_cap->eht_mcs_nss_supp.bw_320);
-		}
-	}
+	memcpy(pos, &eht_cap->eht_mcs_nss_supp, mcs_nss_len);
+	pos += mcs_nss_len;
 
 	if (ppet_len) {
 		memcpy(pos, &eht_cap->eht_ppe_thres, ppet_len);

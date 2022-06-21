@@ -4,7 +4,7 @@
  * Copyright (c) 2008, Jouni Malinen <j@w1.fi>
  * Copyright (c) 2011, Javier Lopez <jlopex@gmail.com>
  * Copyright (c) 2016 - 2017 Intel Deutschland GmbH
- * Copyright (C) 2018 - 2021 Intel Corporation
+ * Copyright (C) 2018 - 2022 Intel Corporation
  */
 
 /*
@@ -325,11 +325,10 @@ static struct net_device *hwsim_mon; /* global monitor netdev */
 	.hw_value = (_freq), \
 }
 
-#define CHAN6G(_chan) { \
+#define CHAN6G(_freq) { \
 	.band = NL80211_BAND_6GHZ, \
-	.center_freq = 5950 + 5 * (_chan), \
-	.hw_value = 5950 + 5 * (_chan), \
-	.max_power = 20, \
+	.center_freq = (_freq), \
+	.hw_value = (_freq), \
 }
 
 static const struct ieee80211_channel hwsim_channels_2ghz[] = {
@@ -399,65 +398,65 @@ static const struct ieee80211_channel hwsim_channels_5ghz[] = {
 };
 
 static const struct ieee80211_channel hwsim_channels_6ghz[] = {
-	CHAN6G(1),
-	CHAN6G(5),
-	CHAN6G(9),
-	CHAN6G(13),
-	CHAN6G(17),
-	CHAN6G(21),
-	CHAN6G(25),
-	CHAN6G(29),
-	CHAN6G(33),
-	CHAN6G(37),
-	CHAN6G(41),
-	CHAN6G(45),
-	CHAN6G(49),
-	CHAN6G(53),
-	CHAN6G(57),
-	CHAN6G(61),
-	CHAN6G(65),
-	CHAN6G(69),
-	CHAN6G(73),
-	CHAN6G(77),
-	CHAN6G(81),
-	CHAN6G(85),
-	CHAN6G(89),
-	CHAN6G(93),
-	CHAN6G(97),
-	CHAN6G(101),
-	CHAN6G(105),
-	CHAN6G(109),
-	CHAN6G(113),
-	CHAN6G(117),
-	CHAN6G(121),
-	CHAN6G(125),
-	CHAN6G(129),
-	CHAN6G(133),
-	CHAN6G(137),
-	CHAN6G(141),
-	CHAN6G(145),
-	CHAN6G(149),
-	CHAN6G(153),
-	CHAN6G(157),
-	CHAN6G(161),
-	CHAN6G(165),
-	CHAN6G(169),
-	CHAN6G(173),
-	CHAN6G(177),
-	CHAN6G(181),
-	CHAN6G(185),
-	CHAN6G(189),
-	CHAN6G(193),
-	CHAN6G(197),
-	CHAN6G(201),
-	CHAN6G(205),
-	CHAN6G(209),
-	CHAN6G(213),
-	CHAN6G(217),
-	CHAN6G(221),
-	CHAN6G(225),
-	CHAN6G(229),
-	CHAN6G(233),
+	CHAN6G(5955), /* Channel 1 */
+	CHAN6G(5975), /* Channel 5 */
+	CHAN6G(5995), /* Channel 9 */
+	CHAN6G(6015), /* Channel 13 */
+	CHAN6G(6035), /* Channel 17 */
+	CHAN6G(6055), /* Channel 21 */
+	CHAN6G(6075), /* Channel 25 */
+	CHAN6G(6095), /* Channel 29 */
+	CHAN6G(6115), /* Channel 33 */
+	CHAN6G(6135), /* Channel 37 */
+	CHAN6G(6155), /* Channel 41 */
+	CHAN6G(6175), /* Channel 45 */
+	CHAN6G(6195), /* Channel 49 */
+	CHAN6G(6215), /* Channel 53 */
+	CHAN6G(6235), /* Channel 57 */
+	CHAN6G(6255), /* Channel 61 */
+	CHAN6G(6275), /* Channel 65 */
+	CHAN6G(6295), /* Channel 69 */
+	CHAN6G(6315), /* Channel 73 */
+	CHAN6G(6335), /* Channel 77 */
+	CHAN6G(6355), /* Channel 81 */
+	CHAN6G(6375), /* Channel 85 */
+	CHAN6G(6395), /* Channel 89 */
+	CHAN6G(6415), /* Channel 93 */
+	CHAN6G(6435), /* Channel 97 */
+	CHAN6G(6455), /* Channel 181 */
+	CHAN6G(6475), /* Channel 105 */
+	CHAN6G(6495), /* Channel 109 */
+	CHAN6G(6515), /* Channel 113 */
+	CHAN6G(6535), /* Channel 117 */
+	CHAN6G(6555), /* Channel 121 */
+	CHAN6G(6575), /* Channel 125 */
+	CHAN6G(6595), /* Channel 129 */
+	CHAN6G(6615), /* Channel 133 */
+	CHAN6G(6635), /* Channel 137 */
+	CHAN6G(6655), /* Channel 141 */
+	CHAN6G(6675), /* Channel 145 */
+	CHAN6G(6695), /* Channel 149 */
+	CHAN6G(6715), /* Channel 153 */
+	CHAN6G(6735), /* Channel 157 */
+	CHAN6G(6755), /* Channel 161 */
+	CHAN6G(6775), /* Channel 165 */
+	CHAN6G(6795), /* Channel 169 */
+	CHAN6G(6815), /* Channel 173 */
+	CHAN6G(6835), /* Channel 177 */
+	CHAN6G(6855), /* Channel 181 */
+	CHAN6G(6875), /* Channel 185 */
+	CHAN6G(6895), /* Channel 189 */
+	CHAN6G(6915), /* Channel 193 */
+	CHAN6G(6935), /* Channel 197 */
+	CHAN6G(6955), /* Channel 201 */
+	CHAN6G(6975), /* Channel 205 */
+	CHAN6G(6995), /* Channel 209 */
+	CHAN6G(7015), /* Channel 213 */
+	CHAN6G(7035), /* Channel 217 */
+	CHAN6G(7055), /* Channel 221 */
+	CHAN6G(7075), /* Channel 225 */
+	CHAN6G(7095), /* Channel 229 */
+	CHAN6G(7115), /* Channel 233 */
 };
 
 #define NUM_S1G_CHANS_US 51
@@ -1358,7 +1357,7 @@ static void mac80211_hwsim_tx_frame_nl(struct ieee80211_hw *hw,
 		hdr->frame_control |= cpu_to_le16(IEEE80211_FCTL_PM);
 	/* If the queue contains MAX_QUEUE skb's drop some */
 	if (skb_queue_len(&data->pending) >= MAX_QUEUE) {
-		/* Droping until WARN_QUEUE level */
+		/* Dropping until WARN_QUEUE level */
 		while (skb_queue_len(&data->pending) >= WARN_QUEUE) {
 			ieee80211_free_txskb(hw, skb_dequeue(&data->pending));
 			data->tx_dropped++;
@@ -2102,15 +2101,15 @@ static void mac80211_hwsim_bcn_en_iter(void *data, u8 *mac,
 static void mac80211_hwsim_bss_info_changed(struct ieee80211_hw *hw,
 					    struct ieee80211_vif *vif,
 					    struct ieee80211_bss_conf *info,
-					    u32 changed)
+					    u64 changed)
 {
 	struct hwsim_vif_priv *vp = (void *)vif->drv_priv;
 	struct mac80211_hwsim_data *data = hw->priv;
 
 	hwsim_check_magic(vif);
 
-	wiphy_dbg(hw->wiphy, "%s(changed=0x%x vif->addr=%pM)\n",
-		  __func__, changed, vif->addr);
+	wiphy_dbg(hw->wiphy, "%s(changed=0x%llx vif->addr=%pM)\n",
+		  __func__, (unsigned long long)changed, vif->addr);
 
 	if (changed & BSS_CHANGED_BSSID) {
 		wiphy_dbg(hw->wiphy, "%s: BSSID changed: %pM\n",
@@ -2479,6 +2478,15 @@ static void hw_scan_work(struct work_struct *work)
 
 			if (req->ie_len)
 				skb_put_data(probe, req->ie, req->ie_len);
+
+			if (!ieee80211_tx_prepare_skb(hwsim->hw,
+						      hwsim->hw_scan_vif,
+						      probe,
+						      hwsim->tmp_chan->band,
+						      NULL)) {
+				kfree_skb(probe);
+				continue;
+			}
 
 			local_bh_disable();
 			mac80211_hwsim_tx_frame(hwsim->hw, probe,
@@ -2945,7 +2953,7 @@ out_err:
 	nlmsg_free(mcast_skb);
 }
 
-static const struct ieee80211_sband_iftype_data he_capa_2ghz[] = {
+static const struct ieee80211_sband_iftype_data sband_capa_2ghz[] = {
 	{
 		.types_mask = BIT(NL80211_IFTYPE_STATION) |
 			      BIT(NL80211_IFTYPE_AP),
@@ -2995,40 +3003,39 @@ static const struct ieee80211_sband_iftype_data he_capa_2ghz[] = {
 			.has_eht = true,
 			.eht_cap_elem = {
 				.mac_cap_info[0] =
-					IEEE80211_EHT_MAC_CAP0_NSEP_PRIO_ACCESS_SUPP  |
-					IEEE80211_EHT_MAC_CAP0_OM_CONTROL_SUPP |
-					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_SUPP |
-					IEEE80211_EHT_MAC_CAP0_ARR_CONTROL_SUPP,
+					IEEE80211_EHT_MAC_CAP0_NSEP_PRIO_ACCESS |
+					IEEE80211_EHT_MAC_CAP0_OM_CONTROL |
+					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_MODE1,
 				.phy_cap_info[0] =
-					IEEE80211_EHT_PHY_CAP0_242_TONE_RU            |
-					IEEE80211_EHT_PHY_CAP0_NDP_4_EHT_LFT_32_GI    |
-					IEEE80211_EHT_PHY_CAP0_PARTIAL_BW_UL_MU_MIMO  |
-					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMER          |
+					IEEE80211_EHT_PHY_CAP0_242_TONE_RU_GT20MHZ |
+					IEEE80211_EHT_PHY_CAP0_NDP_4_EHT_LFT_32_GI |
+					IEEE80211_EHT_PHY_CAP0_PARTIAL_BW_UL_MU_MIMO |
+					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMER |
 					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMEE,
 				.phy_cap_info[3] =
-					IEEE80211_EHT_PHY_CAP3_NG_16_SU_FEEDBACK           |
-					IEEE80211_EHT_PHY_CAP3_NG_16_MU_FEEDBACK           |
-					IEEE80211_EHT_PHY_CAP3_CODEBOOK_4_2_SU_FEEDBACK    |
-					IEEE80211_EHT_PHY_CAP3_CODEBOOK_7_5_MU_FEEDBACK    |
-					IEEE80211_EHT_PHY_CAP3_TRIG_SU_BF_FEEDBACK         |
-					IEEE80211_EHT_PHY_CAP3_TRIG_MU_BF_PART_BW_FEEDBACK |
-					IEEE80211_EHT_PHY_CAP3_TRIG_CQI_FEEDBACK,
+					IEEE80211_EHT_PHY_CAP3_NG_16_SU_FEEDBACK |
+					IEEE80211_EHT_PHY_CAP3_NG_16_MU_FEEDBACK |
+					IEEE80211_EHT_PHY_CAP3_CODEBOOK_4_2_SU_FDBK |
+					IEEE80211_EHT_PHY_CAP3_CODEBOOK_7_5_MU_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_SU_BF_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_MU_BF_PART_BW_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_CQI_FDBK,
 				.phy_cap_info[4] =
-					IEEE80211_EHT_PHY_CAP4_PART_BW_DL_MU_MIMO          |
-					IEEE80211_EHT_PHY_CAP4_PSR_SR_SUPP                 |
-					IEEE80211_EHT_PHY_CAP4_POWER_BOOST_FACT_SUPP       |
+					IEEE80211_EHT_PHY_CAP4_PART_BW_DL_MU_MIMO |
+					IEEE80211_EHT_PHY_CAP4_PSR_SR_SUPP |
+					IEEE80211_EHT_PHY_CAP4_POWER_BOOST_FACT_SUPP |
 					IEEE80211_EHT_PHY_CAP4_EHT_MU_PPDU_4_EHT_LTF_08_GI |
-					IEEE80211_EHT_PHY_CAP4_MAX_NC,
+					IEEE80211_EHT_PHY_CAP4_MAX_NC_MASK,
 				.phy_cap_info[5] =
-					IEEE80211_EHT_PHY_CAP5_NON_TRIG_CQI_FEEDBACK    |
+					IEEE80211_EHT_PHY_CAP5_NON_TRIG_CQI_FEEDBACK |
 					IEEE80211_EHT_PHY_CAP5_TX_LESS_242_TONE_RU_SUPP |
 					IEEE80211_EHT_PHY_CAP5_RX_LESS_242_TONE_RU_SUPP |
-					IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT    |
-					IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL           |
-					IEEE80211_EHT_PHY_CAP5_MAX_NUM_SUPP_EHT_LTF,
+					IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT |
+					IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_MASK |
+					IEEE80211_EHT_PHY_CAP5_MAX_NUM_SUPP_EHT_LTF_MASK,
 				.phy_cap_info[6] =
-					IEEE80211_EHT_PHY_CAP6_MAX_NUM_SUPP_EHT_LTF |
-					IEEE80211_EHT_PHY_CAP6_MCS15_SUPP,
+					IEEE80211_EHT_PHY_CAP6_MAX_NUM_SUPP_EHT_LTF_MASK |
+					IEEE80211_EHT_PHY_CAP6_MCS15_SUPP_MASK,
 				.phy_cap_info[7] =
 					IEEE80211_EHT_PHY_CAP7_20MHZ_STA_RX_NDP_WIDER_BW,
 			},
@@ -3094,7 +3101,7 @@ static const struct ieee80211_sband_iftype_data he_capa_2ghz[] = {
 #endif
 };
 
-static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
+static const struct ieee80211_sband_iftype_data sband_capa_5ghz[] = {
 	{
 		/* TODO: should we support other types, e.g., P2P?*/
 		.types_mask = BIT(NL80211_IFTYPE_STATION) |
@@ -3149,59 +3156,52 @@ static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
 			.has_eht = true,
 			.eht_cap_elem = {
 				.mac_cap_info[0] =
-					IEEE80211_EHT_MAC_CAP0_NSEP_PRIO_ACCESS_SUPP  |
-					IEEE80211_EHT_MAC_CAP0_OM_CONTROL_SUPP |
-					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_SUPP |
-					IEEE80211_EHT_MAC_CAP0_ARR_CONTROL_SUPP,
+					IEEE80211_EHT_MAC_CAP0_NSEP_PRIO_ACCESS |
+					IEEE80211_EHT_MAC_CAP0_OM_CONTROL |
+					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_MODE1,
 				.phy_cap_info[0] =
-					IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ         |
-					IEEE80211_EHT_PHY_CAP0_242_TONE_RU            |
-					IEEE80211_EHT_PHY_CAP0_NDP_4_EHT_LFT_32_GI    |
-					IEEE80211_EHT_PHY_CAP0_PARTIAL_BW_UL_MU_MIMO  |
-					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMER          |
-					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMEE          |
-					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMEE_SS_80MHZ,
+					IEEE80211_EHT_PHY_CAP0_242_TONE_RU_GT20MHZ |
+					IEEE80211_EHT_PHY_CAP0_NDP_4_EHT_LFT_32_GI |
+					IEEE80211_EHT_PHY_CAP0_PARTIAL_BW_UL_MU_MIMO |
+					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMER |
+					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMEE |
+					IEEE80211_EHT_PHY_CAP0_BEAMFORMEE_SS_80MHZ_MASK,
 				.phy_cap_info[1] =
-					IEEE80211_EHT_PHY_CAP1_SU_BEAMFORMEE_SS_80MHZ   |
-					IEEE80211_EHT_PHY_CAP1_SU_BEAMFORMEE_SS_160MHZ  |
-					IEEE80211_EHT_PHY_CAP1_SU_BEAMFORMEE_SS_320MHZ,
+					IEEE80211_EHT_PHY_CAP1_BEAMFORMEE_SS_80MHZ_MASK |
+					IEEE80211_EHT_PHY_CAP1_BEAMFORMEE_SS_160MHZ_MASK,
 				.phy_cap_info[2] =
-					IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_80MHZ       |
-					IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_160MHZ      |
-					IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_320MHZ,
+					IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_80MHZ_MASK |
+					IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_160MHZ_MASK,
 				.phy_cap_info[3] =
-					IEEE80211_EHT_PHY_CAP3_NG_16_SU_FEEDBACK           |
-					IEEE80211_EHT_PHY_CAP3_NG_16_MU_FEEDBACK           |
-					IEEE80211_EHT_PHY_CAP3_CODEBOOK_4_2_SU_FEEDBACK    |
-					IEEE80211_EHT_PHY_CAP3_CODEBOOK_7_5_MU_FEEDBACK    |
-					IEEE80211_EHT_PHY_CAP3_TRIG_SU_BF_FEEDBACK         |
-					IEEE80211_EHT_PHY_CAP3_TRIG_MU_BF_PART_BW_FEEDBACK |
-					IEEE80211_EHT_PHY_CAP3_TRIG_CQI_FEEDBACK,
+					IEEE80211_EHT_PHY_CAP3_NG_16_SU_FEEDBACK |
+					IEEE80211_EHT_PHY_CAP3_NG_16_MU_FEEDBACK |
+					IEEE80211_EHT_PHY_CAP3_CODEBOOK_4_2_SU_FDBK |
+					IEEE80211_EHT_PHY_CAP3_CODEBOOK_7_5_MU_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_SU_BF_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_MU_BF_PART_BW_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_CQI_FDBK,
 				.phy_cap_info[4] =
-					IEEE80211_EHT_PHY_CAP4_PART_BW_DL_MU_MIMO          |
-					IEEE80211_EHT_PHY_CAP4_PSR_SR_SUPP                 |
-					IEEE80211_EHT_PHY_CAP4_POWER_BOOST_FACT_SUPP       |
+					IEEE80211_EHT_PHY_CAP4_PART_BW_DL_MU_MIMO |
+					IEEE80211_EHT_PHY_CAP4_PSR_SR_SUPP |
+					IEEE80211_EHT_PHY_CAP4_POWER_BOOST_FACT_SUPP |
 					IEEE80211_EHT_PHY_CAP4_EHT_MU_PPDU_4_EHT_LTF_08_GI |
-					IEEE80211_EHT_PHY_CAP4_MAX_NC,
+					IEEE80211_EHT_PHY_CAP4_MAX_NC_MASK,
 				.phy_cap_info[5] =
-					IEEE80211_EHT_PHY_CAP5_NON_TRIG_CQI_FEEDBACK    |
+					IEEE80211_EHT_PHY_CAP5_NON_TRIG_CQI_FEEDBACK |
 					IEEE80211_EHT_PHY_CAP5_TX_LESS_242_TONE_RU_SUPP |
 					IEEE80211_EHT_PHY_CAP5_RX_LESS_242_TONE_RU_SUPP |
-					IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT    |
-					IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL           |
-					IEEE80211_EHT_PHY_CAP5_MAX_NUM_SUPP_EHT_LTF,
+					IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT |
+					IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_MASK |
+					IEEE80211_EHT_PHY_CAP5_MAX_NUM_SUPP_EHT_LTF_MASK,
 				.phy_cap_info[6] =
-					IEEE80211_EHT_PHY_CAP6_MAX_NUM_SUPP_EHT_LTF |
-					IEEE80211_EHT_PHY_CAP6_MCS15_SUPP           |
-					IEEE80211_EHT_PHY_CAP6_EHT_DUP_6GHZ_SUPP,
+					IEEE80211_EHT_PHY_CAP6_MAX_NUM_SUPP_EHT_LTF_MASK |
+					IEEE80211_EHT_PHY_CAP6_MCS15_SUPP_MASK,
 				.phy_cap_info[7] =
-					IEEE80211_EHT_PHY_CAP7_20MHZ_STA_RX_NDP_WIDER_BW    |
-					IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_80MHZ   |
-					IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_160MHZ  |
-					IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_320MHZ  |
-					IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_80MHZ          |
-					IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_160MHZ         |
-					IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_320MHZ,
+					IEEE80211_EHT_PHY_CAP7_20MHZ_STA_RX_NDP_WIDER_BW |
+					IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_80MHZ |
+					IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_160MHZ |
+					IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_80MHZ |
+					IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_160MHZ,
 			},
 
 			/* For all MCS and bandwidth, set 8 NSS for both Tx and
@@ -3211,21 +3211,15 @@ static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
 				/*
 				 * As B1 and B2 are set in the supported
 				 * channel width set field in the HE PHY
-				 * capabilities information field and 320MHz in
-				 * 6GHz is supported include all the following
-				 * MCS/NSS.
+				 * capabilities information field include all
+				 * the following MCS/NSS.
 				 */
-				.bw_80 = {
+				.bw._80 = {
 					.rx_tx_mcs9_max_nss = 0x88,
 					.rx_tx_mcs11_max_nss = 0x88,
 					.rx_tx_mcs13_max_nss = 0x88,
 				},
-				.bw_160 = {
-					.rx_tx_mcs9_max_nss = 0x88,
-					.rx_tx_mcs11_max_nss = 0x88,
-					.rx_tx_mcs13_max_nss = 0x88,
-				},
-				.bw_320 = {
+				.bw._160 = {
 					.rx_tx_mcs9_max_nss = 0x88,
 					.rx_tx_mcs11_max_nss = 0x88,
 					.rx_tx_mcs13_max_nss = 0x88,
@@ -3233,12 +3227,6 @@ static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
 			},
 			/* PPE threshold information is not supported */
 		},
-		/* ignored on 5 GHz, so add it here for 6 GHz */
-		.he_6ghz_capa.capa =
-			cpu_to_le16((IEEE80211_HT_MPDU_DENSITY_NONE << 0) |
-				    (IEEE80211_VHT_MAX_AMPDU_1024K << 3) |
-				    (IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_11454 << 6) |
-				    (WLAN_HT_CAP_SM_PS_DISABLED << 8)),
 	},
 #ifdef CPTCFG_MAC80211_MESH
 	{
@@ -3282,17 +3270,11 @@ static const struct ieee80211_sband_iftype_data he_capa_5ghz[] = {
 				.tx_mcs_80p80 = cpu_to_le16(0xfffa),
 			},
 		},
-		/* ignored on 5 GHz, so add it here for 6 GHz */
-		.he_6ghz_capa.capa =
-			cpu_to_le16((IEEE80211_HT_MPDU_DENSITY_NONE << 0) |
-				    (IEEE80211_VHT_MAX_AMPDU_1024K << 3) |
-				    (IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_11454 << 6) |
-				    (WLAN_HT_CAP_SM_PS_DISABLED << 8)),
 	},
 #endif
 };
 
-static const struct ieee80211_sband_iftype_data he_capa_6ghz[] = {
+static const struct ieee80211_sband_iftype_data sband_capa_6ghz[] = {
 	{
 		/* TODO: should we support other types, e.g., P2P?*/
 		.types_mask = BIT(NL80211_IFTYPE_STATION) |
@@ -3352,6 +3334,93 @@ static const struct ieee80211_sband_iftype_data he_capa_6ghz[] = {
 				.tx_mcs_80p80 = cpu_to_le16(0xfffa),
 			},
 		},
+		.eht_cap = {
+			.has_eht = true,
+			.eht_cap_elem = {
+				.mac_cap_info[0] =
+					IEEE80211_EHT_MAC_CAP0_NSEP_PRIO_ACCESS |
+					IEEE80211_EHT_MAC_CAP0_OM_CONTROL |
+					IEEE80211_EHT_MAC_CAP0_TRIG_TXOP_SHARING_MODE1,
+				.phy_cap_info[0] =
+					IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ |
+					IEEE80211_EHT_PHY_CAP0_242_TONE_RU_GT20MHZ |
+					IEEE80211_EHT_PHY_CAP0_NDP_4_EHT_LFT_32_GI |
+					IEEE80211_EHT_PHY_CAP0_PARTIAL_BW_UL_MU_MIMO |
+					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMER |
+					IEEE80211_EHT_PHY_CAP0_SU_BEAMFORMEE |
+					IEEE80211_EHT_PHY_CAP0_BEAMFORMEE_SS_80MHZ_MASK,
+				.phy_cap_info[1] =
+					IEEE80211_EHT_PHY_CAP1_BEAMFORMEE_SS_80MHZ_MASK |
+					IEEE80211_EHT_PHY_CAP1_BEAMFORMEE_SS_160MHZ_MASK |
+					IEEE80211_EHT_PHY_CAP1_BEAMFORMEE_SS_320MHZ_MASK,
+				.phy_cap_info[2] =
+					IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_80MHZ_MASK |
+					IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_160MHZ_MASK |
+					IEEE80211_EHT_PHY_CAP2_SOUNDING_DIM_320MHZ_MASK,
+				.phy_cap_info[3] =
+					IEEE80211_EHT_PHY_CAP3_NG_16_SU_FEEDBACK |
+					IEEE80211_EHT_PHY_CAP3_NG_16_MU_FEEDBACK |
+					IEEE80211_EHT_PHY_CAP3_CODEBOOK_4_2_SU_FDBK |
+					IEEE80211_EHT_PHY_CAP3_CODEBOOK_7_5_MU_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_SU_BF_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_MU_BF_PART_BW_FDBK |
+					IEEE80211_EHT_PHY_CAP3_TRIG_CQI_FDBK,
+				.phy_cap_info[4] =
+					IEEE80211_EHT_PHY_CAP4_PART_BW_DL_MU_MIMO |
+					IEEE80211_EHT_PHY_CAP4_PSR_SR_SUPP |
+					IEEE80211_EHT_PHY_CAP4_POWER_BOOST_FACT_SUPP |
+					IEEE80211_EHT_PHY_CAP4_EHT_MU_PPDU_4_EHT_LTF_08_GI |
+					IEEE80211_EHT_PHY_CAP4_MAX_NC_MASK,
+				.phy_cap_info[5] =
+					IEEE80211_EHT_PHY_CAP5_NON_TRIG_CQI_FEEDBACK |
+					IEEE80211_EHT_PHY_CAP5_TX_LESS_242_TONE_RU_SUPP |
+					IEEE80211_EHT_PHY_CAP5_RX_LESS_242_TONE_RU_SUPP |
+					IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT |
+					IEEE80211_EHT_PHY_CAP5_COMMON_NOMINAL_PKT_PAD_MASK |
+					IEEE80211_EHT_PHY_CAP5_MAX_NUM_SUPP_EHT_LTF_MASK,
+				.phy_cap_info[6] =
+					IEEE80211_EHT_PHY_CAP6_MAX_NUM_SUPP_EHT_LTF_MASK |
+					IEEE80211_EHT_PHY_CAP6_MCS15_SUPP_MASK |
+					IEEE80211_EHT_PHY_CAP6_EHT_DUP_6GHZ_SUPP,
+				.phy_cap_info[7] =
+					IEEE80211_EHT_PHY_CAP7_20MHZ_STA_RX_NDP_WIDER_BW |
+					IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_80MHZ |
+					IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_160MHZ |
+					IEEE80211_EHT_PHY_CAP7_NON_OFDMA_UL_MU_MIMO_320MHZ |
+					IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_80MHZ |
+					IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_160MHZ |
+					IEEE80211_EHT_PHY_CAP7_MU_BEAMFORMER_320MHZ,
+			},
+
+			/* For all MCS and bandwidth, set 8 NSS for both Tx and
+			 * Rx
+			 */
+			.eht_mcs_nss_supp = {
+				/*
+				 * As B1 and B2 are set in the supported
+				 * channel width set field in the HE PHY
+				 * capabilities information field and 320MHz in
+				 * 6GHz is supported include all the following
+				 * MCS/NSS.
+				 */
+				.bw._80 = {
+					.rx_tx_mcs9_max_nss = 0x88,
+					.rx_tx_mcs11_max_nss = 0x88,
+					.rx_tx_mcs13_max_nss = 0x88,
+				},
+				.bw._160 = {
+					.rx_tx_mcs9_max_nss = 0x88,
+					.rx_tx_mcs11_max_nss = 0x88,
+					.rx_tx_mcs13_max_nss = 0x88,
+				},
+				.bw._320 = {
+					.rx_tx_mcs9_max_nss = 0x88,
+					.rx_tx_mcs11_max_nss = 0x88,
+					.rx_tx_mcs13_max_nss = 0x88,
+				},
+			},
+			/* PPE threshold information is not supported */
+		},
 	},
 #ifdef CPTCFG_MAC80211_MESH
 	{
@@ -3408,22 +3477,22 @@ static const struct ieee80211_sband_iftype_data he_capa_6ghz[] = {
 #endif
 };
 
-static void mac80211_hwsim_he_capab(struct ieee80211_supported_band *sband)
+static void mac80211_hwsim_sband_capab(struct ieee80211_supported_band *sband)
 {
 	u16 n_iftype_data;
 
 	if (sband->band == NL80211_BAND_2GHZ) {
-		n_iftype_data = ARRAY_SIZE(he_capa_2ghz);
+		n_iftype_data = ARRAY_SIZE(sband_capa_2ghz);
 		sband->iftype_data =
-			(struct ieee80211_sband_iftype_data *)he_capa_2ghz;
+			(struct ieee80211_sband_iftype_data *)sband_capa_2ghz;
 	} else if (sband->band == NL80211_BAND_5GHZ) {
-		n_iftype_data = ARRAY_SIZE(he_capa_5ghz);
+		n_iftype_data = ARRAY_SIZE(sband_capa_5ghz);
 		sband->iftype_data =
-			(struct ieee80211_sband_iftype_data *)he_capa_5ghz;
+			(struct ieee80211_sband_iftype_data *)sband_capa_5ghz;
 	} else if (sband->band == NL80211_BAND_6GHZ) {
-		n_iftype_data = ARRAY_SIZE(he_capa_6ghz);
+		n_iftype_data = ARRAY_SIZE(sband_capa_6ghz);
 		sband->iftype_data =
-			(struct ieee80211_sband_iftype_data *)he_capa_6ghz;
+			(struct ieee80211_sband_iftype_data *)sband_capa_6ghz;
 	} else {
 		return;
 	}
@@ -3736,9 +3805,7 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
 			continue;
 		}
 
-		switch (band) {
-		case NL80211_BAND_2GHZ:
-		case NL80211_BAND_5GHZ:
+		if (band != NL80211_BAND_6GHZ){
 			sband->ht_cap.ht_supported = true;
 			sband->ht_cap.cap = IEEE80211_HT_CAP_SUP_WIDTH_20_40 |
 					    IEEE80211_HT_CAP_GRN_FLD |
@@ -3751,14 +3818,10 @@ static int mac80211_hwsim_new_radio(struct genl_info *info,
 			       sizeof(sband->ht_cap.mcs));
 			sband->ht_cap.mcs.rx_mask[0] = 0xff;
 			sband->ht_cap.mcs.rx_mask[1] = 0xff;
-			sband->ht_cap.mcs.tx_params =
-				IEEE80211_HT_MCS_TX_DEFINED;
-			break;
-		default:
-			break;
+			sband->ht_cap.mcs.tx_params = IEEE80211_HT_MCS_TX_DEFINED;
 		}
 
-		mac80211_hwsim_he_capab(sband);
+		mac80211_hwsim_sband_capab(sband);
 
 		hw->wiphy->bands[band] = sband;
 	}
@@ -4090,6 +4153,10 @@ static int hwsim_tx_info_frame_received_nl(struct sk_buff *skb_2,
 		}
 		txi->flags |= IEEE80211_TX_STAT_ACK;
 	}
+
+	if (hwsim_flags & HWSIM_TX_CTL_NO_ACK)
+		txi->flags |= IEEE80211_TX_STAT_NOACK_TRANSMITTED;
+
 	ieee80211_tx_status_irqsafe(data2->hw, skb);
 	return 0;
 out:
@@ -4827,7 +4894,7 @@ static void remove_vqs(struct virtio_device *vdev)
 {
 	int i;
 
-	vdev->config->reset(vdev);
+	virtio_reset_device(vdev);
 
 	for (i = 0; i < ARRAY_SIZE(hwsim_vqs); i++) {
 		struct virtqueue *vq = hwsim_vqs[i];

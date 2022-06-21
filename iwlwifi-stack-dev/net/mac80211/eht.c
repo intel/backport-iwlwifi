@@ -2,7 +2,7 @@
 /*
  * EHT handling
  *
- * Copyright(c) 2021 Intel Corporation
+ * Copyright(c) 2021-2022 Intel Corporation
  */
 
 #include "ieee80211_i.h"
@@ -34,15 +34,24 @@ ieee80211_eht_cap_ie_to_sta_eht_cap(struct ieee80211_sub_if_data *sdata,
 	eht_total_size += mcs_nss_size;
 
 	/* Calculate the PPE thresholds length only if the header is present */
-	if (eht_total_size + sizeof(u16) < eht_cap_len)
-		eht_ppe_size =
-			ieee80211_eht_ppe_size(eht_cap_ie_elem->optional[mcs_nss_size],
-					       eht_cap_ie_elem->fixed.phy_cap_info);
-	else if ((eht_cap_ie_elem->fixed.phy_cap_info[5] &
-		  IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT))
-		return;
+	if (eht_cap_ie_elem->fixed.phy_cap_info[5] &
+			IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT) {
+		u16 eht_ppe_hdr;
 
-	eht_total_size += eht_ppe_size;
+		if (eht_cap_len < eht_total_size + sizeof(u16))
+			return;
+
+		eht_ppe_hdr = get_unaligned_le16(eht_cap_ie_elem->optional + mcs_nss_size);
+		eht_ppe_size =
+			ieee80211_eht_ppe_size(eht_ppe_hdr,
+					       eht_cap_ie_elem->fixed.phy_cap_info);
+		eht_total_size += eht_ppe_size;
+
+		/* we calculate as if NSS > 8 are valid, but don't handle that */
+		if (eht_ppe_size > sizeof(eht_cap->eht_ppe_thres))
+			return;
+	}
+
 	if (eht_cap_len < eht_total_size)
 		return;
 
@@ -51,36 +60,11 @@ ieee80211_eht_cap_ie_to_sta_eht_cap(struct ieee80211_sub_if_data *sdata,
 	pos += sizeof(eht_cap->eht_cap_elem);
 
 	/* Copy MCS/NSS which depends on the peer capabilities */
-	if (!(he_cap_ie_elem->phy_cap_info[0] &
-	      IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_MASK_ALL)) {
-		memcpy(&eht_cap->eht_mcs_nss_supp.only_20mhz, pos,
-		       sizeof(eht_cap->eht_mcs_nss_supp.only_20mhz));
-		pos += 4;
-	} else {
-		if (he_cap_ie_elem->phy_cap_info[0] &
-		    IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_80MHZ_IN_5G) {
-			memcpy(&eht_cap->eht_mcs_nss_supp.bw_80, pos,
-			       sizeof(eht_cap->eht_mcs_nss_supp.bw_80));
-			pos += 3;
-		}
+	memset(&eht_cap->eht_mcs_nss_supp, 0,
+	       sizeof(eht_cap->eht_mcs_nss_supp));
+	memcpy(&eht_cap->eht_mcs_nss_supp, pos, mcs_nss_size);
 
-		if (he_cap_ie_elem->phy_cap_info[0] &
-		    IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_160MHZ_IN_5G) {
-			memcpy(&eht_cap->eht_mcs_nss_supp.bw_160, pos,
-			       sizeof(eht_cap->eht_mcs_nss_supp.bw_160));
-			pos += 3;
-		}
-
-		if (eht_cap_ie_elem->fixed.phy_cap_info[0] &
-		    IEEE80211_EHT_PHY_CAP0_320MHZ_IN_6GHZ) {
-			memcpy(&eht_cap->eht_mcs_nss_supp.bw_320, pos,
-			       sizeof(eht_cap->eht_mcs_nss_supp.bw_320));
-			pos += 3;
-		}
-	}
-
-	if (eht_cap->eht_cap_elem.phy_cap_info[5] &
-	    IEEE80211_EHT_PHY_CAP5_PPE_THRESHOLD_PRESENT)
+	if (eht_ppe_size)
 		memcpy(eht_cap->eht_ppe_thres,
 		       &eht_cap_ie_elem->optional[mcs_nss_size],
 		       eht_ppe_size);

@@ -166,3 +166,18 @@ config IWLWIFI_DONT_DUMP_FIFOS
 	help
 	  If enabled, instruct the driver to not dump FIFO regions as
 	  they may contain PII.
+
+config IWLWIFI_IPU_SECURITY_FIX
+	bool "enable IPU security fixes"
+	default n
+	help
+	  If enabled, IPU fixes will be included in compilation for
+	  testing security code changes.
+
+config IWLWIFI_PRE_IPU_SECURITY_FIX
+	bool "enable pre IPU security fixes"
+	default n
+	depends on IWLWIFI_IPU_SECURITY_FIX
+	help
+	  If enabled, pre IPU fixes will be included in compilation for
+	  testing security code changes.

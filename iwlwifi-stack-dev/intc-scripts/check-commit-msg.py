@@ -52,7 +52,8 @@ def run_checkpatch(output_dir, http_root):
     p = subprocess.Popen(["./intc-scripts/checkpatch.pl", "--no-tree",
                           "--strict", "--ignore=%s" % ','.join(ignore), "-"],
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                         stdin=subprocess.PIPE, universal_newlines=True)
+                         stdin=subprocess.PIPE, universal_newlines=True,
+                         encoding='utf-8')
     stdout = p.communicate(c)[0]
     p.wait()
     f = open(os.path.join(output_dir, 'checkpatch.log'), 'w')
@@ -185,7 +186,8 @@ def check_internal_names():
         return line
 
     p = subprocess.Popen(["git", "format-patch", "--stdout", "HEAD~1.."],
-                         stdout=subprocess.PIPE, universal_newlines=True)
+                         stdout=subprocess.PIPE, universal_newlines=True,
+                         encoding='utf-8')
     msg_and_diff = p.communicate()[0]
     p.wait()
     msg_found = set()

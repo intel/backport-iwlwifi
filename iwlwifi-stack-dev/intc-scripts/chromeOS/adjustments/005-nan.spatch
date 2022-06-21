@@ -1,16 +1,6 @@
 @@
 expression E;
 @@
-switch (E) {
-+#if CFG80211_VERSION >= KERNEL_VERSION(4,4,0)
-case NL80211_IFTYPE_NAN:
-+/* keep code in case of fall-through (spatch generated) */
-+#endif
-}
-
-@@
-expression E;
-@@
 -E == NL80211_IFTYPE_NAN
 +ieee80211_viftype_nan(E)
 

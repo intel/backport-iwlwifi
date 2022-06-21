@@ -129,6 +129,7 @@ EXPORT_SYMBOL_GPL(bp_key_create_or_update);
 struct key *find_asymmetric_key(struct key *keyring,
 				const struct asymmetric_key_id *id_0,
 				const struct asymmetric_key_id *id_1,
+				const struct asymmetric_key_id *id_2,
 				bool partial)
 {
 	struct key *key;

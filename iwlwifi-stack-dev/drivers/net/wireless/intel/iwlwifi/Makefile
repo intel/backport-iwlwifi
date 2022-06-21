@@ -49,8 +49,7 @@ subdir-ccflags-$(CPTCFG_IWLWIFI_SIMULATION) += $(call cc-option,-Wpointer-arith)
 
 obj-$(CPTCFG_IWLDVM)	+= dvm/
 obj-$(CPTCFG_IWLMVM)	+= mvm/
-obj-$(CPTCFG_IWLXVT)	+= xvt/
-
 obj-$(CPTCFG_IWLMEI)	+= mei/
+obj-$(CPTCFG_IWLXVT)	+= xvt/
 
 CFLAGS_iwl-devtrace.o := -I$(src)
