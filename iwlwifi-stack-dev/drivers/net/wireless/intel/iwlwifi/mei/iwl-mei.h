@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (C) 2021 - 2022 Intel Corporation
  */
@@ -13,7 +13,7 @@
 /**
  * DOC: Introduction
  *
- * iwlmei is the kernel module that is in charge of the commnunication between
+ * iwlmei is the kernel module that is in charge of the communication between
  * the iwlwifi driver and the CSME firmware's WLAN driver. This communication
  * uses the SAP protocol defined in another file.
  * iwlwifi can request or release ownership on the WiFi device through iwlmei.
@@ -220,6 +220,7 @@ struct iwl_mei_nvm {
 /**
  * enum iwl_mei_pairwise_cipher - cipher for UCAST key
  * @IWL_MEI_CIPHER_NONE: none
+ * @IWL_MEI_CIPHER_TKIP: tkip
  * @IWL_MEI_CIPHER_CCMP: ccmp
  * @IWL_MEI_CIPHER_GCMP: gcmp
  * @IWL_MEI_CIPHER_GCMP_256: gcmp 256
@@ -228,6 +229,7 @@ struct iwl_mei_nvm {
  */
 enum iwl_mei_pairwise_cipher {
 	IWL_MEI_CIPHER_NONE	= 0,
+	IWL_MEI_CIPHER_TKIP	= 2,
 	IWL_MEI_CIPHER_CCMP	= 4,
 	IWL_MEI_CIPHER_GCMP	= 8,
 	IWL_MEI_CIPHER_GCMP_256 = 9,
@@ -346,7 +348,7 @@ void iwl_mei_set_rfkill_state(bool hw_rfkill, bool sw_rfkill);
 /**
  * iwl_mei_set_nic_info() - set mac address
  * @mac_address: mac address to set
- * @nvm_address: NVM mac adsress to set
+ * @nvm_address: NVM mac address to set
  *
  * This function must be called upon mac address change.
  */
@@ -446,9 +448,10 @@ void iwl_mei_host_associated(const struct iwl_mei_conn_info *conn_info,
 void iwl_mei_host_disassociated(void);
 
 /**
- * iwl_mei_device_down() - must be called when the device is down
+ * iwl_mei_device_state() - must be called when the device changes up/down state
+ * @up: true if the device is up, false otherwise.
  */
-void iwl_mei_device_down(void);
+void iwl_mei_device_state(bool up);
 
 #else
 
@@ -497,7 +500,7 @@ static inline void iwl_mei_host_associated(const struct iwl_mei_conn_info *conn_
 static inline void iwl_mei_host_disassociated(void)
 {}
 
-static inline void iwl_mei_device_down(void)
+static inline void iwl_mei_device_state(bool up)
 {}
 
 #endif /* CPTCFG_IWLMEI */

@@ -245,7 +245,7 @@ static void iwl_mvm_allow_uapsd_iterator(void *_data, u8 *mac,
 		/* allow UAPSD if P2P interface and BSS station interface share
 		 * the same channel.
 		 */
-		if (vif->bss_conf.assoc && other_mvmvif->phy_ctxt &&
+		if (vif->cfg.assoc && other_mvmvif->phy_ctxt &&
 		    curr_mvmvif->phy_ctxt &&
 		    (other_mvmvif->phy_ctxt->id != curr_mvmvif->phy_ctxt->id))
 			data->allow_uapsd = false;
@@ -296,7 +296,7 @@ static bool iwl_mvm_power_is_radar(struct ieee80211_vif *vif)
 	bool radar_detect = false;
 
 	rcu_read_lock();
-	chanctx_conf = rcu_dereference(vif->chanctx_conf);
+	chanctx_conf = rcu_dereference(vif->bss_conf.chanctx_conf);
 	WARN_ON(!chanctx_conf);
 	if (chanctx_conf) {
 		chan = chanctx_conf->def.chan;

@@ -59,3 +59,7 @@ $(obj)/extra-certs.c: $(CPTCFG_CFG80211_EXTRA_REGDB_KEYDIR:"%"=%) \
 	  ) > $@)
 
 clean-files += shipped-certs.c extra-certs.c
+
+ifeq ($(CPTCFG_IWLWIFI_SIMULATION),y)
+UBSAN_SANITIZE := y
+endif

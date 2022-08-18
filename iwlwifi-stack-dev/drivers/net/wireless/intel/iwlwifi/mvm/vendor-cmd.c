@@ -90,17 +90,6 @@ iwl_mvm_vendor_attr_policy[NUM_IWL_MVM_VENDOR_ATTR] = {
 	[IWL_MVM_VENDOR_ATTR_RFIM_FREQ]		    = { .type = NLA_U32 },
 	[IWL_MVM_VENDOR_ATTR_RFIM_CHANNELS]	    = { .type = NLA_U32 },
 	[IWL_MVM_VENDOR_ATTR_RFIM_BANDS]	    = { .type = NLA_U32 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE] = { .type = NLA_U32 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN] = { .type = NLA_U32 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1] = { .type = NLA_U64 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR] = { .type = NLA_U32 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4] = { .type = NLA_U64 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR] = { .type = NLA_U32 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN] = { .type = NLA_U32 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2] = { .type = NLA_U64 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR] = { .type = NLA_U32 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3] = { .type = NLA_U64 },
-	[IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR] = { .type = NLA_U32 },
 	[IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN] = { .type = NLA_U8 },
 	[IWL_MVM_VENDOR_ATTR_AUTH_MODE] = { .type = NLA_U32 },
 	[IWL_MVM_VENDOR_ATTR_CHANNEL_NUM] = { .type = NLA_U8 },
@@ -1621,59 +1610,6 @@ static int iwl_mvm_vendor_remove_pasn_sta(struct wiphy *wiphy,
 	return ret;
 }
 
-static int iwl_mvm_time_sync_measurement_config(struct wiphy *wiphy,
-						struct wireless_dev *wdev,
-						const void *data, int data_len)
-{
-	struct nlattr **tb;
-	struct ieee80211_hw *hw = wiphy_to_ieee80211_hw(wiphy);
-	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	struct iwl_time_sync_cfg_cmd cmd = {};
-	u32 protocol_types;
-	int err;
-
-	tb = iwl_mvm_parse_vendor_data(data, data_len);
-	if (IS_ERR(tb))
-		return PTR_ERR(tb);
-
-	if (!tb[IWL_MVM_VENDOR_ATTR_ADDR] ||
-	    !tb[IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE])
-		return -EINVAL;
-
-	ether_addr_copy(cmd.peer_addr, nla_data(tb[IWL_MVM_VENDOR_ATTR_ADDR]));
-
-	protocol_types = nla_get_u32(tb[IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE]);
-
-	/* Check if the requested configuration was already set earlier */
-	if (protocol_types == mvm->time_msmt_cfg)
-		return -EALREADY;
-
-	if (protocol_types <= (IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_TM |
-			      IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_FTM))
-		cmd.protocols = cpu_to_le32(protocol_types);
-	else
-		return -EINVAL;
-
-	mutex_lock(&mvm->mutex);
-	err = iwl_mvm_send_cmd_pdu(mvm,
-				   WIDE_ID(DATA_PATH_GROUP,
-					   WNM_80211V_TIMING_MEASUREMENT_CONFIG_CMD),
-				   0, sizeof(cmd), &cmd);
-	mutex_unlock(&mvm->mutex);
-
-	if (err) {
-		IWL_ERR(mvm, "Failed to send TM/FTM Measurement cfg cmd: %d\n", err);
-		return err;
-	}
-
-	/* Save the changed time sync measurement configuration */
-	mvm->time_msmt_cfg = protocol_types;
-	ether_addr_copy(mvm->time_msmt_peer_addr, cmd.peer_addr);
-	mvm->time_sync_wdev = wdev;
-
-	return 0;
-}
-
 static int iwl_mvm_vendor_get_csme_conn_info(struct wiphy *wiphy,
 					     struct wireless_dev *wdev,
 					     const void *data, int data_len)
@@ -2011,17 +1947,6 @@ static const struct wiphy_vendor_command iwl_mvm_vendor_commands[] = {
 	{
 		.info = {
 			.vendor_id = INTEL_OUI,
-			.subcmd = IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG,
-		},
-		.flags = WIPHY_VENDOR_CMD_NEED_WDEV |
-			 WIPHY_VENDOR_CMD_NEED_RUNNING,
-		.doit = iwl_mvm_time_sync_measurement_config,
-		.policy = iwl_mvm_vendor_attr_policy,
-		.maxattr = MAX_IWL_MVM_VENDOR_ATTR,
-	},
-	{
-		.info = {
-			.vendor_id = INTEL_OUI,
 			.subcmd = IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO,
 		},
 		.doit = iwl_mvm_vendor_get_csme_conn_info,
@@ -2055,14 +1980,6 @@ iwl_mvm_vendor_events[NUM_IWL_MVM_VENDOR_EVENT_IDX] = {
 	[IWL_MVM_VENDOR_EVENT_IDX_CSI] = {
 		.vendor_id = INTEL_OUI,
 		.subcmd = IWL_MVM_VENDOR_CMD_CSI_EVENT,
-	},
-	[IWL_MVM_VENDOR_EVENT_IDX_TSM_CFM] = {
-		.vendor_id = INTEL_OUI,
-		.subcmd = IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT,
-	},
-	[IWL_MVM_VENDOR_EVENT_IDX_TSM_MSMT] = {
-		.vendor_id = INTEL_OUI,
-		.subcmd = IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT,
 	},
 	[IWL_MVM_VENDOR_EVENT_IDX_ROAMING_FORBIDDEN] = {
 		.vendor_id = INTEL_OUI,
@@ -2132,140 +2049,6 @@ iwl_mvm_send_csi_event(struct iwl_mvm *mvm,
 	return;
 
  nla_put_failure:
-	kfree_skb(msg);
-}
-
-static inline u64 iwl_mvm_get_64_bit(u32 high, u32 low)
-{
-	return ((u64)high << 32) | low;
-}
-
-void iwl_mvm_time_sync_msmt_confirm_event(struct iwl_mvm *mvm,
-					  struct iwl_rx_cmd_buffer *rxb)
-{
-	struct iwl_rx_packet *pkt = rxb_addr(rxb);
-	struct iwl_time_msmt_cfm_notify *cfm_notify = (void *)pkt->data;
-	u64 t1;
-	u64 t4;
-
-	struct sk_buff *msg =
-		cfg80211_vendor_event_alloc(mvm->hw->wiphy, mvm->time_sync_wdev,
-					    200,
-					    IWL_MVM_VENDOR_EVENT_IDX_TSM_CFM,
-					    GFP_ATOMIC);
-	if (!msg)
-		return;
-
-	t1 = iwl_mvm_get_64_bit(le32_to_cpu(cfm_notify->t1_hi),
-				le32_to_cpu(cfm_notify->t1_lo));
-	t4 = iwl_mvm_get_64_bit(le32_to_cpu(cfm_notify->t4_hi),
-				le32_to_cpu(cfm_notify->t4_lo));
-
-	if (!t1 || !t4)
-		IWL_WARN(mvm, "TSM CFM: Rx'ed zero timestamp(s), t1:%llu, t4:%llu\n",
-			 t1, t4);
-
-	if (nla_put(msg, IWL_MVM_VENDOR_ATTR_ADDR,
-		    ETH_ALEN, cfm_notify->peer_addr) ||
-		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN,
-			    le32_to_cpu(cfm_notify->dialog_token)) ||
-		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1, t1,
-				  IWL_MVM_VENDOR_ATTR_PAD) ||
-		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR,
-			    le32_to_cpu(cfm_notify->t1_max_err)) ||
-		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4, t4,
-				  IWL_MVM_VENDOR_ATTR_PAD) ||
-		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR,
-			    le32_to_cpu(cfm_notify->t4_max_err))) {
-		goto nla_put_failure;
-	}
-
-	cfg80211_vendor_event(msg, GFP_ATOMIC);
-	return;
-
- nla_put_failure:
-	kfree_skb(msg);
-}
-
-void iwl_mvm_time_sync_msmt_event(struct iwl_mvm *mvm,
-				  struct iwl_rx_cmd_buffer *rxb)
-{
-	struct iwl_rx_packet *pkt = rxb_addr(rxb);
-	struct iwl_time_msmt_notify *msmt_notify = (void *)pkt->data;
-	u64 t1;
-	u64 t4;
-	u64 t2;
-	u64 t3;
-
-	struct sk_buff *msg =
-		cfg80211_vendor_event_alloc(mvm->hw->wiphy, mvm->time_sync_wdev,
-					    200 + PTP_CTX_MAX_DATA_SIZE,
-					    IWL_MVM_VENDOR_EVENT_IDX_TSM_MSMT,
-					    GFP_ATOMIC);
-	if (!msg)
-		return;
-
-	t1 = iwl_mvm_get_64_bit(le32_to_cpu(msmt_notify->t1_hi),
-				le32_to_cpu(msmt_notify->t1_lo));
-	t4 = iwl_mvm_get_64_bit(le32_to_cpu(msmt_notify->t4_hi),
-				le32_to_cpu(msmt_notify->t4_lo));
-	t2 = iwl_mvm_get_64_bit(le32_to_cpu(msmt_notify->t2_hi),
-				le32_to_cpu(msmt_notify->t2_lo));
-	t3 = iwl_mvm_get_64_bit(le32_to_cpu(msmt_notify->t3_hi),
-				le32_to_cpu(msmt_notify->t3_lo));
-
-	if (!t1 || !t4)
-		IWL_WARN(mvm, "TSM MSMT: Rx'ed zero timestamps, t1:%llu, t4:%llu\n",
-			 t1, t4);
-
-	if (!t2 || !t3)
-		IWL_WARN(mvm, "TSM MSMT: Rx'ed zero timestamps, t2:%llu, t3:%llu\n",
-			 t2, t3);
-
-	if (nla_put(msg, IWL_MVM_VENDOR_ATTR_ADDR,
-		    ETH_ALEN, msmt_notify->peer_addr) ||
-		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN,
-			    le32_to_cpu(msmt_notify->dialog_token)) ||
-		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN,
-			    le32_to_cpu(msmt_notify->followup_dialog_token)) ||
-		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1, t1,
-				  IWL_MVM_VENDOR_ATTR_PAD) ||
-		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR,
-			    le32_to_cpu(msmt_notify->t1_max_err)) ||
-		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4, t4,
-				  IWL_MVM_VENDOR_ATTR_PAD) ||
-		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR,
-			    le32_to_cpu(msmt_notify->t4_max_err)) ||
-		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2, t2,
-				  IWL_MVM_VENDOR_ATTR_PAD) ||
-		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR,
-			    le32_to_cpu(msmt_notify->t2_max_err)) ||
-		nla_put_u64_64bit(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3, t3,
-				  IWL_MVM_VENDOR_ATTR_PAD) ||
-		nla_put_u32(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR,
-			    le32_to_cpu(msmt_notify->t3_max_err))) {
-		goto nla_put_failure;
-	}
-
-	if (mvm->time_msmt_cfg == IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_FTM) {
-		if (nla_put(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA,
-			    msmt_notify->ptp.ftm.length, msmt_notify->ptp.ftm.data))
-			goto nla_put_failure;
-	} else if (mvm->time_msmt_cfg == IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_TM) {
-		if (nla_put(msg, IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA,
-			    msmt_notify->ptp.tm.length, msmt_notify->ptp.tm.data))
-			goto nla_put_failure;
-	} else {
-		IWL_WARN(mvm, "TSM MSMT: Unknown protocol config saved %d\n",
-			 mvm->time_msmt_cfg);
-		goto nla_put_failure;
-	}
-
-	cfg80211_vendor_event(msg, GFP_ATOMIC);
-	return;
-
-nla_put_failure:
-	IWL_ERR(mvm, "(%d) TSM MSMT: nla_put failed\n", __LINE__);
 	kfree_skb(msg);
 }
 

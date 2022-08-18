@@ -176,6 +176,13 @@ struct rtnl_link_stats64 *
 bp_dev_get_tstats64(struct net_device *dev, struct rtnl_link_stats64 *s);
 #endif /* < 4.11 */
 
+#if LINUX_VERSION_IN_RANGE(4,6,0, 5,15,0)
+#define get_user_ifreq LINUX_BACKPORT(get_user_ifreq)
+int get_user_ifreq(struct ifreq *ifr, void __user **ifrdata, void __user *arg);
+#define put_user_ifreq LINUX_BACKPORT(put_user_ifreq)
+int put_user_ifreq(struct ifreq *ifr, void __user *arg);
+#endif
+
 #if LINUX_VERSION_IS_LESS(5,15,0)
 static inline void backport_dev_put(struct net_device *dev)
 {
@@ -246,5 +253,22 @@ struct net_device_path_ctx {
 	} vlan[NET_DEVICE_PATH_VLAN_MAX];
 };
 #endif /* NET_DEVICE_PATH_STACK_MAX */
+
+#if LINUX_VERSION_IS_LESS(5,18,0)
+static inline int LINUX_BACKPORT(netif_rx)(struct sk_buff *skb)
+{
+	bool need_bh_off = !(hardirq_count() | softirq_count());
+	int ret;
+
+	if (need_bh_off)
+		local_bh_disable();
+	ret = netif_rx(skb);
+	if (need_bh_off)
+		local_bh_enable();
+
+	return ret;
+}
+#define netif_rx LINUX_BACKPORT(netif_rx)
+#endif /* < 5.18.0 */
 
 #endif /* __BACKPORT_NETDEVICE_H */

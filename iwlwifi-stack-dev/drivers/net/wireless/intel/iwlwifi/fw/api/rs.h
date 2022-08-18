@@ -439,9 +439,6 @@ enum {
 
 /* Bit 4-5: (0) SISO, (1) MIMO2 (2) MIMO3 */
 #define RATE_VHT_MCS_RATE_CODE_MSK	0xf
-#define RATE_VHT_MCS_NSS_POS		4
-#define RATE_VHT_MCS_NSS_MSK		(3 << RATE_VHT_MCS_NSS_POS)
-#define RATE_VHT_MCS_MIMO2_MSK		BIT(RATE_VHT_MCS_NSS_POS)
 
 /*
  * Legacy OFDM rate format for bits 7:0
@@ -515,11 +512,16 @@ enum {
  *	1			2xLTF+0.8us
  *	2			2xLTF+1.6us
  *	3			4xLTF+3.2us
- * HE TRIG:
+ * HE-EHT TRIG:
  *	0			1xLTF+1.6us
  *	1			2xLTF+1.6us
  *	2			4xLTF+3.2us
  *	3			(does not occur)
+ * EHT MU:
+ *	0			2xLTF+0.8us
+ *	1			2xLTF+1.6us
+ *	2			4xLTF+0.8us
+ *	3			4xLTF+3.2us
  */
 #define RATE_MCS_HE_GI_LTF_POS		20
 #define RATE_MCS_HE_GI_LTF_MSK_V1		(3 << RATE_MCS_HE_GI_LTF_POS)

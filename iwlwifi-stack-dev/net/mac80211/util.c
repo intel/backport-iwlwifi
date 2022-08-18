@@ -1566,7 +1566,7 @@ void ieee80211_regulatory_limit_wmm_params(struct ieee80211_sub_if_data *sdata,
 		return;
 
 	rcu_read_lock();
-	chanctx_conf = rcu_dereference(sdata->vif.chanctx_conf);
+	chanctx_conf = rcu_dereference(sdata->vif.bss_conf.chanctx_conf);
 	if (chanctx_conf)
 		center_freq = chanctx_conf->def.chan->center_freq;
 
@@ -1613,7 +1613,7 @@ void ieee80211_set_wmm_default(struct ieee80211_sub_if_data *sdata,
 	memset(&qparam, 0, sizeof(qparam));
 
 	rcu_read_lock();
-	chanctx_conf = rcu_dereference(sdata->vif.chanctx_conf);
+	chanctx_conf = rcu_dereference(sdata->vif.bss_conf.chanctx_conf);
 	use_11b = (chanctx_conf &&
 		   chanctx_conf->def.chan->band == NL80211_BAND_2GHZ) &&
 		 !(sdata->flags & IEEE80211_SDATA_OPERATING_GMODE);
@@ -1699,8 +1699,8 @@ void ieee80211_set_wmm_default(struct ieee80211_sub_if_data *sdata,
 	    sdata->vif.type != NL80211_IFTYPE_NAN) {
 		sdata->vif.bss_conf.qos = enable_qos;
 		if (bss_notify)
-			ieee80211_bss_info_change_notify(sdata,
-							 BSS_CHANGED_QOS);
+			ieee80211_link_info_change_notify(sdata, 0,
+							  BSS_CHANGED_QOS);
 	}
 }
 
@@ -2256,7 +2256,8 @@ static void ieee80211_handle_reconfig_failure(struct ieee80211_local *local)
 }
 
 static void ieee80211_assign_chanctx(struct ieee80211_local *local,
-				     struct ieee80211_sub_if_data *sdata)
+				     struct ieee80211_sub_if_data *sdata,
+				     unsigned int link_id)
 {
 	struct ieee80211_chanctx_conf *conf;
 	struct ieee80211_chanctx *ctx;
@@ -2265,11 +2266,11 @@ static void ieee80211_assign_chanctx(struct ieee80211_local *local,
 		return;
 
 	mutex_lock(&local->chanctx_mtx);
-	conf = rcu_dereference_protected(sdata->vif.chanctx_conf,
+	conf = rcu_dereference_protected(sdata->vif.link_conf[link_id]->chanctx_conf,
 					 lockdep_is_held(&local->chanctx_mtx));
 	if (conf) {
 		ctx = container_of(conf, struct ieee80211_chanctx, conf);
-		drv_assign_vif_chanctx(local, sdata, ctx);
+		drv_assign_vif_chanctx(local, sdata, link_id, ctx);
 	}
 	mutex_unlock(&local->chanctx_mtx);
 }
@@ -2348,6 +2349,7 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 	struct cfg80211_sched_scan_request *sched_scan_req;
 	bool sched_scan_stopped = false;
 	bool suspended = local->suspended;
+	bool in_reconfig = false;
 
 	/* nothing to do if HW shouldn't run */
 	if (!local->open_count)
@@ -2474,7 +2476,7 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 		sdata = wiphy_dereference(local->hw.wiphy,
 					  local->monitor_sdata);
 		if (sdata && ieee80211_sdata_running(sdata))
-			ieee80211_assign_chanctx(local, sdata);
+			ieee80211_assign_chanctx(local, sdata, 0);
 	}
 
 	/* reconfigure hardware */
@@ -2484,19 +2486,23 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 
 	/* Finally also reconfigure all the BSS information */
 	list_for_each_entry(sdata, &local->interfaces, list) {
+		unsigned int link;
 		u32 changed;
 
 		if (!ieee80211_sdata_running(sdata))
 			continue;
 
-		ieee80211_assign_chanctx(local, sdata);
+		for (link = 0; link < ARRAY_SIZE(sdata->vif.link_conf); link++) {
+			if (sdata->vif.link_conf[link])
+				ieee80211_assign_chanctx(local, sdata, link);
+		}
 
 		switch (sdata->vif.type) {
 		case NL80211_IFTYPE_AP_VLAN:
 		case NL80211_IFTYPE_MONITOR:
 			break;
 		case NL80211_IFTYPE_ADHOC:
-			if (sdata->vif.bss_conf.ibss_joined)
+			if (sdata->vif.cfg.ibss_joined)
 				WARN_ON(drv_join_ibss(local, sdata));
 			fallthrough;
 		default:
@@ -2523,7 +2529,7 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 			  BSS_CHANGED_TXPOWER |
 			  BSS_CHANGED_MCAST_RATE;
 
-		if (sdata->vif.mu_mimo_owner)
+		if (sdata->vif.bss_conf.mu_mimo_owner)
 			changed |= BSS_CHANGED_MU_GROUPS;
 
 		switch (sdata->vif.type) {
@@ -2533,7 +2539,7 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 				   BSS_CHANGED_PS;
 
 			/* Re-send beacon info report to the driver */
-			if (sdata->u.mgd.have_beacon)
+			if (sdata->deflink.u.mgd.have_beacon)
 				changed |= BSS_CHANGED_BEACON_INFO;
 
 			if (sdata->vif.bss_conf.max_idle_period ||
@@ -2565,7 +2571,7 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 			if (sdata->vif.type == NL80211_IFTYPE_AP) {
 				changed |= BSS_CHANGED_AP_PROBE_RESP;
 
-				if (rcu_access_pointer(sdata->u.ap.beacon))
+				if (rcu_access_pointer(sdata->deflink.u.ap.beacon))
 					drv_start_ap(local, sdata);
 			}
 			fallthrough;
@@ -2702,6 +2708,7 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 		drv_reconfig_complete(local, IEEE80211_RECONFIG_TYPE_RESTART);
 
 	if (local->in_reconfig) {
+		in_reconfig = local->in_reconfig;
 		local->in_reconfig = false;
 		barrier();
 
@@ -2718,6 +2725,15 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 	ieee80211_wake_queues_by_reason(hw, IEEE80211_MAX_QUEUE_MAP,
 					IEEE80211_QUEUE_STOP_REASON_SUSPEND,
 					false);
+
+	if (in_reconfig) {
+		list_for_each_entry(sdata, &local->interfaces, list) {
+			if (!ieee80211_sdata_running(sdata))
+				continue;
+			if (sdata->vif.type == NL80211_IFTYPE_STATION)
+				ieee80211_sta_restart(sdata);
+		}
+	}
 
 	if (!suspended)
 		return 0;
@@ -2748,7 +2764,7 @@ int ieee80211_reconfig(struct ieee80211_local *local)
 	return 0;
 }
 
-void ieee80211_resume_disconnect(struct ieee80211_vif *vif)
+static void ieee80211_reconfig_disconnect(struct ieee80211_vif *vif, u8 flag)
 {
 	struct ieee80211_sub_if_data *sdata;
 	struct ieee80211_local *local;
@@ -2760,22 +2776,39 @@ void ieee80211_resume_disconnect(struct ieee80211_vif *vif)
 	sdata = vif_to_sdata(vif);
 	local = sdata->local;
 
-	if (WARN_ON(!local->resuming))
+	if (WARN_ON(flag & IEEE80211_SDATA_DISCONNECT_RESUME &&
+		    !local->resuming))
+		return;
+
+	if (WARN_ON(flag & IEEE80211_SDATA_DISCONNECT_HW_RESTART &&
+		    !local->in_reconfig))
 		return;
 
 	if (WARN_ON(vif->type != NL80211_IFTYPE_STATION))
 		return;
 
-	sdata->flags |= IEEE80211_SDATA_DISCONNECT_RESUME;
+	sdata->flags |= flag;
 
 	mutex_lock(&local->key_mtx);
 	list_for_each_entry(key, &sdata->key_list, list)
 		key->flags |= KEY_FLAG_TAINTED;
 	mutex_unlock(&local->key_mtx);
 }
+
+void ieee80211_hw_restart_disconnect(struct ieee80211_vif *vif)
+{
+	ieee80211_reconfig_disconnect(vif, IEEE80211_SDATA_DISCONNECT_HW_RESTART);
+}
+EXPORT_SYMBOL_GPL(ieee80211_hw_restart_disconnect);
+
+void ieee80211_resume_disconnect(struct ieee80211_vif *vif)
+{
+	ieee80211_reconfig_disconnect(vif, IEEE80211_SDATA_DISCONNECT_RESUME);
+}
 EXPORT_SYMBOL_GPL(ieee80211_resume_disconnect);
 
-void ieee80211_recalc_smps(struct ieee80211_sub_if_data *sdata)
+void ieee80211_recalc_smps(struct ieee80211_sub_if_data *sdata,
+			   unsigned int link_id)
 {
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_chanctx_conf *chanctx_conf;
@@ -2783,8 +2816,8 @@ void ieee80211_recalc_smps(struct ieee80211_sub_if_data *sdata)
 
 	mutex_lock(&local->chanctx_mtx);
 
-	chanctx_conf = rcu_dereference_protected(sdata->vif.chanctx_conf,
-					lockdep_is_held(&local->chanctx_mtx));
+	chanctx_conf = rcu_dereference_protected(sdata->vif.link_conf[link_id]->chanctx_conf,
+						 lockdep_is_held(&local->chanctx_mtx));
 
 	/*
 	 * This function can be called from a work, thus it may be possible
@@ -2809,8 +2842,8 @@ void ieee80211_recalc_min_chandef(struct ieee80211_sub_if_data *sdata)
 
 	mutex_lock(&local->chanctx_mtx);
 
-	chanctx_conf = rcu_dereference_protected(sdata->vif.chanctx_conf,
-					lockdep_is_held(&local->chanctx_mtx));
+	chanctx_conf = rcu_dereference_protected(sdata->vif.bss_conf.chanctx_conf,
+						 lockdep_is_held(&local->chanctx_mtx));
 
 	if (WARN_ON_ONCE(!chanctx_conf))
 		goto unlock;
@@ -2830,46 +2863,6 @@ size_t ieee80211_ie_split_vendor(const u8 *ies, size_t ielen, size_t offset)
 
 	return pos;
 }
-
-static void _ieee80211_enable_rssi_reports(struct ieee80211_sub_if_data *sdata,
-					    int rssi_min_thold,
-					    int rssi_max_thold)
-{
-	trace_api_enable_rssi_reports(sdata, rssi_min_thold, rssi_max_thold);
-
-	if (WARN_ON(sdata->vif.type != NL80211_IFTYPE_STATION))
-		return;
-
-	/*
-	 * Scale up threshold values before storing it, as the RSSI averaging
-	 * algorithm uses a scaled up value as well. Change this scaling
-	 * factor if the RSSI averaging algorithm changes.
-	 */
-	sdata->u.mgd.rssi_min_thold = rssi_min_thold*16;
-	sdata->u.mgd.rssi_max_thold = rssi_max_thold*16;
-}
-
-void ieee80211_enable_rssi_reports(struct ieee80211_vif *vif,
-				    int rssi_min_thold,
-				    int rssi_max_thold)
-{
-	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
-
-	WARN_ON(rssi_min_thold == rssi_max_thold ||
-		rssi_min_thold > rssi_max_thold);
-
-	_ieee80211_enable_rssi_reports(sdata, rssi_min_thold,
-				       rssi_max_thold);
-}
-EXPORT_SYMBOL(ieee80211_enable_rssi_reports);
-
-void ieee80211_disable_rssi_reports(struct ieee80211_vif *vif)
-{
-	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
-
-	_ieee80211_enable_rssi_reports(sdata, 0, 0);
-}
-EXPORT_SYMBOL(ieee80211_disable_rssi_reports);
 
 u8 *ieee80211_ie_build_ht_cap(u8 *pos, struct ieee80211_sta_ht_cap *ht_cap,
 			      u16 cap)
@@ -3058,7 +3051,7 @@ void ieee80211_ie_build_he_6ghz_cap(struct ieee80211_sub_if_data *sdata,
 	cap = le16_to_cpu(iftd->he_6ghz_capa.capa);
 	cap &= ~IEEE80211_HE_6GHZ_CAP_SM_PS;
 
-	switch (sdata->smps_mode) {
+	switch (sdata->deflink.smps_mode) {
 	case IEEE80211_SMPS_AUTOMATIC:
 	case IEEE80211_SMPS_NUM_MODES:
 		WARN_ON(1);
@@ -3328,7 +3321,6 @@ bool ieee80211_chandef_ht_oper(const struct ieee80211_ht_operation *ht_oper,
 		channel_type = NL80211_CHAN_HT40MINUS;
 		break;
 	default:
-		channel_type = NL80211_CHAN_NO_HT;
 		return false;
 	}
 
@@ -3793,13 +3785,11 @@ int ieee80211_add_ext_srates_ie(struct ieee80211_sub_if_data *sdata,
 int ieee80211_ave_rssi(struct ieee80211_vif *vif)
 {
 	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
-	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 
-	if (WARN_ON_ONCE(sdata->vif.type != NL80211_IFTYPE_STATION)) {
-		/* non-managed type inferfaces */
+	if (WARN_ON_ONCE(sdata->vif.type != NL80211_IFTYPE_STATION))
 		return 0;
-	}
-	return -ewma_beacon_signal_read(&ifmgd->ave_beacon_signal);
+
+	return -ewma_beacon_signal_read(&sdata->deflink.u.mgd.ave_beacon_signal);
 }
 EXPORT_SYMBOL_GPL(ieee80211_ave_rssi);
 
@@ -4004,11 +3994,11 @@ void ieee80211_dfs_cac_cancel(struct ieee80211_local *local)
 		 * by the time it gets it, sdata->wdev.cac_started
 		 * will no longer be true
 		 */
-		cancel_delayed_work(&sdata->dfs_cac_timer_work);
+		cancel_delayed_work(&sdata->deflink.dfs_cac_timer_work);
 
 		if (sdata->wdev.cac_started) {
 			chandef = sdata->vif.bss_conf.chandef;
-			ieee80211_vif_release_channel(sdata);
+			ieee80211_link_release_channel(sdata->link[0]);
 			cfg80211_cac_event(sdata->dev,
 					   &chandef,
 					   NL80211_RADAR_CAC_ABORTED,
@@ -4434,7 +4424,7 @@ void ieee80211_recalc_dtim(struct ieee80211_local *local,
 static u8 ieee80211_chanctx_radar_detect(struct ieee80211_local *local,
 					 struct ieee80211_chanctx *ctx)
 {
-	struct ieee80211_sub_if_data *sdata;
+	struct ieee80211_link_data *link;
 	u8 radar_detect = 0;
 
 	lockdep_assert_held(&local->chanctx_mtx);
@@ -4442,20 +4432,26 @@ static u8 ieee80211_chanctx_radar_detect(struct ieee80211_local *local,
 	if (WARN_ON(ctx->replace_state == IEEE80211_CHANCTX_WILL_BE_REPLACED))
 		return 0;
 
-	list_for_each_entry(sdata, &ctx->reserved_vifs, reserved_chanctx_list)
-		if (sdata->reserved_radar_required)
-			radar_detect |= BIT(sdata->reserved_chandef.width);
+	list_for_each_entry(link, &ctx->reserved_links, reserved_chanctx_list)
+		if (link->reserved_radar_required)
+			radar_detect |= BIT(link->reserved_chandef.width);
 
 	/*
 	 * An in-place reservation context should not have any assigned vifs
 	 * until it replaces the other context.
 	 */
 	WARN_ON(ctx->replace_state == IEEE80211_CHANCTX_REPLACES_OTHER &&
-		!list_empty(&ctx->assigned_vifs));
+		!list_empty(&ctx->assigned_links));
 
-	list_for_each_entry(sdata, &ctx->assigned_vifs, assigned_chanctx_list)
-		if (sdata->radar_required)
-			radar_detect |= BIT(sdata->vif.bss_conf.chandef.width);
+	list_for_each_entry(link, &ctx->assigned_links, assigned_chanctx_list) {
+		struct ieee80211_sub_if_data *sdata = link->sdata;
+
+		if (!link->radar_required)
+			continue;
+
+		radar_detect |=
+			BIT(sdata->vif.link_conf[link->link_id]->chandef.width);
+	}
 
 	return radar_detect;
 }

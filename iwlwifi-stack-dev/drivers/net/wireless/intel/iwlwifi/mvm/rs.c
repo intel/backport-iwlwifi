@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /******************************************************************************
  *
- * Copyright(c) 2005 - 2014, 2018 - 2021 Intel Corporation. All rights reserved.
+ * Copyright(c) 2005 - 2014, 2018 - 2022 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2016 - 2017 Intel Deutschland GmbH
  *****************************************************************************/
@@ -135,7 +135,7 @@ static bool rs_mimo_allow(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 			  struct rs_rate *rate,
 			  const struct rs_tx_column *next_col)
 {
-	if (!sta->ht_cap.ht_supported)
+	if (!sta->deflink.ht_cap.ht_supported)
 		return false;
 
 	if (sta->smps_mode == IEEE80211_SMPS_STATIC)
@@ -157,7 +157,7 @@ static bool rs_siso_allow(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 			  struct rs_rate *rate,
 			  const struct rs_tx_column *next_col)
 {
-	if (!sta->ht_cap.ht_supported)
+	if (!sta->deflink.ht_cap.ht_supported)
 		return false;
 
 	return true;
@@ -167,8 +167,8 @@ static bool rs_sgi_allow(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 			 struct rs_rate *rate,
 			 const struct rs_tx_column *next_col)
 {
-	struct ieee80211_sta_ht_cap *ht_cap = &sta->ht_cap;
-	struct ieee80211_sta_vht_cap *vht_cap = &sta->vht_cap;
+	struct ieee80211_sta_ht_cap *ht_cap = &sta->deflink.ht_cap;
+	struct ieee80211_sta_vht_cap *vht_cap = &sta->deflink.vht_cap;
 
 	if (is_ht20(rate) && (ht_cap->cap &
 			     IEEE80211_HT_CAP_SGI_20))
@@ -512,10 +512,10 @@ static char *rs_pretty_rate(const struct rs_rate *rate)
 		 (rate->index <= IWL_RATE_MCS_9_INDEX))
 		rate_str = ht_vht_rates[rate->index];
 	else
-		rate_str = "BAD_RATE";
+		rate_str = NULL;
 
 	sprintf(buf, "(%s|%s|%s)", rs_pretty_lq_type(rate->type),
-		iwl_rs_pretty_ant(rate->ant), rate_str);
+		iwl_rs_pretty_ant(rate->ant), rate_str ?: "BAD_RATE");
 	return buf;
 }
 
@@ -895,8 +895,7 @@ static int rs_rate_from_ucode_rate(const u32 ucode_rate,
 			WARN_ON_ONCE(1);
 		}
 	} else if (ucode_rate & RATE_MCS_VHT_MSK_V1) {
-		nss = ((ucode_rate & RATE_VHT_MCS_NSS_MSK) >>
-		       RATE_VHT_MCS_NSS_POS) + 1;
+		nss = FIELD_GET(RATE_MCS_NSS_MSK, ucode_rate) + 1;
 
 		if (nss == 1) {
 			rate->type = LQ_VHT_SISO;
@@ -910,8 +909,7 @@ static int rs_rate_from_ucode_rate(const u32 ucode_rate,
 			WARN_ON_ONCE(1);
 		}
 	} else if (ucode_rate & RATE_MCS_HE_MSK_V1) {
-		nss = ((ucode_rate & RATE_VHT_MCS_NSS_MSK) >>
-		      RATE_VHT_MCS_NSS_POS) + 1;
+		nss = FIELD_GET(RATE_MCS_NSS_MSK, ucode_rate) + 1;
 
 		if (nss == 1) {
 			rate->type = LQ_HE_SISO;
@@ -1369,13 +1367,13 @@ static s32 rs_get_best_rate(struct iwl_mvm *mvm,
 
 static u32 rs_bw_from_sta_bw(struct ieee80211_sta *sta)
 {
-	struct ieee80211_sta_vht_cap *sta_vht_cap = &sta->vht_cap;
+	struct ieee80211_sta_vht_cap *sta_vht_cap = &sta->deflink.vht_cap;
 	struct ieee80211_vht_cap vht_cap = {
 		.vht_cap_info = cpu_to_le32(sta_vht_cap->cap),
 		.supp_mcs = sta_vht_cap->vht_mcs,
 	};
 
-	switch (sta->bandwidth) {
+	switch (sta->deflink.bandwidth) {
 	case IEEE80211_STA_RX_BW_160:
 		/*
 		 * Don't use 160 MHz if VHT extended NSS support
@@ -1388,7 +1386,7 @@ static u32 rs_bw_from_sta_bw(struct ieee80211_sta *sta)
 		if (ieee80211_get_vht_max_nss(&vht_cap,
 					      IEEE80211_VHT_CHANWIDTH_160MHZ,
 					      0, true,
-					      sta->rx_nss) < sta->rx_nss)
+					      sta->deflink.rx_nss) < sta->deflink.rx_nss)
 			return RATE_MCS_CHAN_WIDTH_80;
 		return RATE_MCS_CHAN_WIDTH_160;
 	case IEEE80211_STA_RX_BW_80:
@@ -1980,7 +1978,7 @@ static bool rs_tpc_perform(struct iwl_mvm *mvm,
 #endif
 
 	rcu_read_lock();
-	chanctx_conf = rcu_dereference(vif->chanctx_conf);
+	chanctx_conf = rcu_dereference(vif->bss_conf.chanctx_conf);
 	if (WARN_ON(!chanctx_conf))
 		band = NUM_NL80211_BANDS;
 	else
@@ -2537,7 +2535,7 @@ static void rs_get_initial_rate(struct iwl_mvm *mvm,
 	 * In case of VHT/HT when the rssi is low fallback to the case of
 	 * legacy rates.
 	 */
-	if (sta->vht_cap.vht_supported &&
+	if (sta->deflink.vht_cap.vht_supported &&
 	    best_rssi > IWL_RS_LOW_RSSI_THRESHOLD) {
 		/*
 		 * In AP mode, when a new station associates, rs is initialized
@@ -2563,14 +2561,15 @@ static void rs_get_initial_rate(struct iwl_mvm *mvm,
 			nentries = ARRAY_SIZE(rs_optimal_rates_vht_20mhz);
 			break;
 		default:
-			IWL_ERR(mvm, "Invalid BW %d\n", sta->bandwidth);
+			IWL_ERR(mvm, "Invalid BW %d\n",
+				sta->deflink.bandwidth);
 			goto out;
 		}
 
 		active_rate = lq_sta->active_siso_rate;
 		rate->type = LQ_VHT_SISO;
 		rate->bw = bw;
-	} else if (sta->ht_cap.ht_supported &&
+	} else if (sta->deflink.ht_cap.ht_supported &&
 		   best_rssi > IWL_RS_LOW_RSSI_THRESHOLD) {
 		initial_rates = rs_optimal_rates_ht;
 		nentries = ARRAY_SIZE(rs_optimal_rates_ht);
@@ -2682,7 +2681,6 @@ static void rs_drv_get_rate(void *mvm_r, struct ieee80211_sta *sta,
 		/* if vif isn't initialized mvm doesn't know about
 		 * this station, so don't do anything with the it
 		 */
-		sta = NULL;
 		mvm_sta = NULL;
 	}
 
@@ -2761,14 +2759,14 @@ static void rs_vht_set_enabled_rates(struct ieee80211_sta *sta,
 
 			/* VHT MCS9 isn't valid for 20Mhz for NSS=1,2 */
 			if (i == IWL_RATE_MCS_9_INDEX &&
-			    sta->bandwidth == IEEE80211_STA_RX_BW_20)
+			    sta->deflink.bandwidth == IEEE80211_STA_RX_BW_20)
 				continue;
 
 			lq_sta->active_siso_rate |= BIT(i);
 		}
 	}
 
-	if (sta->rx_nss < 2)
+	if (sta->deflink.rx_nss < 2)
 		return;
 
 	highest_mcs = rs_vht_highest_rx_mcs_index(vht_cap, 2);
@@ -2779,7 +2777,7 @@ static void rs_vht_set_enabled_rates(struct ieee80211_sta *sta,
 
 			/* VHT MCS9 isn't valid for 20Mhz for NSS=1,2 */
 			if (i == IWL_RATE_MCS_9_INDEX &&
-			    sta->bandwidth == IEEE80211_STA_RX_BW_20)
+			    sta->deflink.bandwidth == IEEE80211_STA_RX_BW_20)
 				continue;
 
 			lq_sta->active_mimo2_rate |= BIT(i);
@@ -2883,8 +2881,7 @@ void iwl_mvm_update_frame_stats(struct iwl_mvm *mvm, u32 rate, bool agg)
 		nss = ((rate & RATE_HT_MCS_NSS_MSK_V1) >> RATE_HT_MCS_NSS_POS_V1) + 1;
 	} else if (rate & RATE_MCS_VHT_MSK_V1) {
 		mvm->drv_rx_stats.vht_frames++;
-		nss = ((rate & RATE_VHT_MCS_NSS_MSK) >>
-		       RATE_VHT_MCS_NSS_POS) + 1;
+		nss = FIELD_GET(RATE_MCS_NSS_MSK, rate) + 1;
 	} else {
 		mvm->drv_rx_stats.legacy_frames++;
 	}
@@ -2916,8 +2913,8 @@ static void rs_drv_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 {
 	int i, j;
 	struct ieee80211_hw *hw = mvm->hw;
-	struct ieee80211_sta_ht_cap *ht_cap = &sta->ht_cap;
-	struct ieee80211_sta_vht_cap *vht_cap = &sta->vht_cap;
+	struct ieee80211_sta_ht_cap *ht_cap = &sta->deflink.ht_cap;
+	struct ieee80211_sta_vht_cap *vht_cap = &sta->deflink.vht_cap;
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 	struct iwl_lq_sta *lq_sta = &mvmsta->lq_sta.rs_drv;
 	struct ieee80211_supported_band *sband;
@@ -2953,7 +2950,7 @@ static void rs_drv_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	/*
 	 * active legacy rates as per supported rates bitmap
 	 */
-	supp = sta->supp_rates[sband->band];
+	supp = sta->deflink.supp_rates[sband->band];
 	lq_sta->active_legacy_rate = 0;
 	for_each_set_bit(i, &supp, BITS_PER_LONG)
 		lq_sta->active_legacy_rate |= BIT(sband->bitrates[i].hw_value);
@@ -3246,7 +3243,7 @@ static void __iwl_mvm_rs_tx_status(struct iwl_mvm *mvm,
 	IWL_DEBUG_RATE(mvm, "reduced txpower: %d\n", reduced_txp);
 done:
 	/* See if there's a better rate or modulation mode to try. */
-	if (sta->supp_rates[info->band])
+	if (sta->deflink.supp_rates[info->band])
 		rs_rate_scale_perform(mvm, sta, lq_sta, tid, ndp);
 }
 
@@ -3663,8 +3660,7 @@ int rs_pretty_print_rate_v1(char *buf, int bufsz, const u32 rate)
 	if (rate & RATE_MCS_VHT_MSK_V1) {
 		type = "VHT";
 		mcs = rate & RATE_VHT_MCS_RATE_CODE_MSK;
-		nss = ((rate & RATE_VHT_MCS_NSS_MSK)
-		       >> RATE_VHT_MCS_NSS_POS) + 1;
+		nss = FIELD_GET(RATE_MCS_NSS_MSK, rate) + 1;
 	} else if (rate & RATE_MCS_HT_MSK_V1) {
 		type = "HT";
 		mcs = rate & RATE_HT_MCS_INDEX_MSK_V1;
@@ -3673,8 +3669,7 @@ int rs_pretty_print_rate_v1(char *buf, int bufsz, const u32 rate)
 	} else if (rate & RATE_MCS_HE_MSK_V1) {
 		type = "HE";
 		mcs = rate & RATE_VHT_MCS_RATE_CODE_MSK;
-		nss = ((rate & RATE_VHT_MCS_NSS_MSK)
-		       >> RATE_VHT_MCS_NSS_POS) + 1;
+		nss = FIELD_GET(RATE_MCS_NSS_MSK, rate) + 1;
 	} else {
 		type = "Unknown"; /* shouldn't happen */
 	}

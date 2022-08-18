@@ -13,8 +13,8 @@ from lib.tempdir import Tempdir
 from lib import git
 
 # configuration (the first few lines are local ones)
-INPUT_TREE = "ssh://git-amr-3/iwlwifi-stack-dev.git"
-OUTPUT_TREE = "ssh://git-ger-8/iwlwifi-chrome-kernel.git"
+INPUT_TREE = "ssh://gerritwcs.ir.intel.com:29418/iwlwifi-stack-dev.git"
+OUTPUT_TREE = "ssh://gerritwcs.ir.intel.com:29418/iwlwifi-chrome-kernel.git"
 #INPUT_TREE = '/tmp/iwlwifi-stack-dev.git'
 #OUTPUT_TREE = '/home/johannes/tmp/chrome-kernel.git'
 #INPUT_TREE = '/home/luca/iwlwifi/stack-dev/'
@@ -32,7 +32,6 @@ class Version(object):
 
 # list the relevant chromeos versions, with their WIFIVERSION
 VERSIONS = [
-    Version('chromeos-3.18'),
     Version('chromeos-4.4'),
     Version('chromeos-4.14'),
     Version('chromeos-4.19'),

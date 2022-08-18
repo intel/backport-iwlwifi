@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2010-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2010-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2014 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -420,6 +420,28 @@ static int iwl_tm_gnl_get_rfid(struct iwl_trans *trans,
 	return 0;
 }
 
+static int iwl_tm_gnl_get_rfid_v2(struct iwl_trans *trans,
+				  struct iwl_tm_data *data_out)
+{
+	struct iwl_tm_rfid *resp;
+
+	resp = kzalloc(sizeof(*resp), GFP_KERNEL);
+	if (!resp)
+		return -ENOMEM;
+
+	resp->flavor = CSR_HW_RFID_FLAVOR(trans->hw_crf_id);
+	resp->dash   = CSR_HW_RFID_DASH(trans->hw_crf_id);
+	resp->step   = CSR_HW_RFID_STEP(trans->hw_crf_id);
+	resp->type   = CSR_HW_RFID_TYPE(trans->hw_rf_id);
+	resp->is_cdb = CSR_HW_RFID_IS_CDB(trans->hw_rf_id);
+	resp->is_jacket = CSR_HW_RFID_IS_JACKET(trans->hw_rf_id);
+
+	data_out->data = resp;
+	data_out->len = sizeof(*resp);
+
+	return 0;
+}
+
 /*
  * Testmode GNL family types (This NL family
  * will eventually replace nl80211 support in
@@ -714,7 +736,13 @@ static int iwl_tm_gnl_cmd_execute(struct iwl_tm_gnl_cmd *cmd_data)
 		ret = iwl_tm_gnl_get_rfid(dev->trans, &cmd_data->data_out);
 		common_op = true;
 		break;
+
+	case IWL_TM_USER_CMD_GET_RFID_V2:
+		ret = iwl_tm_gnl_get_rfid_v2(dev->trans, &cmd_data->data_out);
+		common_op = true;
+		break;
 	}
+
 	if (ret) {
 		IWL_ERR(dev->trans, "%s Error=%d\n", __func__, ret);
 		return ret;

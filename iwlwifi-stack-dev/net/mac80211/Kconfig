@@ -310,3 +310,8 @@ config IWL_TIMEOUT_FACTOR
 	int "Factor to multiply timeouts by"
 	range 1 2500
 	default 1
+
+config IWL_DELAY_FACTOR
+	int "Factor to multiply delays by"
+	range 1 50
+	default 1

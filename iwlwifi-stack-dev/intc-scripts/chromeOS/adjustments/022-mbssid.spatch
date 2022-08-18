@@ -18,3 +18,114 @@ if (... && params->mbssid_config.elem) {
 ...
 }
 +#endif
+
+@@
+identifier elems;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+static inline int
+ieee80211_get_mbssid_beacon_len(struct cfg80211_mbssid_elems *elems)
+{
+...
+}
++#endif
+
+@@
+identifier old, params;
+identifier mbssid_ies;
+struct cfg80211_mbssid_elems *m;
+@@
+static int ieee80211_assign_beacon(...)
+{
+<+...
+(
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+struct cfg80211_mbssid_elems *mbssid = NULL;
++#endif
+|
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+        if (params->mbssid_ies) {
+...
+        } else if (... && old->mbssid_ies) {
+...
+        }
++#endif
+|
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+        if (m) {
+...
+        }
++#endif
+)
+...+>
+}
+
+@@
+@@
+
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+static int
+ieee80211_copy_mbssid_beacon(...)
+{
+...
+}
++#endif
+
+@@
+identifier beacon, mbssid_ies, cnt;
+identifier pos;
+@@
+
+static struct cfg80211_beacon_data *
+cfg80211_beacon_dup(...)
+{
+...
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+if (beacon->mbssid_ies && beacon->mbssid_ies->cnt) {
+...
+}
++#endif
+...
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+        if (...)
+                pos += ieee80211_copy_mbssid_beacon(...);
++#endif
+...
+}
+
+@@
+@@
+
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+kfree(sdata->deflink.u.ap.next_beacon->mbssid_ies);
++#endif
+
+@@
+@@
+
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+static void
+ieee80211_beacon_add_mbssid(...)
+{
+...
+}
++#endif
+
+@@
+identifier  mbssid_len;
+@@
+static struct sk_buff *
+ieee80211_beacon_get_ap(...)
+{
+...
+if (...) {
+...
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+	if (mbssid_len) {
+...
+	}
++#endif
+...
+}
+...
+}

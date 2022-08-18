@@ -11,6 +11,9 @@ struct lockdep_map { };
 
 #ifndef lockdep_assert_not_held
 #ifdef CONFIG_LOCKDEP
+#ifndef LOCK_STATE_HELD
+#define LOCK_STATE_HELD		1
+#endif /* LOCK_STATE_HELD */
 #define lockdep_assert_not_held(l)	do {				\
 		WARN_ON(debug_locks &&					\
 			lockdep_is_held(l) == LOCK_STATE_HELD);		\

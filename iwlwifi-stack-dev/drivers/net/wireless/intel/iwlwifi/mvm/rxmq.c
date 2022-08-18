@@ -9,38 +9,13 @@
 #include "iwl-trans.h"
 #include "mvm.h"
 #include "fw-api.h"
-
-static void *iwl_mvm_skb_get_hdr(struct sk_buff *skb)
-{
-	struct ieee80211_rx_status *rx_status = IEEE80211_SKB_RXCB(skb);
-	u8 *data = skb->data;
-
-	/* Alignment concerns */
-	BUILD_BUG_ON(sizeof(struct ieee80211_radiotap_he) % 4);
-	BUILD_BUG_ON(sizeof(struct ieee80211_radiotap_he_mu) % 4);
-	BUILD_BUG_ON(sizeof(struct ieee80211_radiotap_lsig) % 4);
-	BUILD_BUG_ON(sizeof(struct ieee80211_vendor_radiotap) % 4);
-
-	if (rx_status->flag & RX_FLAG_RADIOTAP_HE)
-		data += sizeof(struct ieee80211_radiotap_he);
-	if (rx_status->flag & RX_FLAG_RADIOTAP_HE_MU)
-		data += sizeof(struct ieee80211_radiotap_he_mu);
-	if (rx_status->flag & RX_FLAG_RADIOTAP_LSIG)
-		data += sizeof(struct ieee80211_radiotap_lsig);
-	if (rx_status->flag & RX_FLAG_RADIOTAP_VENDOR_DATA) {
-		struct ieee80211_vendor_radiotap *radiotap = (void *)data;
-
-		data += sizeof(*radiotap) + radiotap->len + radiotap->pad;
-	}
-
-	return data;
-}
+#include "time-sync.h"
 
 static inline int iwl_mvm_check_pn(struct iwl_mvm *mvm, struct sk_buff *skb,
 				   int queue, struct ieee80211_sta *sta)
 {
 	struct iwl_mvm_sta *mvmsta;
-	struct ieee80211_hdr *hdr = iwl_mvm_skb_get_hdr(skb);
+	struct ieee80211_hdr *hdr = (void *)skb_mac_header(skb);
 	struct ieee80211_rx_status *stats = IEEE80211_SKB_RXCB(skb);
 	struct iwl_mvm_key_pn *ptk_pn;
 	int res;
@@ -179,6 +154,10 @@ static int iwl_mvm_create_skb(struct iwl_mvm *mvm, struct sk_buff *skb,
 	if (unlikely(headlen < hdrlen))
 		return -EINVAL;
 
+	/* Since data doesn't move data while putting data on skb and that is
+	 * the only way we use, data + len is the next place that hdr would be put
+	 */
+	skb_set_mac_header(skb, skb->len);
 	skb_put_data(skb, hdr, hdrlen);
 	skb_put_data(skb, (u8 *)hdr + hdrlen + pad_len, headlen - hdrlen);
 
@@ -227,37 +206,46 @@ static int iwl_mvm_create_skb(struct iwl_mvm *mvm, struct sk_buff *skb,
 	return 0;
 }
 
+/* put a TLV on the skb and return data pointer
+ *
+ * Also pad to 4 the len and zero out all data part
+ */
+static void *
+iwl_mvm_radiotap_put_tlv(struct sk_buff *skb, u16 type, u16 len)
+{
+	struct ieee80211_radiotap_tlv *tlv;
+
+	tlv = skb_put(skb, sizeof(*tlv));
+	tlv->type = cpu_to_le16(type);
+	tlv->len = cpu_to_le16(len);
+	return skb_put_zero(skb, ALIGN(len, 4));
+}
+
 static void iwl_mvm_add_rtap_sniffer_config(struct iwl_mvm *mvm,
 					    struct sk_buff *skb)
 {
 	struct ieee80211_rx_status *rx_status = IEEE80211_SKB_RXCB(skb);
-	struct ieee80211_vendor_radiotap *radiotap;
-	const int size = sizeof(*radiotap) + sizeof(__le16);
+	struct ieee80211_radiotap_vendor_content *radiotap;
+	const u16 vendor_data_len = sizeof(mvm->cur_aid);
 
 	if (!mvm->cur_aid)
 		return;
 
-	/* ensure alignment */
-	BUILD_BUG_ON((size + 2) % 4);
+	radiotap = iwl_mvm_radiotap_put_tlv(skb, IEEE80211_RADIOTAP_VENDOR_NAMESPACE,
+					    sizeof(*radiotap) + vendor_data_len);
 
-	radiotap = skb_put(skb, size + 2);
-	radiotap->align = 1;
 	/* Intel OUI */
 	radiotap->oui[0] = 0xf6;
 	radiotap->oui[1] = 0x54;
 	radiotap->oui[2] = 0x25;
 	/* radiotap sniffer config sub-namespace */
-	radiotap->subns = 1;
-	radiotap->present = 0x1;
-	radiotap->len = size - sizeof(*radiotap);
-	radiotap->pad = 2;
+	radiotap->oui_subtype = 1;
+	radiotap->vendor_type = 0;
 
 	/* fill the data now */
 	memcpy(radiotap->data, &mvm->cur_aid, sizeof(mvm->cur_aid));
-	/* and clear the padding */
-	memset(radiotap->data + sizeof(__le16), 0, radiotap->pad);
 
-	rx_status->flag |= RX_FLAG_RADIOTAP_VENDOR_DATA;
+	rx_status->flag |= RX_FLAG_RADIOTAP_TLV_AT_END;
 }
 
 /* iwl_mvm_pass_packet_to_mac80211 - passes the packet for mac80211 */
@@ -465,7 +453,7 @@ static int iwl_mvm_rx_crypto(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 		 */
 		if (!is_multicast_ether_addr(hdr->addr1) &&
 		    !mvm->monitor_on && net_ratelimit())
-			IWL_ERR(mvm, "Unhandled alg: 0x%x\n", status);
+			IWL_WARN(mvm, "Unhandled alg: 0x%x\n", status);
 	}
 
 	return 0;
@@ -934,7 +922,7 @@ static bool iwl_mvm_reorder(struct iwl_mvm *mvm,
 			    struct iwl_rx_mpdu_desc *desc)
 {
 	struct ieee80211_rx_status *rx_status = IEEE80211_SKB_RXCB(skb);
-	struct ieee80211_hdr *hdr = iwl_mvm_skb_get_hdr(skb);
+	struct ieee80211_hdr *hdr = (void *)skb_mac_header(skb);
 	struct iwl_mvm_sta *mvm_sta;
 	struct iwl_mvm_baid_data *baid_data;
 	struct iwl_mvm_reorder_buffer *buffer;
@@ -1187,8 +1175,10 @@ static void iwl_mvm_flip_address(u8 *addr)
 
 struct iwl_mvm_rx_phy_data {
 	enum iwl_rx_phy_info_type info_type;
-	__le32 d0, d1, d2, d3;
+	__le32 d0, d1, d2, d3, eht_d4, d5;
 	__le16 d4;
+	bool with_data;
+	__le32 rx_vec[4];
 
 	u32 rate_n_flags;
 	u32 gp2_on_air_rise;
@@ -1344,6 +1334,10 @@ static void iwl_mvm_decode_he_phy_data(struct iwl_mvm *mvm,
 	case IWL_RX_PHY_INFO_TYPE_HT:
 	case IWL_RX_PHY_INFO_TYPE_VHT_SU:
 	case IWL_RX_PHY_INFO_TYPE_VHT_MU:
+	case IWL_RX_PHY_INFO_TYPE_EHT_MU:
+	case IWL_RX_PHY_INFO_TYPE_EHT_TB:
+	case IWL_RX_PHY_INFO_TYPE_EHT_MU_EXT:
+	case IWL_RX_PHY_INFO_TYPE_EHT_TB_EXT:
 		return;
 	case IWL_RX_PHY_INFO_TYPE_HE_TB_EXT:
 		he->data1 |= cpu_to_le16(IEEE80211_RADIOTAP_HE_DATA1_SPTL_REUSE_KNOWN |
@@ -1460,6 +1454,472 @@ static void iwl_mvm_decode_he_phy_data(struct iwl_mvm *mvm,
 		/* nothing */
 		break;
 	}
+}
+
+#define LE32_DEC_ENC(value, dec_bits, enc_bits) \
+	le32_encode_bits(le32_get_bits(value, dec_bits), enc_bits)
+
+#define IWL_MVM_ENC_USIG_VALUE_MASK(usig, in_value, dec_bits, enc_bits) do { \
+	typeof(enc_bits) _enc_bits = enc_bits; \
+	typeof(usig) _usig = usig; \
+	(_usig)->mask |= cpu_to_le32(_enc_bits); \
+	(_usig)->value |= LE32_DEC_ENC(in_value, dec_bits, _enc_bits); \
+} while (0)
+
+#define IWL_MVM_ENC_EHT_RU(rt_data, rt_ru, fw_data, fw_ru) \
+	eht->data[(rt_data)] |= \
+		(cpu_to_le32 \
+		 (IEEE80211_RADIOTAP_EHT_DATA ## rt_data ## _RU_ALLOC_CC_ ## rt_ru ## _KNOWN) | \
+		 LE32_DEC_ENC(data ## fw_data, \
+			      IWL_RX_PHY_DATA ## fw_data ## _EHT_MU_EXT_RU_ALLOC_ ## fw_ru, \
+			      IEEE80211_RADIOTAP_EHT_DATA ## rt_data ## _RU_ALLOC_CC_ ## rt_ru))
+
+static void iwl_mvm_decode_eht_ext_mu(struct iwl_mvm *mvm,
+				      struct iwl_mvm_rx_phy_data *phy_data,
+				      struct ieee80211_rx_status *rx_status,
+				      struct ieee80211_radiotap_eht *eht,
+				      struct ieee80211_radiotap_eht_usig *usig)
+{
+	__le32 data1 = phy_data->d1;
+
+	if (phy_data->with_data) {
+		__le32 data2 = phy_data->d2;
+		__le32 data3 = phy_data->d3;
+		__le32 data4 = phy_data->eht_d4;
+		__le32 data5 = phy_data->d5;
+		u32 phy_bw = phy_data->rate_n_flags & RATE_MCS_CHAN_WIDTH_MSK;
+
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, data5,
+					    IWL_RX_PHY_DATA5_EHT_TYPE_AND_COMP,
+					    IEEE80211_RADIOTAP_EHT_USIG2_MU_B0_B1_PPDU_TYPE);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, data5,
+					    IWL_RX_PHY_DATA5_EHT_MU_PUNC_CH_CODE,
+					    IEEE80211_RADIOTAP_EHT_USIG2_MU_B3_B7_PUNCTURED_INFO);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, data4,
+					    IWL_RX_PHY_DATA4_EHT_MU_EXT_SIGB_MCS,
+					    IEEE80211_RADIOTAP_EHT_USIG2_MU_B9_B10_SIG_MCS);
+		IWL_MVM_ENC_USIG_VALUE_MASK
+			(usig, data1, IWL_RX_PHY_DATA1_EHT_MU_NUM_SIG_SYM_USIGA2,
+			 IEEE80211_RADIOTAP_EHT_USIG2_MU_B11_B15_EHT_SIG_SIMBOLS);
+
+		eht->user_info[0] |=
+			cpu_to_le32(IEEE80211_RADIOTAP_EHT_USER_INFO_STA_ID_KNOWN) |
+			LE32_DEC_ENC(data5, IWL_RX_PHY_DATA5_EHT_MU_STA_ID_USR,
+				     IEEE80211_RADIOTAP_EHT_USER_INFO_STA_ID);
+
+		eht->known |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_KNOWN_NR_NON_OFDMA_USERS_M);
+		eht->data[7] |= LE32_DEC_ENC
+			(data5, IWL_RX_PHY_DATA5_EHT_MU_NUM_USR_NON_OFDMA,
+			 IEEE80211_RADIOTAP_EHT_DATA7_NUM_OF_NON_OFDMA_USERS);
+
+		IWL_MVM_ENC_EHT_RU(1, 1_1_1, 2, A1);
+		if (phy_bw >= RATE_MCS_CHAN_WIDTH_80)
+			IWL_MVM_ENC_EHT_RU(2, 2_1_1, 3, C1);
+
+		if (phy_bw >= RATE_MCS_CHAN_WIDTH_160) {
+			IWL_MVM_ENC_EHT_RU(2, 1_1_2, 2, A2);
+			IWL_MVM_ENC_EHT_RU(2, 2_1_2, 3, C2);
+		}
+
+		switch (phy_bw) {
+		case RATE_MCS_CHAN_WIDTH_40:
+			IWL_MVM_ENC_EHT_RU(2, 2_1_1, 2, B1);
+			break;
+		case RATE_MCS_CHAN_WIDTH_80:
+			IWL_MVM_ENC_EHT_RU(2, 1_1_2, 2, B1);
+			IWL_MVM_ENC_EHT_RU(2, 2_1_2, 4, D1);
+			break;
+		case RATE_MCS_CHAN_WIDTH_160:
+			IWL_MVM_ENC_EHT_RU(3, 1_2_1, 2, B1);
+			IWL_MVM_ENC_EHT_RU(3, 2_2_1, 4, D1);
+			IWL_MVM_ENC_EHT_RU(3, 1_2_2, 3, B2);
+			IWL_MVM_ENC_EHT_RU(4, 2_2_2, 4, D2);
+			break;
+		case RATE_MCS_CHAN_WIDTH_320:
+			IWL_MVM_ENC_EHT_RU(4, 1_2_3, 2, B1);
+			IWL_MVM_ENC_EHT_RU(4, 2_2_3, 4, D1);
+			IWL_MVM_ENC_EHT_RU(5, 1_2_4, 3, B2);
+			IWL_MVM_ENC_EHT_RU(5, 2_2_4, 4, D2);
+			break;
+		}
+
+	} else {
+		__le32 usig_a1 = phy_data->rx_vec[0];
+		__le32 usig_a2 = phy_data->rx_vec[1];
+
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a1,
+					    IWL_RX_USIG_A1_DISREGARD,
+					    IEEE80211_RADIOTAP_EHT_USIG1_MU_B0_B24_DISREGARD);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a1,
+					    IWL_RX_USIG_A1_VALIDATE,
+					    IEEE80211_RADIOTAP_EHT_USIG1_MU_B25_VALIDATE);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a1,
+					    IWL_RX_USIG_A1_ENHANCED_WIFI_VER_ID,
+					    IEEE80211_RADIOTAP_EHT_USIG2_MU_B0_B1_PPDU_TYPE);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_USIG2_VALIDATE_B2,
+					    IEEE80211_RADIOTAP_EHT_USIG2_MU_B2_VALIDATE);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_PUNC_CHANNEL,
+					    IEEE80211_RADIOTAP_EHT_USIG2_MU_B3_B7_PUNCTURED_INFO);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_USIG2_VALIDATE_B8,
+					    IEEE80211_RADIOTAP_EHT_USIG2_MU_B8_VLIDATE);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_SIG_MCS,
+					    IEEE80211_RADIOTAP_EHT_USIG2_MU_B9_B10_SIG_MCS);
+		IWL_MVM_ENC_USIG_VALUE_MASK
+			(usig, usig_a2, IWL_RX_USIG_A2_EHT_SIG_SYM_NUM,
+			 IEEE80211_RADIOTAP_EHT_USIG2_MU_B11_B15_EHT_SIG_SIMBOLS);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_CRC_OK,
+					    IEEE80211_RADIOTAP_EHT_USIG2_MU_B16_B19_CRC);
+	}
+}
+
+static void iwl_mvm_decode_eht_ext_tb(struct iwl_mvm *mvm,
+				      struct iwl_mvm_rx_phy_data *phy_data,
+				      struct ieee80211_rx_status *rx_status,
+				      struct ieee80211_radiotap_eht *eht,
+				      struct ieee80211_radiotap_eht_usig *usig)
+{
+	if (phy_data->with_data) {
+		__le32 data5 = phy_data->d5;
+
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, data5,
+					    IWL_RX_PHY_DATA5_EHT_TYPE_AND_COMP,
+					    IEEE80211_RADIOTAP_EHT_USIG2_TB_B0_B1_PPDU_TYPE);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, data5,
+					    IWL_RX_PHY_DATA5_EHT_TB_SPATIAL_REUSE1,
+					    IEEE80211_RADIOTAP_EHT_USIG2_TB_B3_B6_SPATIAL_REUSE_1);
+
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, data5,
+					    IWL_RX_PHY_DATA5_EHT_TB_SPATIAL_REUSE2,
+					    IEEE80211_RADIOTAP_EHT_USIG2_TB_B7_B10_SPATIAL_REUSE_2);
+	} else {
+		__le32 usig_a1 = phy_data->rx_vec[0];
+		__le32 usig_a2 = phy_data->rx_vec[1];
+
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a1,
+					    IWL_RX_USIG_A1_DISREGARD,
+					    IEEE80211_RADIOTAP_EHT_USIG1_TB_B0_B25_DISREGARD);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a1,
+					    IWL_RX_USIG_A1_ENHANCED_WIFI_VER_ID,
+					    IEEE80211_RADIOTAP_EHT_USIG2_TB_B0_B1_PPDU_TYPE);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_USIG2_VALIDATE_B2,
+					    IEEE80211_RADIOTAP_EHT_USIG2_TB_B2_VALIDATE);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_TRIG_SPATIAL_REUSE_1,
+					    IEEE80211_RADIOTAP_EHT_USIG2_TB_B3_B6_SPATIAL_REUSE_1);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_TRIG_SPATIAL_REUSE_2,
+					    IEEE80211_RADIOTAP_EHT_USIG2_TB_B7_B10_SPATIAL_REUSE_2);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_TRIG_USIG2_DISREGARD,
+					    IEEE80211_RADIOTAP_EHT_USIG2_TB_B11_B15_DISREGARD);
+		IWL_MVM_ENC_USIG_VALUE_MASK(usig, usig_a2,
+					    IWL_RX_USIG_A2_EHT_CRC_OK,
+					    IEEE80211_RADIOTAP_EHT_USIG2_TB_B16_B19_CRC);
+	}
+}
+
+static void iwl_mvm_decode_eht_ru(struct iwl_mvm *mvm,
+				  struct ieee80211_rx_status *rx_status,
+				  struct ieee80211_radiotap_eht *eht)
+{
+	u32 ru = le32_get_bits(eht->data[8],
+			       IEEE80211_RADIOTAP_EHT_DATA8_RU_ALLOC_TB_FMT_B7_B1);
+	enum nl80211_eht_ru_alloc nl_ru;
+
+	/* Using D1.5 Table 9-53a - Encoding of PS160 and RU Allocation subfields
+	 * in an EHT variant User Info field
+	 */
+
+	switch (ru) {
+	case 0 ... 36:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_26;
+		break;
+	case 37 ... 52:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_52;
+		break;
+	case 53 ... 60:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_106;
+		break;
+	case 61 ... 64:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_242;
+		break;
+	case 65 ... 66:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_484;
+		break;
+	case 67:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_996;
+		break;
+	case 68:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_2x996;
+		break;
+	case 69:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_4x996;
+		break;
+	case 70 ... 81:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_52P26;
+		break;
+	case 82 ... 89:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_106P26;
+		break;
+	case 90 ... 93:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_484P242;
+		break;
+	case 94 ... 95:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_996P484;
+		break;
+	case 96 ... 99:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_996P484P242;
+		break;
+	case 100 ... 103:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_2x996P484;
+		break;
+	case 104:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_3x996;
+		break;
+	case 105 ... 106:
+		nl_ru = NL80211_RATE_INFO_EHT_RU_ALLOC_3x996P484;
+		break;
+	default:
+		return;
+	}
+
+	rx_status->bw = RATE_INFO_BW_EHT_RU;
+	rx_status->eht.ru = nl_ru;
+}
+
+static void iwl_mvm_decode_eht_phy_data(struct iwl_mvm *mvm,
+					struct iwl_mvm_rx_phy_data *phy_data,
+					struct ieee80211_rx_status *rx_status,
+					struct ieee80211_radiotap_eht *eht,
+					struct ieee80211_radiotap_eht_usig *usig)
+
+{
+	__le32 data0 = phy_data->d0;
+	__le32 data1 = phy_data->d1;
+	__le32 usig_a1 = phy_data->rx_vec[0];
+	u8 info_type = phy_data->info_type;
+
+	/* Not in EHT range */
+	if (info_type < IWL_RX_PHY_INFO_TYPE_EHT_MU ||
+	    info_type > IWL_RX_PHY_INFO_TYPE_EHT_TB_EXT)
+		return;
+
+	usig->common |= cpu_to_le32
+		(IEEE80211_RADIOTAP_EHT_USIG_COMMON_UL_DL_KNOWN |
+		 IEEE80211_RADIOTAP_EHT_USIG_COMMON_BSS_COLOR_KNOWN);
+	if (phy_data->with_data) {
+		usig->common |= LE32_DEC_ENC(data0,
+					     IWL_RX_PHY_DATA0_EHT_UPLINK,
+					     IEEE80211_RADIOTAP_EHT_USIG_COMMON_UL_DL);
+		usig->common |= LE32_DEC_ENC(data0,
+					     IWL_RX_PHY_DATA0_EHT_BSS_COLOR_MASK,
+					     IEEE80211_RADIOTAP_EHT_USIG_COMMON_BSS_COLOR_KNOWN);
+	} else {
+		usig->common |= LE32_DEC_ENC(usig_a1,
+					     IWL_RX_USIG_A1_UL_FLAG,
+					     IEEE80211_RADIOTAP_EHT_USIG_COMMON_UL_DL);
+		usig->common |= LE32_DEC_ENC(data0,
+					     IWL_RX_USIG_A1_BSS_COLOR,
+					     IEEE80211_RADIOTAP_EHT_USIG_COMMON_BSS_COLOR_KNOWN);
+	}
+
+	eht->known |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_KNOWN_SPATIAL_REUSE);
+	eht->data[0] |= LE32_DEC_ENC(data0,
+				     IWL_RX_PHY_DATA0_ETH_SPATIAL_REUSE_MASK,
+				     IEEE80211_RADIOTAP_EHT_DATA0_SPATIAL_REUSE);
+
+	/* All RU allocating size/index is in TB format */
+	eht->known |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_KNOWN_RU_ALLOC_TB_FMT);
+	eht->data[8] |= LE32_DEC_ENC(data0, IWL_RX_PHY_DATA0_EHT_PS160,
+				     IEEE80211_RADIOTAP_EHT_DATA8_RU_ALLOC_TB_FMT_PS_160);
+	eht->data[8] |= LE32_DEC_ENC(data1, IWL_RX_PHY_DATA1_EHT_B0,
+				     IEEE80211_RADIOTAP_EHT_DATA8_RU_ALLOC_TB_FMT_B0);
+	eht->data[8] |= LE32_DEC_ENC(data1, IWL_RX_PHY_DATA1_EHT_RU_B1_B7_ALLOC,
+				     IEEE80211_RADIOTAP_EHT_DATA8_RU_ALLOC_TB_FMT_B7_B1);
+
+	iwl_mvm_decode_eht_ru(mvm, rx_status, eht);
+
+	/* We only get here in case of IWL_RX_MPDU_PHY_TSF_OVERLOAD is set
+	 * which is on only in case of monitor mode so no need to check monitor mode */
+	eht->known |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_KNOWN_PRIMARY_80);
+	eht->data[1] |= le32_encode_bits(mvm->monitor_p80,
+					 IEEE80211_RADIOTAP_EHT_DATA1_PRIMARY_80);
+
+	usig->common |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_USIG_COMMON_TXOP_KNOWN);
+	if (phy_data->with_data)
+		usig->common |= LE32_DEC_ENC(data0, IWL_RX_PHY_DATA0_EHT_TXOP_DUR_MASK,
+					     IEEE80211_RADIOTAP_EHT_USIG_COMMON_TXOP);
+	else
+		usig->common |= LE32_DEC_ENC(usig_a1, IWL_RX_USIG_A1_TXOP_DURATION,
+					     IEEE80211_RADIOTAP_EHT_USIG_COMMON_TXOP);
+
+	eht->known |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_KNOWN_LDPC_EXTRA_SYM_OM);
+	eht->data[0] |= LE32_DEC_ENC(data0, IWL_RX_PHY_DATA0_EHT_LDPC_EXT_SYM,
+				     IEEE80211_RADIOTAP_EHT_DATA0_LDPC_EXTRA_SYM_OM);
+
+	eht->known |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_KNOWN_PRE_PADD_FACOR_OM);
+	eht->data[0] |= LE32_DEC_ENC(data0, IWL_RX_PHY_DATA0_EHT_PRE_FEC_PAD_MASK,
+				    IEEE80211_RADIOTAP_EHT_DATA0_PRE_PADD_FACOR_OM);
+
+	eht->known |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_KNOWN_PE_DISAMBIGUITY_OM);
+	eht->data[0] |= LE32_DEC_ENC(data0, IWL_RX_PHY_DATA0_EHT_PE_DISAMBIG,
+				     IEEE80211_RADIOTAP_EHT_DATA0_PE_DISAMBIGUITY_OM);
+
+	/* TODO: what about IWL_RX_PHY_DATA0_EHT_BW320_SLOT */
+
+	if (le32_get_bits(data0, IWL_RX_PHY_DATA0_EHT_SIGA_CRC_OK))
+		usig->common |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_USIG_COMMON_BAD_USIG_CRC);
+
+	usig->common |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_USIG_COMMON_PHY_VER_KNOWN);
+	usig->common |= LE32_DEC_ENC(data0, IWL_RX_PHY_DATA0_EHT_PHY_VER,
+				     IEEE80211_RADIOTAP_EHT_USIG_COMMON_PHY_VER);
+
+	/* TODO: what about TB - IWL_RX_PHY_DATA1_EHT_TB_PILOT_TYPE,
+				 IWL_RX_PHY_DATA1_EHT_TB_LOW_SS */
+
+	eht->known |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_KNOWN_EHT_LTF);
+	eht->data[0] |= LE32_DEC_ENC(data1, IWL_RX_PHY_DATA1_EHT_SIG_LTF_NUM,
+				     IEEE80211_RADIOTAP_EHT_DATA0_EHT_LTF);
+
+	if (info_type == IWL_RX_PHY_INFO_TYPE_EHT_TB_EXT ||
+	    info_type == IWL_RX_PHY_INFO_TYPE_EHT_TB)
+		iwl_mvm_decode_eht_ext_tb(mvm, phy_data, rx_status, eht, usig);
+
+	if (info_type == IWL_RX_PHY_INFO_TYPE_EHT_MU_EXT ||
+	    info_type == IWL_RX_PHY_INFO_TYPE_EHT_MU)
+		iwl_mvm_decode_eht_ext_mu(mvm, phy_data, rx_status, eht, usig);
+}
+
+static void iwl_mvm_rx_eht(struct iwl_mvm *mvm, struct sk_buff *skb,
+			   struct iwl_mvm_rx_phy_data *phy_data,
+			   int queue)
+{
+	struct ieee80211_rx_status *rx_status = IEEE80211_SKB_RXCB(skb);
+
+	struct ieee80211_radiotap_eht *eht;
+	struct ieee80211_radiotap_eht_usig *usig;
+
+	u32 rate_n_flags = phy_data->rate_n_flags;
+	u32 he_type = rate_n_flags & RATE_MCS_HE_TYPE_MSK;
+	/* EHT and HE have the same valus for LTF */
+	u8 ltf = IEEE80211_RADIOTAP_HE_DATA5_LTF_SIZE_UNKNOWN;
+
+	u16 phy_info = phy_data->phy_info;
+
+	// u32 for 1 user_info
+	eht = iwl_mvm_radiotap_put_tlv(skb, IEEE80211_RADIOTAP_EHT,
+				       sizeof(*eht) + sizeof(u32));
+
+	usig = iwl_mvm_radiotap_put_tlv(skb, IEEE80211_RADIOTAP_EHT_USIG,
+					sizeof(*usig));
+	rx_status->flag |= RX_FLAG_RADIOTAP_TLV_AT_END;
+	usig->common |= cpu_to_le32(IEEE80211_RADIOTAP_EHT_USIG_COMMON_BW_KNOWN);
+
+	usig->common |= cpu_to_le32
+		(FIELD_PREP(IEEE80211_RADIOTAP_EHT_USIG_COMMON_BW,
+			    FIELD_GET(RATE_MCS_CHAN_WIDTH_MSK, rate_n_flags)));
+
+	/* report the AMPDU-EOF bit on single frames */
+	if (!queue && !(phy_info & IWL_RX_MPDU_PHY_AMPDU)) {
+		rx_status->flag |= RX_FLAG_AMPDU_DETAILS;
+		rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT_KNOWN;
+		if (phy_data->d0 & cpu_to_le32(IWL_RX_PHY_DATA0_EHT_DELIM_EOF))
+			rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT;
+
+		/* update aggregation data for monitor sake on default queue */
+		if (phy_info & IWL_RX_MPDU_PHY_TSF_OVERLOAD) {
+			bool toggle_bit = phy_info & IWL_RX_MPDU_PHY_AMPDU_TOGGLE;
+
+			/* toggle is switched whenever new aggregation starts */
+			if (toggle_bit != mvm->ampdu_toggle) {
+				rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT_KNOWN;
+				if (phy_data->d0 & cpu_to_le32(IWL_RX_PHY_DATA0_EHT_DELIM_EOF))
+					rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT;
+			}
+		}
+	}
+
+	if (phy_info & IWL_RX_MPDU_PHY_TSF_OVERLOAD)
+		iwl_mvm_decode_eht_phy_data(mvm, phy_data, rx_status, eht, usig);
+
+#define CHECK_TYPE(F)							\
+	BUILD_BUG_ON(IEEE80211_RADIOTAP_HE_DATA1_FORMAT_ ## F !=	\
+		     (RATE_MCS_HE_TYPE_ ## F >> RATE_MCS_HE_TYPE_POS))
+
+	CHECK_TYPE(SU);
+	CHECK_TYPE(EXT_SU);
+	CHECK_TYPE(MU);
+	CHECK_TYPE(TRIG);
+
+	switch (FIELD_GET(RATE_MCS_HE_GI_LTF_MSK, rate_n_flags)) {
+	case 0:
+		if (he_type == RATE_MCS_HE_TYPE_TRIG) {
+			rx_status->eht.gi = NL80211_RATE_INFO_EHT_GI_1_6;
+			ltf = IEEE80211_RADIOTAP_HE_DATA5_LTF_SIZE_1X;
+		} else {
+			rx_status->eht.gi = NL80211_RATE_INFO_EHT_GI_0_8;
+			ltf = IEEE80211_RADIOTAP_HE_DATA5_LTF_SIZE_2X;
+		}
+		break;
+	case 1:
+		rx_status->eht.gi = NL80211_RATE_INFO_EHT_GI_1_6;
+		ltf = IEEE80211_RADIOTAP_HE_DATA5_LTF_SIZE_2X;
+		break;
+	case 2:
+		ltf = IEEE80211_RADIOTAP_HE_DATA5_LTF_SIZE_4X;
+		if (he_type == RATE_MCS_HE_TYPE_TRIG)
+			rx_status->eht.gi = NL80211_RATE_INFO_EHT_GI_3_2;
+		else
+			rx_status->eht.gi = NL80211_RATE_INFO_EHT_GI_0_8;
+		break;
+	case 3:
+		if (he_type != RATE_MCS_HE_TYPE_TRIG) {
+			ltf = IEEE80211_RADIOTAP_HE_DATA5_LTF_SIZE_4X;
+			rx_status->eht.gi = NL80211_RATE_INFO_EHT_GI_3_2;
+		}
+		break;
+	default:
+		/* nothing here */
+		break;
+	}
+
+	if (ltf != IEEE80211_RADIOTAP_HE_DATA5_LTF_SIZE_UNKNOWN) {
+		eht->known |= cpu_to_le32
+			(IEEE80211_RADIOTAP_EHT_KNOWN_GI |
+			 IEEE80211_RADIOTAP_EHT_KNOWN_EHT_LTF);
+		eht->data[0] |= cpu_to_le32
+			(FIELD_PREP(IEEE80211_RADIOTAP_EHT_DATA0_EHT_LTF,
+				    ltf) |
+			 FIELD_PREP(IEEE80211_RADIOTAP_EHT_DATA0_GI,
+				    rx_status->eht.gi));
+	}
+
+	eht->user_info[0] |= cpu_to_le32
+		(IEEE80211_RADIOTAP_EHT_USER_INFO_MCS_KNOWN |
+		 IEEE80211_RADIOTAP_EHT_USER_INFO_CODING_KNOWN |
+		 IEEE80211_RADIOTAP_EHT_USER_INFO_NSS_KNOWN_O |
+		 IEEE80211_RADIOTAP_EHT_USER_INFO_BEAMFORMING_KNOWN_O |
+		 IEEE80211_RADIOTAP_EHT_USER_INFO_DATA_FOR_USER);
+
+	if (rate_n_flags & RATE_MCS_BF_MSK)
+		eht->user_info[0] |=
+			cpu_to_le32(IEEE80211_RADIOTAP_EHT_USER_INFO_BEAMFORMING_O);
+
+	if (rate_n_flags & RATE_MCS_LDPC_MSK)
+		eht->user_info[0] |=
+			cpu_to_le32(IEEE80211_RADIOTAP_EHT_USER_INFO_CODING);
+
+	eht->user_info[0] |= cpu_to_le32
+		(FIELD_PREP(IEEE80211_RADIOTAP_EHT_USER_INFO_MCS,
+			    FIELD_GET(RATE_VHT_MCS_RATE_CODE_MSK, rate_n_flags)) |
+		 FIELD_PREP(IEEE80211_RADIOTAP_EHT_USER_INFO_NSS_O,
+			    FIELD_GET(RATE_MCS_NSS_MSK, rate_n_flags) + 1));
 }
 
 static void iwl_mvm_rx_he(struct iwl_mvm *mvm, struct sk_buff *skb,
@@ -1609,6 +2069,10 @@ static void iwl_mvm_decode_lsig(struct sk_buff *skb,
 	case IWL_RX_PHY_INFO_TYPE_HE_MU:
 	case IWL_RX_PHY_INFO_TYPE_HE_MU_EXT:
 	case IWL_RX_PHY_INFO_TYPE_HE_TB:
+	case IWL_RX_PHY_INFO_TYPE_EHT_MU:
+	case IWL_RX_PHY_INFO_TYPE_EHT_TB:
+	case IWL_RX_PHY_INFO_TYPE_EHT_MU_EXT:
+	case IWL_RX_PHY_INFO_TYPE_EHT_TB_EXT:
 		lsig = skb_put(skb, sizeof(*lsig));
 		lsig->data1 = cpu_to_le16(IEEE80211_RADIOTAP_LSIG_DATA1_LENGTH_KNOWN);
 		lsig->data2 = le16_encode_bits(le32_get_bits(phy_data->d1,
@@ -1705,6 +2169,10 @@ static void iwl_mvm_rx_fill_status(struct iwl_mvm *mvm,
 	iwl_mvm_get_signal_strength(mvm, rx_status, rate_n_flags,
 				    phy_data->energy_a, phy_data->energy_b);
 
+	/* using TLV format and must be after all fixed len fields */
+	if (format == RATE_MCS_EHT_MSK)
+		iwl_mvm_rx_eht(mvm, skb, phy_data, queue);
+
 	if (unlikely(mvm->monitor_on))
 		iwl_mvm_add_rtap_sniffer_config(mvm, skb);
 
@@ -1752,13 +2220,81 @@ static void iwl_mvm_rx_fill_status(struct iwl_mvm *mvm,
 
 		rx_status->rate_idx = rate;
 
-		if (WARN_ONCE(rate < 0 || rate > 0xFF,
-			      "Invalid rate flags 0x%x, band %d,\n",
-			      rate_n_flags, rx_status->band))
+		if ((rate < 0 || rate > 0xFF)) {
 			rx_status->rate_idx = 0;
+			if (net_ratelimit())
+				IWL_ERR(mvm, "Invalid rate flags 0x%x, band %d,\n",
+					rate_n_flags, rx_status->band);
+		}
+
 		break;
 		}
 	}
+}
+
+/* On FPGA, AP sends beacons/probe resp on all channels causing the station
+ * to (wrongly) accept these superfluous frames and update BSS info on all scanned
+ * channels. This results in connection failure since the BSS is updated
+ * wrongly. Discard frames which the Rx frequency does not match the frame
+ * payload information.
+ */
+static bool iwl_mvm_is_valid_packet_channel(struct ieee80211_rx_status *rx_status,
+					    struct sk_buff *skb)
+{
+#ifdef CPTCFG_IWLWIFI_FPGA
+	struct sk_buff *skb_ies;
+	struct ieee80211_mgmt *mgmt = (void *)skb->data;
+	const u8 *ie;
+	size_t min_hdr_len = offsetof(struct ieee80211_mgmt, u.probe_resp.variable);
+	int packet_channel = ieee80211_frequency_to_channel(rx_status->freq);
+	int lb_hb_ie_channel, uhb_ie_channel;
+	size_t ie_len;
+
+	if (!(ieee80211_is_probe_resp(mgmt->frame_control) ||
+	      ieee80211_is_beacon(mgmt->frame_control)))
+		/* nothing to check */
+		return true;
+
+	if (skb->len < min_hdr_len)
+		/* we can't determine based on IEs - don't drop the packet */
+		return true;
+
+	/* to enumerate IEs converts non-linear skb to linear */
+	skb_ies = skb_copy(skb, GFP_ATOMIC);
+	if (!skb_ies)
+		return true;
+
+	mgmt = (void *)skb_ies->data;
+	ie = mgmt->u.probe_resp.variable;
+
+	ie_len = skb_ies->len - min_hdr_len;
+
+	/* try to get channel number from HE_OPERATION IE */
+	uhb_ie_channel = cfg80211_get_ies_channel_number(ie, ie_len, NL80211_BAND_6GHZ);
+
+	/* try to get channel number from DS_PARAMS/HT_OPER IEs */
+	lb_hb_ie_channel = cfg80211_get_ies_channel_number(ie, ie_len, NL80211_BAND_2GHZ);
+	kfree_skb(skb_ies);
+
+	if (uhb_ie_channel < 0 && lb_hb_ie_channel < 0) {
+		if (rx_status->band == NL80211_BAND_6GHZ ||
+		    rx_status->band == NL80211_BAND_2GHZ)
+			/*
+			 * drop the packet since packet Rx on 2GHz / 6GHz and we failed to get
+			 * channel from IE (DS_PARAMS IE is mandatory for 2GHz, HE_OPER IE is
+			 * mandatory for GHz). otherwise, don't drop the packet since HT_OPER IE
+			 * is optional on 5GHz (it is possible issue in case AP is operating on
+			 * 5GHz without HT).
+			 */
+			return false;
+		return true;
+	}
+
+	return uhb_ie_channel > 0 ? uhb_ie_channel == packet_channel :
+		lb_hb_ie_channel == packet_channel;
+#else
+	return true;
+#endif
 }
 
 void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
@@ -1801,6 +2337,8 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 		phy_data.d1 = desc->v3.phy_data1;
 		phy_data.d2 = desc->v3.phy_data2;
 		phy_data.d3 = desc->v3.phy_data3;
+		phy_data.eht_d4 = desc->phy_eht_data4;
+		phy_data.d5 = desc->v3.phy_data5;
 	} else {
 		phy_data.rate_n_flags = le32_to_cpu(desc->v1.rate_n_flags);
 		phy_data.channel = desc->v1.channel;
@@ -1830,6 +2368,7 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 		return;
 	}
 
+	phy_data.with_data = true;
 	phy_data.phy_info = le16_to_cpu(desc->phy_info);
 	phy_data.d4 = desc->phy_data4;
 
@@ -2064,7 +2603,13 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 		goto out;
 	}
 
-	if (!iwl_mvm_reorder(mvm, napi, queue, sta, skb, desc))
+	if (!iwl_mvm_reorder(mvm, napi, queue, sta, skb, desc) &&
+	    (likely(!iwl_mvm_time_sync_frame(mvm, skb, hdr->addr2))) &&
+	    iwl_mvm_is_valid_packet_channel(rx_status, skb)
+#ifdef CPTCFG_IWLMVM_MEI_SCAN_FILTER
+	    && (likely(!iwl_mvm_mei_filter_scan(mvm, skb)))
+#endif
+	   )
 		iwl_mvm_pass_packet_to_mac80211(mvm, napi, skb, queue, sta);
 out:
 	rcu_read_unlock();
@@ -2075,7 +2620,7 @@ void iwl_mvm_rx_monitor_no_data(struct iwl_mvm *mvm, struct napi_struct *napi,
 {
 	struct ieee80211_rx_status *rx_status;
 	struct iwl_rx_packet *pkt = rxb_addr(rxb);
-	struct iwl_rx_no_data *desc = (void *)pkt->data;
+	struct iwl_rx_no_data_ver_3 *desc = (void *)pkt->data;
 	u32 rssi;
 	u32 info_type;
 	struct ieee80211_sta *sta = NULL;
@@ -2099,6 +2644,7 @@ void iwl_mvm_rx_monitor_no_data(struct iwl_mvm *mvm, struct napi_struct *napi,
 	phy_data.energy_a = u32_get_bits(rssi, RX_NO_DATA_CHAIN_A_MSK);
 	phy_data.energy_b = u32_get_bits(rssi, RX_NO_DATA_CHAIN_B_MSK);
 	phy_data.channel = u32_get_bits(rssi, RX_NO_DATA_CHANNEL_MSK);
+	phy_data.with_data = false;
 
 	if (iwl_fw_lookup_notif_ver(mvm->fw, DATA_PATH_GROUP,
 				    RX_NO_DATA_NOTIF, 0) < 2) {
@@ -2110,6 +2656,19 @@ void iwl_mvm_rx_monitor_no_data(struct iwl_mvm *mvm, struct napi_struct *napi,
 	}
 
 	format = phy_data.rate_n_flags & RATE_MCS_MOD_TYPE_MSK;
+
+	if (iwl_fw_lookup_notif_ver(mvm->fw, DATA_PATH_GROUP,
+				    RX_NO_DATA_NOTIF, 0) >= 3) {
+		if (unlikely(iwl_rx_packet_payload_len(pkt) <
+		    sizeof(struct iwl_rx_no_data_ver_3)))
+		/* invalid len for ver 3 */
+			return;
+		memcpy(phy_data.rx_vec, desc->rx_vec, sizeof(phy_data.rx_vec));
+	} else {
+		if (format == RATE_MCS_EHT_MSK)
+			/* no support for EHT before version 3 API */
+			return;
+	}
 
 	/* Dont use dev_alloc_skb(), we'll have enough headroom once
 	 * ieee80211_hdr pulled.
@@ -2131,7 +2690,7 @@ void iwl_mvm_rx_monitor_no_data(struct iwl_mvm *mvm, struct napi_struct *napi,
 			IEEE80211_RADIOTAP_ZERO_LEN_PSDU_SOUNDING;
 		break;
 	case RX_NO_DATA_INFO_TYPE_MU_UNMATCHED:
-	case RX_NO_DATA_INFO_TYPE_HE_TB_UNMATCHED:
+	case RX_NO_DATA_INFO_TYPE_TB_UNMATCHED:
 		rx_status->zero_length_psdu_type =
 			IEEE80211_RADIOTAP_ZERO_LEN_PSDU_NOT_CAPTURED;
 		break;
@@ -2145,6 +2704,16 @@ void iwl_mvm_rx_monitor_no_data(struct iwl_mvm *mvm, struct napi_struct *napi,
 		NL80211_BAND_2GHZ;
 
 	iwl_mvm_rx_fill_status(mvm, skb, &phy_data, queue);
+
+	/* no more radio tap info should be put after this point.
+	 *
+	 * We mark it as mac header, for upper layers to know where
+	 * all radio tap header ends.
+	 *
+	 * Since data doesn't move data while putting data on skb and that is
+	 * the only way we use, data + len is the next place that hdr would be put
+	 */
+	skb_set_mac_header(skb, skb->len);
 
 	/*
 	 * Override the nss from the rx_vec since the rate_n_flags has
@@ -2162,6 +2731,10 @@ void iwl_mvm_rx_monitor_no_data(struct iwl_mvm *mvm, struct napi_struct *napi,
 			le32_get_bits(desc->rx_vec[0],
 				      RX_NO_DATA_RX_VEC0_HE_NSTS_MSK) + 1;
 		break;
+	case RATE_MCS_EHT_MSK:
+		rx_status->nss =
+			le32_get_bits(desc->rx_vec[0],
+				      RX_NO_DATA_RX_VEC0_EHT_NSTS_MSK) + 1;
 	}
 
 	rcu_read_lock();

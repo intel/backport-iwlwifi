@@ -45,6 +45,9 @@
 /* minimal number of 2GHz and 5GHz channels in the regular scan request */
 #define IWL_MVM_6GHZ_PASSIVE_SCAN_MIN_CHANS 4
 
+/* Number of iterations on the channel for mei filtered scan */
+#define IWL_MEI_SCAN_NUM_ITER	5U
+
 struct iwl_mvm_scan_timing_params {
 	u32 suspend_time;
 	u32 max_out_time;
@@ -1952,14 +1955,14 @@ static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
 	 * reset or resume flow, or while not associated and a large interval
 	 * has passed since the last 6GHz passive scan.
 	 */
-	if ((vif->bss_conf.assoc ||
+	if ((vif->cfg.assoc ||
 	     time_after(mvm->last_6ghz_passive_scan_jiffies +
 			(IWL_MVM_6GHZ_PASSIVE_SCAN_TIMEOUT * HZ), jiffies)) &&
 	    (time_before(mvm->last_reset_or_resume_time_jiffies +
 			 (IWL_MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT * HZ),
 			 jiffies))) {
 		IWL_DEBUG_SCAN(mvm, "6GHz passive scan: %s\n",
-			       vif->bss_conf.assoc ? "associated" :
+			       vif->cfg.assoc ? "associated" :
 			       "timeout did not expire");
 		return;
 	}
@@ -2631,6 +2634,92 @@ static const struct iwl_scan_umac_handler iwl_scan_umac_handlers[] = {
 	IWL_SCAN_UMAC_HANDLER(12),
 };
 
+#ifdef CPTCFG_IWLMVM_MEI_SCAN_FILTER
+static void iwl_mvm_mei_scan_work(struct work_struct *wk)
+{
+	struct iwl_mei_scan_filter *scan_filter =
+		container_of(wk, struct iwl_mei_scan_filter, scan_work);
+	struct iwl_mvm *mvm =
+		container_of(scan_filter, struct iwl_mvm, mei_scan_filter);
+	struct iwl_mvm_csme_conn_info *info;
+	struct sk_buff *skb;
+	u8 bssid[ETH_ALEN];
+
+	mutex_lock(&mvm->mutex);
+	info = iwl_mvm_get_csme_conn_info(mvm);
+	memcpy(bssid, info->conn_info.bssid, ETH_ALEN);
+	mutex_unlock(&mvm->mutex);
+
+	while ((skb = skb_dequeue(&scan_filter->scan_res))) {
+		struct ieee80211_mgmt *mgmt = (void *)skb->data;
+
+		if (!memcmp(mgmt->bssid, bssid, ETH_ALEN))
+			ieee80211_rx_irqsafe(mvm->hw, skb);
+		else
+			kfree_skb(skb);
+	}
+}
+
+void iwl_mvm_mei_scan_filter_init(struct iwl_mei_scan_filter *mei_scan_filter)
+{
+	skb_queue_head_init(&mei_scan_filter->scan_res);
+	INIT_WORK(&mei_scan_filter->scan_work, iwl_mvm_mei_scan_work);
+}
+
+/*
+ * In case CSME is connected and has link protection set, this function will
+ * override the scan request to scan only the associated channel and only for
+ * the associated SSID.
+ */
+static void iwl_mvm_mei_limited_scan(struct iwl_mvm *mvm,
+				     struct iwl_mvm_scan_params *params)
+{
+	struct iwl_mvm_csme_conn_info *info = iwl_mvm_get_csme_conn_info(mvm);
+	struct iwl_mei_conn_info *conn_info;
+	struct ieee80211_channel *chan;
+	int scan_iters, i;
+
+	if (!info) {
+		IWL_DEBUG_SCAN(mvm, "mei_limited_scan: no connection info\n");
+		return;
+	}
+
+	conn_info = &info->conn_info;
+	if (!info->conn_info.lp_state || !info->conn_info.ssid_len)
+		return;
+
+	if (!params->n_channels || !params->n_ssids)
+		return;
+
+	mvm->mei_scan_filter.is_mei_limited_scan = true;
+
+	chan = ieee80211_get_channel(mvm->hw->wiphy,
+				     ieee80211_channel_to_frequency(conn_info->channel,
+								    conn_info->band));
+	if (!chan) {
+		IWL_DEBUG_SCAN(mvm, "Failed to get CSME channel (chan=%u band=%u)\n",
+			       conn_info->channel, conn_info->band);
+		return;
+	}
+
+	/*
+	 * The mei filtered scan must find the AP, otherwise CSME will
+	 * take the NIC ownership. Add several iterations on the channel to
+	 * make the scan more robust.
+	 */
+	scan_iters = min(IWL_MEI_SCAN_NUM_ITER, params->n_channels);
+	params->n_channels = scan_iters;
+	for (i = 0; i < scan_iters; i++)
+		params->channels[i] = chan;
+
+	IWL_DEBUG_SCAN(mvm, "Mei scan: num iterations=%u\n", scan_iters);
+
+	params->n_ssids = 1;
+	params->ssids[0].ssid_len = conn_info->ssid_len;
+	memcpy(params->ssids[0].ssid, conn_info->ssid, conn_info->ssid_len);
+}
+#endif
+
 static int iwl_mvm_build_scan_cmd(struct iwl_mvm *mvm,
 				  struct ieee80211_vif *vif,
 				  struct iwl_host_cmd *hcmd,
@@ -2642,6 +2731,10 @@ static int iwl_mvm_build_scan_cmd(struct iwl_mvm *mvm,
 
 	lockdep_assert_held(&mvm->mutex);
 	memset(mvm->scan_cmd, 0, ksize(mvm->scan_cmd));
+
+#ifdef CPTCFG_IWLMVM_MEI_SCAN_FILTER
+	iwl_mvm_mei_limited_scan(mvm, params);
+#endif
 
 	if (!fw_has_capa(&mvm->fw->ucode_capa, IWL_UCODE_TLV_CAPA_UMAC_SCAN)) {
 		hcmd->id = SCAN_OFFLOAD_REQUEST_CMD;
@@ -2983,6 +3076,10 @@ void iwl_mvm_rx_umac_scan_complete_notif(struct iwl_mvm *mvm,
 	struct iwl_umac_scan_complete *notif = (void *)pkt->data;
 	u32 uid = __le32_to_cpu(notif->uid);
 	bool aborted = (notif->status == IWL_SCAN_OFFLOAD_ABORTED);
+
+#ifdef CPTCFG_IWLMVM_MEI_SCAN_FILTER
+	mvm->mei_scan_filter.is_mei_limited_scan = false;
+#endif
 
 	if (WARN_ON(!(mvm->scan_uid_status[uid] & mvm->scan_status)))
 		return;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2014 Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
@@ -13,6 +13,12 @@
 #include "iwl-prph.h"
 #include "iwl-csr.h"
 #include "pnvm.h"
+
+#define FW_ASSERT_LMAC_FATAL			0x70
+#define FW_ASSERT_LMAC2_FATAL			0x72
+#define FW_ASSERT_UMAC_FATAL			0x71
+#define UMAC_RT_NMI_LMAC2_FATAL			0x72
+#define RT_NMI_INTERRUPT_OTHER_LMAC_FATAL	0x73
 
 /*
  * Note: This structure is read from the device with IO accesses,
@@ -96,6 +102,13 @@ struct iwl_umac_error_event_table {
 #define ERROR_START_OFFSET  (1 * sizeof(u32))
 #define ERROR_ELEM_SIZE     (7 * sizeof(u32))
 
+static bool iwl_fwrt_if_errorid_other_cpu(u32 err_id)
+{
+	if (err_id >= FW_ASSERT_LMAC_FATAL && err_id <= RT_NMI_INTERRUPT_OTHER_LMAC_FATAL)
+		return  true;
+	return false;
+}
+
 static void iwl_fwrt_dump_umac_error_log(struct iwl_fw_runtime *fwrt)
 {
 	struct iwl_trans *trans = fwrt->trans;
@@ -112,6 +125,12 @@ static void iwl_fwrt_dump_umac_error_log(struct iwl_fw_runtime *fwrt)
 
 	if (table.valid)
 		fwrt->dump.umac_err_id = table.error_id;
+
+	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.umac_err_id)) {
+		fwrt->trans->dbg.dump_file_name_ext_valid = true;
+		snprintf(fwrt->trans->dbg.dump_file_name_ext, IWL_FW_INI_MAX_NAME,
+			 "0x%x", fwrt->dump.umac_err_id);
+	}
 
 	if (ERROR_START_OFFSET <= table.valid * ERROR_ELEM_SIZE) {
 		IWL_ERR(trans, "Start IWL Error Log Dump:\n");
@@ -157,7 +176,8 @@ static void iwl_fwrt_dump_lmac_error_log(struct iwl_fw_runtime *fwrt, u8 lmac_nu
 			base = fwrt->fw->inst_errlog_ptr;
 	}
 
-	if (base < 0x400000) {
+	if ((fwrt->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_BZ && !base) ||
+	    (fwrt->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_BZ && base < 0x400000)) {
 		IWL_ERR(fwrt,
 			"Not valid error log pointer 0x%08X for %s uCode\n",
 			base,
@@ -187,6 +207,12 @@ static void iwl_fwrt_dump_lmac_error_log(struct iwl_fw_runtime *fwrt, u8 lmac_nu
 
 	if (table.valid)
 		fwrt->dump.lmac_err_id[lmac_num] = table.error_id;
+
+	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.lmac_err_id[lmac_num])) {
+		fwrt->trans->dbg.dump_file_name_ext_valid = true;
+		snprintf(fwrt->trans->dbg.dump_file_name_ext, IWL_FW_INI_MAX_NAME,
+			 "0x%x", fwrt->dump.lmac_err_id[lmac_num]);
+	}
 
 	if (ERROR_START_OFFSET <= table.valid * ERROR_ELEM_SIZE) {
 		IWL_ERR(trans, "Start IWL Error Log Dump:\n");
@@ -273,6 +299,15 @@ static void iwl_fwrt_dump_tcm_error_log(struct iwl_fw_runtime *fwrt, int idx)
 
 	iwl_trans_read_mem_bytes(trans, base, &table, sizeof(table));
 
+	if (table.valid)
+		fwrt->dump.tcm_err_id[idx] = table.error_id;
+
+	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.tcm_err_id[idx])) {
+		fwrt->trans->dbg.dump_file_name_ext_valid = true;
+		snprintf(fwrt->trans->dbg.dump_file_name_ext, IWL_FW_INI_MAX_NAME,
+			 "0x%x", fwrt->dump.tcm_err_id[idx]);
+	}
+
 	IWL_ERR(fwrt, "TCM%d status:\n", idx + 1);
 	IWL_ERR(fwrt, "0x%08X | error ID\n", table.error_id);
 	IWL_ERR(fwrt, "0x%08X | tcm branchlink2\n", table.blink2);
@@ -336,6 +371,15 @@ static void iwl_fwrt_dump_rcm_error_log(struct iwl_fw_runtime *fwrt, int idx)
 
 	iwl_trans_read_mem_bytes(trans, base, &table, sizeof(table));
 
+	if (table.valid)
+		fwrt->dump.rcm_err_id[idx] = table.error_id;
+
+	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.rcm_err_id[idx])) {
+		fwrt->trans->dbg.dump_file_name_ext_valid = true;
+		snprintf(fwrt->trans->dbg.dump_file_name_ext, IWL_FW_INI_MAX_NAME,
+			 "0x%x", fwrt->dump.rcm_err_id[idx]);
+	}
+
 	IWL_ERR(fwrt, "RCM%d status:\n", idx + 1);
 	IWL_ERR(fwrt, "0x%08X | error ID\n", table.error_id);
 	IWL_ERR(fwrt, "0x%08X | rcm branchlink2\n", table.blink2);
@@ -376,7 +420,7 @@ static void iwl_fwrt_dump_iml_error_log(struct iwl_fw_runtime *fwrt)
 		return;
 	}
 
-	error = iwl_read_umac_prph(trans, UMAG_SB_CPU_2_STATUS);
+	error = iwl_read_umac_prph(trans, error);
 
 	IWL_ERR(trans, "IML/ROM dump:\n");
 

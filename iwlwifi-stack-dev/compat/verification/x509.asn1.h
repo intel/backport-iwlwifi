@@ -14,8 +14,8 @@ extern int x509_note_issuer(void *, size_t, unsigned char, const void *, size_t)
 extern int x509_note_not_after(void *, size_t, unsigned char, const void *, size_t);
 extern int x509_note_not_before(void *, size_t, unsigned char, const void *, size_t);
 extern int x509_note_params(void *, size_t, unsigned char, const void *, size_t);
-extern int x509_note_pkey_algo(void *, size_t, unsigned char, const void *, size_t);
 extern int x509_note_serial(void *, size_t, unsigned char, const void *, size_t);
+extern int x509_note_sig_algo(void *, size_t, unsigned char, const void *, size_t);
 extern int x509_note_signature(void *, size_t, unsigned char, const void *, size_t);
 extern int x509_note_subject(void *, size_t, unsigned char, const void *, size_t);
 extern int x509_note_tbs_certificate(void *, size_t, unsigned char, const void *, size_t);

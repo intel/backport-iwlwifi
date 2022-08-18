@@ -14,8 +14,8 @@ from lib.mirror import GitMirror
 
 # configuration
 CID_PREFIX = 'x-iwlwifi-stack-dev' # don't change while tree is live
-INPUT_TREE = 'ssh://git-amr-3/iwlwifi-stack-dev.git'
-OUTPUT_TREE = 'ssh://git-ger-8/'
+INPUT_TREE = 'ssh://gerritwcs.ir.intel.com:29418/iwlwifi-stack-dev.git'
+OUTPUT_TREE = 'ssh://gerritwcs.ir.intel.com:29418/'
 #INPUT_TREE='/home/johannes/sys/iwlwifi-stack-dev'
 #OUTPUT_TREE='/tmp/'
 

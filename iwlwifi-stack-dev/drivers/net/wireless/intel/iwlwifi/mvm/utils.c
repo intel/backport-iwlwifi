@@ -310,7 +310,7 @@ void iwl_mvm_update_smps(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		smps_mode = mvmvif->smps_requests[IWL_MVM_SMPS_REQ_DBG];
 #endif
 
-	ieee80211_request_smps(vif, smps_mode);
+	ieee80211_request_smps(vif, 0, smps_mode);
 }
 
 static bool iwl_wait_stats_complete(struct iwl_notif_wait_data *notif_wait,
@@ -610,7 +610,7 @@ static void iwl_mvm_sta_iface_iterator(void *_data, u8 *mac,
 	if (vif->type != NL80211_IFTYPE_STATION)
 		return;
 
-	if (vif->bss_conf.assoc)
+	if (vif->cfg.assoc)
 		data->assoc = true;
 }
 
@@ -822,7 +822,7 @@ static void iwl_mvm_uapsd_agg_disconnect(struct iwl_mvm *mvm,
 	if (vif->type != NL80211_IFTYPE_STATION)
 		return;
 
-	if (!vif->bss_conf.assoc)
+	if (!vif->cfg.assoc)
 		return;
 
 	if (!mvmvif->queue_params[IEEE80211_AC_VO].uapsd &&

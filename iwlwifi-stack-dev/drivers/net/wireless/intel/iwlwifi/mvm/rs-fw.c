@@ -11,7 +11,7 @@
 
 static u8 rs_fw_bw_from_sta_bw(const struct ieee80211_sta *sta)
 {
-	switch (sta->bandwidth) {
+	switch (sta->deflink.bandwidth) {
 	case IEEE80211_STA_RX_BW_320:
 		return IWL_TLC_MNG_CH_WIDTH_320MHZ;
 	case IEEE80211_STA_RX_BW_160:
@@ -40,9 +40,9 @@ static u8 rs_fw_set_active_chains(u8 chains)
 
 static u8 rs_fw_sgi_cw_support(struct ieee80211_sta *sta)
 {
-	struct ieee80211_sta_ht_cap *ht_cap = &sta->ht_cap;
-	struct ieee80211_sta_vht_cap *vht_cap = &sta->vht_cap;
-	struct ieee80211_sta_he_cap *he_cap = &sta->he_cap;
+	struct ieee80211_sta_ht_cap *ht_cap = &sta->deflink.ht_cap;
+	struct ieee80211_sta_vht_cap *vht_cap = &sta->deflink.vht_cap;
+	struct ieee80211_sta_he_cap *he_cap = &sta->deflink.he_cap;
 	u8 supp = 0;
 
 	if (he_cap->has_he)
@@ -64,9 +64,9 @@ static u16 rs_fw_get_config_flags(struct iwl_mvm *mvm,
 				  struct ieee80211_sta *sta,
 				  struct ieee80211_supported_band *sband)
 {
-	struct ieee80211_sta_ht_cap *ht_cap = &sta->ht_cap;
-	struct ieee80211_sta_vht_cap *vht_cap = &sta->vht_cap;
-	struct ieee80211_sta_he_cap *he_cap = &sta->he_cap;
+	struct ieee80211_sta_ht_cap *ht_cap = &sta->deflink.ht_cap;
+	struct ieee80211_sta_vht_cap *vht_cap = &sta->deflink.vht_cap;
+	struct ieee80211_sta_he_cap *he_cap = &sta->deflink.he_cap;
 	bool vht_ena = vht_cap->vht_supported;
 	u16 flags = 0;
 
@@ -138,7 +138,7 @@ rs_fw_vht_set_enabled_rates(const struct ieee80211_sta *sta,
 {
 	u16 supp;
 	int i, highest_mcs;
-	u8 max_nss = sta->rx_nss;
+	u8 max_nss = sta->deflink.rx_nss;
 	struct ieee80211_vht_cap ieee_vht_cap = {
 		.vht_cap_info = cpu_to_le32(vht_cap->cap),
 		.supp_mcs = vht_cap->vht_mcs,
@@ -156,7 +156,7 @@ rs_fw_vht_set_enabled_rates(const struct ieee80211_sta *sta,
 			continue;
 
 		supp = BIT(highest_mcs + 1) - 1;
-		if (sta->bandwidth == IEEE80211_STA_RX_BW_20)
+		if (sta->deflink.bandwidth == IEEE80211_STA_RX_BW_20)
 			supp &= ~BIT(IWL_TLC_MNG_HT_RATE_MCS9);
 
 		cmd->ht_rates[i][IWL_TLC_MCS_PER_BW_80] = cpu_to_le16(supp);
@@ -165,7 +165,7 @@ rs_fw_vht_set_enabled_rates(const struct ieee80211_sta *sta,
 		 * configuration is supported - only for MCS 0 since we already
 		 * decoded the MCS bits anyway ourselves.
 		 */
-		if (sta->bandwidth == IEEE80211_STA_RX_BW_160 &&
+		if (sta->deflink.bandwidth == IEEE80211_STA_RX_BW_160 &&
 		    ieee80211_get_vht_max_nss(&ieee_vht_cap,
 					      IEEE80211_VHT_CHANWIDTH_160MHZ,
 					      0, true, nss) >= nss)
@@ -196,7 +196,7 @@ rs_fw_he_set_enabled_rates(const struct ieee80211_sta *sta,
 			   struct ieee80211_supported_band *sband,
 			   struct iwl_tlc_config_cmd_v4 *cmd)
 {
-	const struct ieee80211_sta_he_cap *he_cap = &sta->he_cap;
+	const struct ieee80211_sta_he_cap *he_cap = &sta->deflink.he_cap;
 	u16 mcs_160 = le16_to_cpu(he_cap->he_mcs_nss_supp.rx_mcs_160);
 	u16 mcs_80 = le16_to_cpu(he_cap->he_mcs_nss_supp.rx_mcs_80);
 	u16 tx_mcs_80 =
@@ -204,7 +204,7 @@ rs_fw_he_set_enabled_rates(const struct ieee80211_sta *sta,
 	u16 tx_mcs_160 =
 		le16_to_cpu(sband->iftype_data->he_cap.he_mcs_nss_supp.tx_mcs_160);
 	int i;
-	u8 nss = sta->rx_nss;
+	u8 nss = sta->deflink.rx_nss;
 
 	/* the station support only a single receive chain */
 	if (sta->smps_mode == IEEE80211_SMPS_STATIC)
@@ -288,7 +288,7 @@ static void rs_fw_eht_set_enabled_rates(const struct ieee80211_sta *sta,
 {
 	/* peer RX mcs capa */
 	const struct ieee80211_eht_mcs_nss_supp *eht_rx_mcs =
-		&sta->eht_cap.eht_mcs_nss_supp;
+		&sta->deflink.eht_cap.eht_mcs_nss_supp;
 	/* our TX mcs capa */
 	const struct ieee80211_eht_mcs_nss_supp *eht_tx_mcs =
 		&sband->iftype_data->eht_cap.eht_mcs_nss_supp;
@@ -298,7 +298,7 @@ static void rs_fw_eht_set_enabled_rates(const struct ieee80211_sta *sta,
 	struct ieee80211_eht_mcs_nss_supp_20mhz_only mcs_tx_20;
 
 	/* peer is 20Mhz only */
-	if (!(sta->he_cap.he_cap_elem.phy_cap_info[0] &
+	if (!(sta->deflink.he_cap.he_cap_elem.phy_cap_info[0] &
 	      IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_MASK_ALL)) {
 		mcs_rx_20 = eht_rx_mcs->only_20mhz;
 	} else {
@@ -337,9 +337,13 @@ static void rs_fw_eht_set_enabled_rates(const struct ieee80211_sta *sta,
 		const struct ieee80211_eht_mcs_nss_supp_bw *mcs_tx =
 			rs_fw_rs_mcs2eht_mcs(bw, eht_tx_mcs);
 
-		/* got unsuppored index for bw */
+		/* got unsupported index for bw */
 		if (!mcs_rx || !mcs_tx)
 			continue;
+
+		/* break out if we don't support the bandwidth */
+		if (cmd->max_ch_width < (bw + IWL_TLC_MNG_CH_WIDTH_80MHZ))
+			break;
 
 		rs_fw_set_eht_mcs_nss(cmd->ht_rates, bw,
 				      MAX_NSS_MCS(9, mcs_rx, mcs_tx), GENMASK(9, 0));
@@ -350,7 +354,7 @@ static void rs_fw_eht_set_enabled_rates(const struct ieee80211_sta *sta,
 	}
 
 	/* the station support only a single receive chain */
-	if (sta->smps_mode == IEEE80211_SMPS_STATIC || sta->rx_nss < 2)
+	if (sta->smps_mode == IEEE80211_SMPS_STATIC || sta->deflink.rx_nss < 2)
 		memset(cmd->ht_rates[IWL_TLC_NSS_2], 0,
 		       sizeof(cmd->ht_rates[IWL_TLC_NSS_2]));
 }
@@ -362,12 +366,12 @@ static void rs_fw_set_supp_rates(struct ieee80211_sta *sta,
 	int i;
 	u16 supp = 0;
 	unsigned long tmp; /* must be unsigned long for for_each_set_bit */
-	const struct ieee80211_sta_ht_cap *ht_cap = &sta->ht_cap;
-	const struct ieee80211_sta_vht_cap *vht_cap = &sta->vht_cap;
-	const struct ieee80211_sta_he_cap *he_cap = &sta->he_cap;
+	const struct ieee80211_sta_ht_cap *ht_cap = &sta->deflink.ht_cap;
+	const struct ieee80211_sta_vht_cap *vht_cap = &sta->deflink.vht_cap;
+	const struct ieee80211_sta_he_cap *he_cap = &sta->deflink.he_cap;
 
 	/* non HT rates */
-	tmp = sta->supp_rates[sband->band];
+	tmp = sta->deflink.supp_rates[sband->band];
 	for_each_set_bit(i, &tmp, BITS_PER_LONG)
 		supp |= BIT(sband->bitrates[i].hw_value);
 
@@ -375,7 +379,7 @@ static void rs_fw_set_supp_rates(struct ieee80211_sta *sta,
 	cmd->mode = IWL_TLC_MNG_MODE_NON_HT;
 
 	/* HT/VHT rates */
-	if (sta->eht_cap.has_eht) {
+	if (sta->deflink.eht_cap.has_eht) {
 		cmd->mode = IWL_TLC_MNG_MODE_EHT;
 		rs_fw_eht_set_enabled_rates(sta, sband, cmd);
 	} else if (he_cap->has_he) {
@@ -552,11 +556,11 @@ int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta, u32 ampdu_size)
 u16 rs_fw_get_max_amsdu_len(struct ieee80211_sta *sta)
 {
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	const struct ieee80211_sta_vht_cap *vht_cap = &sta->vht_cap;
-	const struct ieee80211_sta_ht_cap *ht_cap = &sta->ht_cap;
+	const struct ieee80211_sta_vht_cap *vht_cap = &sta->deflink.vht_cap;
+	const struct ieee80211_sta_ht_cap *ht_cap = &sta->deflink.ht_cap;
 
 	if (mvmsta->vif->bss_conf.chandef.chan->band == NL80211_BAND_6GHZ) {
-		switch (le16_get_bits(sta->he_6ghz_capa.capa,
+		switch (le16_get_bits(sta->deflink.he_6ghz_capa.capa,
 				      IEEE80211_HE_6GHZ_CAP_MAX_MPDU_LEN)) {
 		case IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_11454:
 			return IEEE80211_MAX_MPDU_LEN_VHT_11454;
@@ -603,7 +607,7 @@ void rs_fw_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	struct iwl_tlc_config_cmd_v4 cfg_cmd = {
 		.sta_id = mvmsta->sta_id,
 		.max_ch_width = update ?
-			rs_fw_bw_from_sta_bw(sta) : RATE_MCS_CHAN_WIDTH_20,
+			rs_fw_bw_from_sta_bw(sta) : IWL_TLC_MNG_CH_WIDTH_20MHZ,
 		.flags = cpu_to_le16(rs_fw_get_config_flags(mvm, sta, sband)),
 		.chains = rs_fw_set_active_chains(iwl_mvm_get_valid_tx_ant(mvm)),
 		.sgi_ch_width_supp = rs_fw_sgi_cw_support(sta),

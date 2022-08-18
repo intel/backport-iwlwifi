@@ -94,4 +94,8 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
 #define OPTIMIZER_HIDE_VAR(var) barrier()
 #endif
 
+#ifndef data_race
+#define data_race(expr)	(expr)
+#endif
+
 #endif /* __BACKPORT_LINUX_COMPILER_H */

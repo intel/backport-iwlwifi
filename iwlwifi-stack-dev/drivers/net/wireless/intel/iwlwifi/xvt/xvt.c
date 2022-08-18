@@ -603,6 +603,12 @@ static void iwl_xvt_nic_config(struct iwl_op_mode *op_mode)
 	radio_cfg_dash = (xvt->fw->phy_config & FW_PHY_CFG_RADIO_DASH) >>
 			 FW_PHY_CFG_RADIO_DASH_POS;
 
+	IWL_DEBUG_INFO(xvt, "Radio type=0x%x-0x%x-0x%x\n", radio_cfg_type,
+		       radio_cfg_step, radio_cfg_dash);
+
+	if (xvt->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
+		return;
+
 	reg_val = CSR_HW_REV_STEP_DASH(xvt->trans->hw_rev);
 
 	/* radio configuration */
@@ -632,9 +638,6 @@ static void iwl_xvt_nic_config(struct iwl_op_mode *op_mode)
 				CSR_HW_IF_CONFIG_REG_BIT_RADIO_SI |
 				CSR_HW_IF_CONFIG_REG_BIT_MAC_SI,
 				reg_val);
-
-	IWL_DEBUG_INFO(xvt, "Radio type=0x%x-0x%x-0x%x\n", radio_cfg_type,
-		       radio_cfg_step, radio_cfg_dash);
 
 	/*
 	 * W/A : NIC is stuck in a reset state after Early PCIe power off
@@ -1070,4 +1073,31 @@ int iwl_xvt_init_ppag_tables(struct iwl_xvt *xvt)
 		return 0;
 
 	return iwl_xvt_ppag_send_cmd(xvt);
+}
+
+void iwl_xvt_txpath_flush_send_cmd(struct iwl_xvt *xvt, u32 sta_id, u16 tids)
+{
+	int ret;
+	struct iwl_tx_path_flush_cmd flush_cmd = {
+		.sta_id = cpu_to_le32(sta_id),
+		.tid_mask = cpu_to_le16(tids),
+	};
+
+	struct iwl_host_cmd cmd = {
+		.id = TXPATH_FLUSH,
+		.len = { sizeof(flush_cmd), },
+		.data = { &flush_cmd, },
+		.flags = CMD_WANT_SKB,
+	};
+
+	IWL_DEBUG_TX_QUEUES(xvt, "flush for sta id %d tid mask 0x%x\n", sta_id, tids);
+
+	ret = iwl_xvt_send_cmd(xvt, &cmd);
+
+	if (ret) {
+		IWL_ERR(xvt, "Failed to send flush command (%d)\n", ret);
+		return;
+	}
+
+	iwl_xvt_txpath_flush(xvt, cmd.resp_pkt);
 }

@@ -54,7 +54,7 @@ csa_counter_offsets_presp(struct cfg80211_csa_settings *s)
 	return s->counter_offsets_presp;
 }
 
-#if CFG80211_VERSION <= KERNEL_VERSION(9,9,9)
+#if CFG80211_VERSION < KERNEL_VERSION(5,18,0)
 #define IEEE80211_CHAN_NO_HE 0
 #define IEEE80211_CHAN_NO_EHT 0
 
@@ -92,6 +92,9 @@ ieee80211_get_eht_iftype_cap(const struct ieee80211_supported_band *sband,
 #define cfg_eht_cap_has_eht(obj) (false && (obj))
 #define cfg_eht_cap_set_has_eht(obj, val) do { (void)obj; (void)val; } while (0)
 #define cfg_eht_cap(obj) ((struct ieee80211_sta_eht_cap *)((obj) ? NULL : NULL))
+
+/* mbssid was added in 5.18.0, so it's safe to return 0 prior to that version */
+#define ieee80211_get_mbssid_beacon_len(...) 0
 #else
 #define cfg_eht_cap_has_eht(obj) (obj)->eht_cap.has_eht
 #define cfg_eht_cap_set_has_eht(obj, val) (obj)->eht_cap.has_eht = val
@@ -986,37 +989,6 @@ reg_query_regdb_wmm(char *alpha2, int freq, u32 *ptr,
 }
 #endif /* >= 4.5.0 && < 4.17.0 */
 
-#if CFG80211_VERSION < KERNEL_VERSION(99,0,0)
-/* not yet upstream */
-static inline int
-cfg80211_crypto_n_ciphers_group(struct cfg80211_crypto_settings *crypto)
-{
-	return 1;
-}
-
-static inline u32
-cfg80211_crypto_ciphers_group(struct cfg80211_crypto_settings *crypto,
-			      int idx)
-{
-	WARN_ON(idx != 0);
-	return crypto->cipher_group;
-}
-
-#else
-static inline int
-cfg80211_crypto_n_ciphers_group(struct cfg80211_crypto_settings *crypto)
-{
-	return crypto->n_ciphers_group;
-}
-
-static inline u32
-cfg80211_crypto_ciphers_group(struct cfg80211_crypto_settings *crypto,
-			      int idx)
-{
-	return crypto->cipher_groups[idx];
-}
-#endif
-
 #ifndef VHT_MUMIMO_GROUPS_DATA_LEN
 #define VHT_MUMIMO_GROUPS_DATA_LEN (WLAN_MEMBERSHIP_LEN +\
 				    WLAN_USER_POSITION_LEN)
@@ -1499,6 +1471,7 @@ int ieee80211_get_vht_max_nss(struct ieee80211_vht_cap *cap,
 #endif
 
 #if CFG80211_VERSION < KERNEL_VERSION(5,7,0)
+#define NL80211_EXT_FEATURE_BEACON_PROTECTION -1
 #define NL80211_EXT_FEATURE_PROTECTED_TWT -1
 #endif
 
@@ -2177,4 +2150,71 @@ struct net_device_path_ctx {
 	memset(__ptr + offsetof(typeof(*(obj)), member), __val,		\
 	       sizeof(*(obj)) - offsetof(typeof(*(obj)), member));	\
 })
+#endif
+
+#if CFG80211_VERSION < KERNEL_VERSION(5,19,0)
+/**
+ * struct cfg80211_rx_info - received management frame info
+ *
+ * @freq: Frequency on which the frame was received in kHz
+ * @sig_dbm: signal strength in dBm, or 0 if unknown
+ * @buf: Management frame (header + body)
+ * @len: length of the frame data
+ * @flags: flags, as defined in enum nl80211_rxmgmt_flags
+ * @rx_tstamp: Hardware timestamp of frame RX in nanoseconds
+ * @ack_tstamp: Hardware timestamp of ack TX in nanoseconds
+ */
+struct cfg80211_rx_info {
+	int freq;
+	int sig_dbm;
+	const u8 *buf;
+	size_t len;
+	u32 flags;
+	u64 rx_tstamp;
+	u64 ack_tstamp;
+};
+
+static inline bool cfg80211_rx_mgmt_ext(struct wireless_dev *wdev,
+					struct cfg80211_rx_info *info)
+{
+	return cfg80211_rx_mgmt(wdev, KHZ_TO_MHZ(info->freq), info->sig_dbm,
+				info->buf, info->len, info->flags);
+}
+
+/**
+ * struct cfg80211_tx_status - TX status for management frame information
+ *
+ * @cookie: Cookie returned by cfg80211_ops::mgmt_tx()
+ * @tx_tstamp: hardware TX timestamp in nanoseconds
+ * @ack_tstamp: hardware ack RX timestamp in nanoseconds
+ * @buf: Management frame (header + body)
+ * @len: length of the frame data
+ * @ack: Whether frame was acknowledged
+ */
+struct cfg80211_tx_status {
+	u64 cookie;
+	u64 tx_tstamp;
+	u64 ack_tstamp;
+	const u8 *buf;
+	size_t len;
+	bool ack;
+};
+
+static inline
+void cfg80211_mgmt_tx_status_ext(struct wireless_dev *wdev,
+				 struct cfg80211_tx_status *status, gfp_t gfp)
+{
+	cfg80211_mgmt_tx_status(wdev, status->cookie, status->buf, status->len,
+				status->ack, gfp);
+}
+
+#define NL80211_EXT_FEATURE_HW_TIMESTAMP -1
+#endif
+
+#if CFG80211_VERSION < KERNEL_VERSION(5,20,0)
+#define cfg80211_ch_switch_notify(dev, chandef, link_id) cfg80211_ch_switch_notify(dev, chandef)
+#define cfg80211_beacon_data_link_id(params)	0
+#define WIPHY_FLAG_SUPPORTS_MLO 0
+#else
+#define cfg80211_beacon_data_link_id(params)	(params->link_id)
 #endif

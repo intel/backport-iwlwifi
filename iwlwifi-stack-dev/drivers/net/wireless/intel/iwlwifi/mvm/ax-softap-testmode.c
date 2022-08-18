@@ -1,28 +1,29 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
- * Copyright (C) 2021 Intel Corporation
+ * Copyright (C) 2021 - 2022 Intel Corporation
  */
 #include "debugfs.h"
 #include "mvm.h"
 #include "fw/api/ax-softap-testmode.h"
 #include <net/mac80211.h>
 
+#define DL_BASIC_CMD_SIZE 0x104
+#define DL_MU_BAR_CMD_SIZE 0x80
+#define UL_CMD_SIZE 0xa0
+
 static ssize_t
 iwl_dbgfs_ax_softap_testmode_dl_basic_write(struct iwl_mvm *mvm,
 					    char *buf, size_t count,
 					    loff_t *ppos)
 {
-	struct ax_softap_testmode_dl_basic_cmd *cmd =
-		(struct ax_softap_testmode_dl_basic_cmd *)buf;
-
 	int ret;
 	u32 status;
 
-	if (sizeof(*cmd) != count) {
+	if (count != DL_BASIC_CMD_SIZE) {
 		IWL_ERR(mvm,
-			"Bad size for softap dl basic cmd (%zd) should be (%zd)\n",
-			count, sizeof(*cmd));
+			"Bad size for softap dl basic cmd (%zd) should be (%d)\n",
+			count, DL_BASIC_CMD_SIZE);
 		return -EINVAL;
 	}
 
@@ -31,7 +32,7 @@ iwl_dbgfs_ax_softap_testmode_dl_basic_write(struct iwl_mvm *mvm,
 	mutex_lock(&mvm->mutex);
 	ret = iwl_mvm_send_cmd_pdu_status(mvm,
 					  WIDE_ID(DATA_PATH_GROUP, AX_SOFTAP_TESTMODE_DL_BASIC),
-					  count, cmd, &status);
+					  count, buf, &status);
 	mutex_unlock(&mvm->mutex);
 	if (ret) {
 		IWL_ERR(mvm, "Failed to send softap dl basic cmd (%d)\n",
@@ -53,16 +54,13 @@ iwl_dbgfs_ax_softap_testmode_dl_mu_bar_write(struct iwl_mvm *mvm,
 					     char *buf, size_t count,
 					     loff_t *ppos)
 {
-	struct ax_softap_testmode_dl_mu_bar_cmd *cmd =
-		(struct ax_softap_testmode_dl_mu_bar_cmd *)buf;
-
 	int ret;
 	u32 status;
 
-	if (sizeof(*cmd) != count) {
+	if (count != DL_MU_BAR_CMD_SIZE) {
 		IWL_ERR(mvm,
-			"Bad size for softap dl mu bar cmd (%zd) should be (%zd)\n",
-			count, sizeof(*cmd));
+			"Bad size for softap dl mu bar cmd (%zd) should be (%d)\n",
+			count, DL_MU_BAR_CMD_SIZE);
 		return -EINVAL;
 	}
 
@@ -71,7 +69,7 @@ iwl_dbgfs_ax_softap_testmode_dl_mu_bar_write(struct iwl_mvm *mvm,
 	mutex_lock(&mvm->mutex);
 	ret = iwl_mvm_send_cmd_pdu_status(mvm,
 					  WIDE_ID(DATA_PATH_GROUP, AX_SOFTAP_TESTMODE_DL_MU_BAR),
-					  count, cmd, &status);
+					  count, buf, &status);
 	mutex_unlock(&mvm->mutex);
 	if (ret) {
 		IWL_ERR(mvm, "Failed to send softap dl mu bar cmd (%d)\n",
@@ -92,16 +90,13 @@ static ssize_t
 iwl_dbgfs_ax_softap_testmode_ul_write(struct iwl_mvm *mvm,
 				      char *buf, size_t count, loff_t *ppos)
 {
-	struct ax_softap_testmode_ul_cmd *cmd =
-		(struct ax_softap_testmode_ul_cmd *)buf;
-
 	int ret;
 	u32 status;
 
-	if (sizeof(*cmd) != count) {
+	if (count != UL_CMD_SIZE) {
 		IWL_ERR(mvm,
-			"Bad size for softap ul cmd (%zd) should be (%zd)\n",
-			count, sizeof(*cmd));
+			"Bad size for softap ul cmd (%zd) should be (%d)\n",
+			count, UL_CMD_SIZE);
 		return -EINVAL;
 	}
 
@@ -110,7 +105,7 @@ iwl_dbgfs_ax_softap_testmode_ul_write(struct iwl_mvm *mvm,
 	mutex_lock(&mvm->mutex);
 	ret = iwl_mvm_send_cmd_pdu_status(mvm,
 					  WIDE_ID(DATA_PATH_GROUP, AX_SOFTAP_TESTMODE_UL),
-					  count, cmd, &status);
+					  count, buf, &status);
 	mutex_unlock(&mvm->mutex);
 	if (ret) {
 		IWL_ERR(mvm, "Failed to send softap ul cmd (%d)\n",
@@ -135,13 +130,10 @@ iwl_dbgfs_ax_softap_testmode_ul_write(struct iwl_mvm *mvm,
 			goto err;					\
 	} while (0)
 
-#define DL_BASIC_CMD_SIZE (sizeof(struct ax_softap_testmode_dl_basic_cmd) + 1)
-#define DL_MU_BAR_CMD_SIZE (sizeof(struct ax_softap_testmode_dl_mu_bar_cmd) + 1)
-#define UL_CMD_SIZE (sizeof(struct ax_softap_testmode_ul_cmd) + 1)
-
-MVM_DEBUGFS_WRITE_FILE_OPS(ax_softap_testmode_dl_basic, DL_BASIC_CMD_SIZE);
-MVM_DEBUGFS_WRITE_FILE_OPS(ax_softap_testmode_dl_mu_bar, DL_MU_BAR_CMD_SIZE);
-MVM_DEBUGFS_WRITE_FILE_OPS(ax_softap_testmode_ul, UL_CMD_SIZE);
+/* +1 for null char */
+MVM_DEBUGFS_WRITE_FILE_OPS(ax_softap_testmode_dl_basic, DL_BASIC_CMD_SIZE + 1);
+MVM_DEBUGFS_WRITE_FILE_OPS(ax_softap_testmode_dl_mu_bar, DL_MU_BAR_CMD_SIZE + 1);
+MVM_DEBUGFS_WRITE_FILE_OPS(ax_softap_testmode_ul, UL_CMD_SIZE + 1);
 
 static void ax_softap_testmode_add_debugfs(struct ieee80211_hw *hw,
 					   struct ieee80211_vif *vif,

@@ -229,14 +229,16 @@ static void iwl_dbg_cfg_parse_fw_dbg_preset(struct iwl_dbg_cfg *dbgcfg,
 		return;
 	}
 
-	if (preset > IWL_DBG_TLV_MAX_PRESET) {
+	if (preset > IWL_DBG_TLV_MAX_PRESET && preset != IWL_FW_INI_PRESET_DISABLE) {
 		printk(KERN_INFO "iwlwifi debug config: Invalid value for FW_DBG_PRESET: %d\n",
 		       preset);
 		return;
 	}
 
 	dbgcfg->FW_DBG_DOMAIN &= 0xffff;
-	dbgcfg->FW_DBG_DOMAIN |= BIT(16 + preset);
+	if (preset != IWL_FW_INI_PRESET_DISABLE)
+		dbgcfg->FW_DBG_DOMAIN |= BIT(16 + preset);
+
 	printk(KERN_INFO "iwlwifi debug config: FW_DBG_PRESET=%d => FW_DBG_DOMAIN=0x%x\n",
 	       preset, dbgcfg->FW_DBG_DOMAIN);
 }

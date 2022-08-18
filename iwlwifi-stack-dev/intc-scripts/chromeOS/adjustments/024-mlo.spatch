@@ -1,0 +1,113 @@
+@stop_ap@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.stop_ap = fn,
+...
+};
+
+@@
+identifier stop_ap.fn;
+identifier wiphy, dev, link_id;
+@@
+int fn(struct wiphy *wiphy, struct net_device *dev
++#if CFG80211_VERSION >= KERNEL_VERSION(5,20,0)
+, unsigned int link_id
++#endif
+ )
+{
++#if CFG80211_VERSION < KERNEL_VERSION(5,20,0)
++	unsigned int link_id = 0;
++#endif
+...
+}
+
+@set_bitrate_mask@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_bitrate_mask = fn,
+...
+};
+
+@@
+identifier set_bitrate_mask.fn;
+identifier wiphy, dev, link_id, addr, mask;
+type u8;
+@@
+int fn(struct wiphy *wiphy, struct net_device *dev,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,20,0)
+unsigned int link_id,
++#endif
+const u8 *addr, const struct cfg80211_bitrate_mask *mask)
+{
+...
+}
+
+@get_channel@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.get_channel = fn,
+...
+};
+
+@@
+identifier get_channel.fn;
+identifier wiphy, wdev, link_id, chandef;
+@@
+int fn(struct wiphy *wiphy, struct wireless_dev *wdev,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,20,0)
+unsigned int link_id,
++#endif
+struct cfg80211_chan_def *chandef)
+{
++#if CFG80211_VERSION < KERNEL_VERSION(5,20,0)
++	unsigned int link_id = 0;
++#endif
+...
+}
+
+@set_ap_chanwidth@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_ap_chanwidth = fn,
+...
+};
+
+@@
+identifier set_ap_chanwidth.fn;
+identifier wiphy, dev, link_id, chandef;
+@@
+int fn(struct wiphy *wiphy, struct net_device *dev,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,20,0)
+unsigned int link_id,
++#endif
+struct cfg80211_chan_def *chandef)
+{
++#if CFG80211_VERSION < KERNEL_VERSION(5,20,0)
++	unsigned int link_id = 0;
++#endif
+...
+}
+
+@@
+struct cfg80211_beacon_data *params;
+@@
+-params->link_id
++cfg80211_beacon_data_link_id(params)
+
+@@
+struct cfg80211_ap_settings *params;
+@@
+-params->beacon.link_id
++cfg80211_beacon_data_link_id(&params->beacon)

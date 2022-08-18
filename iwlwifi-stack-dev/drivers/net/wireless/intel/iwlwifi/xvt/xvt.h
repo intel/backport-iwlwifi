@@ -116,12 +116,16 @@ struct iwl_xvt_reorder_buffer {
  * @tx_counter: Number of packets that were sent from this queue. Counts TX_RSP
  * @txq_full: Set to true when tx_wq is full
  * @allocated_queue: Whether queue is allocated
+ * @sta_mask: Station id mask
+ * @tid: TID
  */
 struct tx_queue_data {
 	wait_queue_head_t tx_wq;
 	u64 tx_counter;
 	bool txq_full;
 	bool allocated_queue;
+	u32 sta_mask;
+	u16 tid;
 };
 
 /**
@@ -404,3 +408,4 @@ static inline int iwl_xvt_dbgfs_register(struct iwl_xvt *xvt,
 int iwl_xvt_init_sar_tables(struct iwl_xvt *xvt);
 int iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b);
 int iwl_xvt_init_ppag_tables(struct iwl_xvt *xvt);
+void iwl_xvt_txpath_flush_send_cmd(struct iwl_xvt *xvt, u32 sta_id, u16 tfd_msk);

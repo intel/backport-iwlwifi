@@ -83,3 +83,25 @@ expression work;
 +#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
 INIT_WORK(work, ieee80211_color_change_finalize_work);
 +#endif
+
+@@
+@@
+struct ieee80211_link_data {
+...
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+        struct work_struct color_change_finalize_work;
++#endif
+...
+};
+
+@@
+identifier func =~ "ieee80211_do_stop";
+@@
+func(...)
+{
+...
++#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
+        cancel_work_sync(&sdata->deflink.color_change_finalize_work);
++#endif
+...
+}

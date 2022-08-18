@@ -8,6 +8,8 @@ iwlmvm-y += tt.o offloading.o tdls.o
 iwlmvm-y += ftm-responder.o ftm-initiator.o
 iwlmvm-y += rfi.o
 iwlmvm-y += nan.o
+iwlmvm-y += time-sync.o
+iwlmvm-y += mld-key.o mld-mac.o link.o mld-sta.o mld-mac80211.o
 iwlmvm-$(CPTCFG_IWLWIFI_DEBUGFS) += debugfs.o debugfs-vif.o
 iwlmvm-$(CPTCFG_IWLWIFI_LEDS) += led.o
 iwlmvm-$(CONFIG_PM) += d3.o
@@ -22,3 +24,7 @@ iwlmvm-$(CPTCFG_IWLMVM_PHC) += ptp.o
 endif
 iwlmvm-$(CPTCFG_IWLMVM_ADVANCED_QUOTA_MGMT) += quota-adv.o
 iwlmvm-$(CPTCFG_IWLMVM_AX_SOFTAP_TESTMODE) += ax-softap-testmode.o
+
+ifeq ($(CPTCFG_IWLWIFI_SIMULATION),y)
+UBSAN_SANITIZE := y
+endif

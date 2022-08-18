@@ -135,8 +135,7 @@ config IWLWIFI_ATLAS_PLATFORM_WORKAROUND
 	  to enable a specific workaround if detected.
 
 config IWLWIFI_FPGA
-	bool
-	default y
+	bool "enable FPGA workaround code"
 	help
 	  The code that is related to fpga is not intended to ever go upstream.
 
@@ -181,3 +180,13 @@ config IWLWIFI_PRE_IPU_SECURITY_FIX
 	help
 	  If enabled, pre IPU fixes will be included in compilation for
 	  testing security code changes.
+
+config IWLMVM_MEI_SCAN_FILTER
+	bool "enable MEI scan filter"
+	default y
+	depends on IWLMEI
+	help
+	  If enabled, when the driver loads and the MEI driver reports that
+	  CSME is connected and has link protection enabled, scan requests will
+	  be modified to include only the channel and SSID of the connected AP,
+	  and scan results will be filtered to include only the connected BSS.

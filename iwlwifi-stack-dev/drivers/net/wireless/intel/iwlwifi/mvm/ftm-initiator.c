@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2021 Intel Corporation
+ * Copyright (C) 2018-2022 Intel Corporation
  */
 #include <linux/etherdevice.h>
 #include <linux/math64.h>
@@ -67,7 +67,7 @@ int iwl_mvm_ftm_add_pasn_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	 * the TK is already configured for this station, so it
 	 * shouldn't be set again here.
 	 */
-	if (vif->bss_conf.assoc &&
+	if (vif->cfg.assoc &&
 	    !memcmp(addr, vif->bss_conf.bssid, ETH_ALEN)) {
 		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 		struct ieee80211_sta *sta;
@@ -231,7 +231,7 @@ static void iwl_mvm_ftm_cmd_v5(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	for (i = 0; i < ETH_ALEN; i++)
 		cmd->macaddr_mask[i] = ~req->mac_addr_mask[i];
 
-	if (vif->bss_conf.assoc)
+	if (vif->cfg.assoc)
 		memcpy(cmd->range_req_bssid, vif->bss_conf.bssid, ETH_ALEN);
 	else
 		eth_broadcast_addr(cmd->range_req_bssid);
@@ -269,7 +269,7 @@ static void iwl_mvm_ftm_cmd_common(struct iwl_mvm *mvm,
 			cpu_to_le32(IWL_TOF_INITIATOR_FLAGS_FAST_ALGO_DISABLED);
 #endif
 
-	if (vif->bss_conf.assoc) {
+	if (vif->cfg.assoc) {
 		memcpy(cmd->range_req_bssid, vif->bss_conf.bssid, ETH_ALEN);
 
 		/* AP's TSF is only relevant if associated */
@@ -298,9 +298,9 @@ static void iwl_mvm_ftm_cmd_v8(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 
 #ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	if (IWL_MVM_FTM_INITIATOR_COMMON_CALIB) {
-		cmd->common_calib =
+		((struct iwl_tof_range_req_cmd_v7 *)cmd)->common_calib =
 			cpu_to_le16(IWL_MVM_FTM_INITIATOR_COMMON_CALIB);
-		cmd->initiator_flags |=
+		((struct iwl_tof_range_req_cmd_v7 *)cmd)->initiator_flags |=
 			cpu_to_le32(IWL_TOF_INITIATOR_FLAGS_COMMON_CALIB);
 	}
 #endif
@@ -535,7 +535,7 @@ iwl_mvm_ftm_put_target(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 
 	iwl_mvm_ftm_put_target_common(mvm, peer, target);
 
-	if (vif->bss_conf.assoc &&
+	if (vif->cfg.assoc &&
 	    !memcmp(peer->addr, vif->bss_conf.bssid, ETH_ALEN)) {
 		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 		struct ieee80211_sta *sta;
@@ -751,7 +751,7 @@ iwl_mvm_ftm_set_secured_ranging(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		target->cipher = entry->cipher;
 		memcpy(target->hltk, entry->hltk, sizeof(target->hltk));
 
-		if (vif->bss_conf.assoc &&
+		if (vif->cfg.assoc &&
 		    !memcmp(vif->bss_conf.bssid, target->bssid,
 			    sizeof(target->bssid)))
 			ieee80211_iter_keys(mvm->hw, vif, iter, target);
@@ -1077,11 +1077,10 @@ static int iwl_mvm_ftm_range_resp_valid(struct iwl_mvm *mvm, u8 request_id,
 static void iwl_mvm_ftm_rtt_smoothing(struct iwl_mvm *mvm,
 				      struct cfg80211_pmsr_result *res)
 {
-	struct iwl_mvm_smooth_entry *resp;
+	struct iwl_mvm_smooth_entry *resp = NULL, *iter;
 	s64 rtt_avg, rtt = res->ftm.rtt_avg;
 	u32 undershoot, overshoot;
 	u8 alpha;
-	bool found;
 
 	if (!IWL_MVM_FTM_INITIATOR_ENABLE_SMOOTH)
 		return;
@@ -1095,15 +1094,14 @@ static void iwl_mvm_ftm_rtt_smoothing(struct iwl_mvm *mvm,
 		return;
 	}
 
-	found = false;
-	list_for_each_entry(resp, &mvm->ftm_initiator.smooth.resp, list) {
-		if (!memcmp(res->addr, resp->addr, ETH_ALEN)) {
-			found = true;
+	list_for_each_entry(iter, &mvm->ftm_initiator.smooth.resp, list) {
+		if (!memcmp(res->addr, iter->addr, ETH_ALEN)) {
+			resp = iter;
 			break;
 		}
 	}
 
-	if (!found) {
+	if (!resp) {
 		resp = kzalloc(sizeof(*resp), GFP_KERNEL);
 		if (!resp)
 			return;
@@ -1172,10 +1170,10 @@ static void iwl_mvm_debug_range_resp(struct iwl_mvm *mvm, u8 index,
 	IWL_DEBUG_INFO(mvm, "\tstatus: %d\n", res->status);
 	IWL_DEBUG_INFO(mvm, "\tBSSID: %pM\n", res->addr);
 	IWL_DEBUG_INFO(mvm, "\thost time: %llu\n", res->host_time);
-	IWL_DEBUG_INFO(mvm, "\tburst index: %hhu\n", res->ftm.burst_index);
+	IWL_DEBUG_INFO(mvm, "\tburst index: %u\n", res->ftm.burst_index);
 	IWL_DEBUG_INFO(mvm, "\tsuccess num: %u\n", res->ftm.num_ftmr_successes);
 	IWL_DEBUG_INFO(mvm, "\trssi: %d\n", res->ftm.rssi_avg);
-	IWL_DEBUG_INFO(mvm, "\trssi spread: %hhu\n", res->ftm.rssi_spread);
+	IWL_DEBUG_INFO(mvm, "\trssi spread: %u\n", res->ftm.rssi_spread);
 	IWL_DEBUG_INFO(mvm, "\trtt: %lld\n", res->ftm.rtt_avg);
 	IWL_DEBUG_INFO(mvm, "\trtt var: %llu\n", res->ftm.rtt_variance);
 	IWL_DEBUG_INFO(mvm, "\trtt spread: %llu\n", res->ftm.rtt_spread);
@@ -1275,7 +1273,7 @@ void iwl_mvm_ftm_range_resp(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 	}
 
 	IWL_DEBUG_INFO(mvm, "Range response received\n");
-	IWL_DEBUG_INFO(mvm, "request id: %lld, num of entries: %hhu\n",
+	IWL_DEBUG_INFO(mvm, "request id: %lld, num of entries: %u\n",
 		       mvm->ftm_initiator.req->cookie, num_of_aps);
 
 	for (i = 0; i < num_of_aps && i < IWL_MVM_TOF_MAX_APS; i++) {
@@ -1367,7 +1365,7 @@ void iwl_mvm_ftm_range_resp(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb)
 
 		if (fw_has_api(&mvm->fw->ucode_capa,
 			       IWL_UCODE_TLV_API_FTM_RTT_ACCURACY))
-			IWL_DEBUG_INFO(mvm, "RTT confidence: %hhu\n",
+			IWL_DEBUG_INFO(mvm, "RTT confidence: %u\n",
 				       fw_ap->rttConfidence);
 
 		iwl_mvm_debug_range_resp(mvm, i, &result);

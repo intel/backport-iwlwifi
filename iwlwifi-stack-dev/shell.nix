@@ -8,6 +8,10 @@ with pkgs;
 
 let
     sparse = import ./nix/sparse.nix { inherit pkgs; };
+
+    ccacheWrapper = pkgs.ccacheWrapper.override ({
+        cc = pkgs.multiStdenv.cc;
+    });
 in
     multiStdenv.mkDerivation {
         name = "iwlwifi";
@@ -20,5 +24,14 @@ in
             kmod
             elfutils
             sparse
+            ccache
+            perl
+            which
         ];
+
+        shellHook = ''
+          export PATH=${ccacheWrapper}/bin:$PATH
+          export LC_ALL=C
+          export LANG=C
+        '';
     }

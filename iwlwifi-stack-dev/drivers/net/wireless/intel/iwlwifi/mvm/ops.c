@@ -31,6 +31,7 @@
 #include "fw/api/nan.h"
 #include "fw/acpi.h"
 #include "fw/uefi.h"
+#include "time-sync.h"
 
 #ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
 #include "iwl-dnt-cfg.h"
@@ -115,6 +116,12 @@ static void iwl_mvm_nic_config(struct iwl_op_mode *op_mode)
 	radio_cfg_dash = (phy_config & FW_PHY_CFG_RADIO_DASH) >>
 			 FW_PHY_CFG_RADIO_DASH_POS;
 
+	IWL_DEBUG_INFO(mvm, "Radio type=0x%x-0x%x-0x%x\n", radio_cfg_type,
+		       radio_cfg_step, radio_cfg_dash);
+
+	if (mvm->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
+		return;
+
 	/* SKU control */
 	reg_val = CSR_HW_REV_STEP_DASH(mvm->trans->hw_rev);
 
@@ -149,9 +156,6 @@ static void iwl_mvm_nic_config(struct iwl_op_mode *op_mode)
 				CSR_HW_IF_CONFIG_REG_BIT_MAC_SI   |
 				CSR_HW_IF_CONFIG_REG_D3_DEBUG,
 				reg_val);
-
-	IWL_DEBUG_INFO(mvm, "Radio type=0x%x-0x%x-0x%x\n", radio_cfg_type,
-		       radio_cfg_step, radio_cfg_dash);
 
 	/*
 	 * W/A : NIC is stuck in a reset state after Early PCIe power off
@@ -212,7 +216,7 @@ static void iwl_mvm_rx_monitor_notif(struct iwl_mvm *mvm,
 	    vif->bss_conf.chandef.width < NL80211_CHAN_WIDTH_40)
 		return;
 
-	if (!vif->bss_conf.assoc)
+	if (!vif->cfg.assoc)
 		return;
 
 	/* this shouldn't happen *again*, ignore it */
@@ -443,14 +447,6 @@ static const struct iwl_rx_handlers iwl_mvm_rx_handlers[] = {
 	RX_HANDLER_GRP(NAN_GROUP, NAN_DISCOVERY_EVENT_NOTIF,
 		       iwl_mvm_nan_match, RX_HANDLER_SYNC,
 		       struct iwl_nan_disc_evt_notify_v1),
-	RX_HANDLER_GRP(LEGACY_GROUP,
-		       WNM_80211V_TIMING_MEASUREMENT_NOTIFICATION,
-		       iwl_mvm_time_sync_msmt_event, RX_HANDLER_SYNC,
-		       struct iwl_time_msmt_notify),
-	RX_HANDLER_GRP(LEGACY_GROUP,
-		       WNM_80211V_TIMING_MEASUREMENT_CONFIRM_NOTIFICATION,
-		       iwl_mvm_time_sync_msmt_confirm_event, RX_HANDLER_SYNC,
-		       struct iwl_time_msmt_cfm_notify),
 #endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
 	RX_HANDLER_GRP(MAC_CONF_GROUP, PROBE_RESPONSE_DATA_NOTIF,
 		       iwl_mvm_probe_resp_data_notif,
@@ -482,6 +478,15 @@ static const struct iwl_rx_handlers iwl_mvm_rx_handlers[] = {
 	RX_HANDLER_GRP(SYSTEM_GROUP, RFI_DEACTIVATE_NOTIF,
 		       iwl_rfi_deactivate_notif_handler, RX_HANDLER_ASYNC_UNLOCKED,
 		       struct iwl_rfi_deactivate_notif),
+
+	RX_HANDLER_GRP(LEGACY_GROUP,
+		       WNM_80211V_TIMING_MEASUREMENT_NOTIFICATION,
+		       iwl_mvm_time_sync_msmt_event, RX_HANDLER_SYNC,
+		       struct iwl_time_msmt_notify),
+	RX_HANDLER_GRP(LEGACY_GROUP,
+		       WNM_80211V_TIMING_MEASUREMENT_CONFIRM_NOTIFICATION,
+		       iwl_mvm_time_sync_msmt_confirm_event, RX_HANDLER_SYNC,
+		       struct iwl_time_msmt_cfm_notify),
 };
 #undef RX_HANDLER
 #undef RX_HANDLER_GRP
@@ -606,6 +611,12 @@ static const struct iwl_hcmd_names iwl_mvm_system_names[] = {
 static const struct iwl_hcmd_names iwl_mvm_mac_conf_names[] = {
 	HCMD_NAME(CHANNEL_SWITCH_TIME_EVENT_CMD),
 	HCMD_NAME(SESSION_PROTECTION_CMD),
+	HCMD_NAME(MAC_CONFIG_CMD),
+	HCMD_NAME(LINK_CONFIG_CMD),
+	HCMD_NAME(STA_CONFIG_CMD),
+	HCMD_NAME(AUX_STA_CMD),
+	HCMD_NAME(STA_REMOVE_CMD),
+	HCMD_NAME(STA_DISABLE_TX_CMD),
 	HCMD_NAME(SESSION_PROTECTION_NOTIF),
 	HCMD_NAME(CHANNEL_SWITCH_START_NOTIF),
 };
@@ -641,6 +652,7 @@ static const struct iwl_hcmd_names iwl_mvm_data_path_names[] = {
 	HCMD_NAME(TLC_MNG_CONFIG_CMD),
 	HCMD_NAME(CHEST_COLLECTOR_FILTER_CONFIG_CMD),
 	HCMD_NAME(SCD_QUEUE_CONFIG_CMD),
+	HCMD_NAME(SEC_KEY_CMD),
 	HCMD_NAME(MONITOR_NOTIF),
 	HCMD_NAME(THERMAL_DUAL_CHAIN_REQUEST),
 	HCMD_NAME(STA_PM_NOTIF),
@@ -969,7 +981,7 @@ static void iwl_mvm_mei_rfkill(void *priv, bool blocked,
 {
 	struct iwl_mvm *mvm = priv;
 
-	if (!IWL_MVM_MEI_REPORT_RFKILL && !csme_taking_ownership)
+	if (blocked && !IWL_MVM_MEI_REPORT_RFKILL && !csme_taking_ownership)
 		return;
 
 	mvm->mei_rfkill_blocked = blocked;
@@ -1260,6 +1272,7 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	 ********************************/
 	hw = ieee80211_alloc_hw(sizeof(struct iwl_op_mode) +
 				sizeof(struct iwl_mvm),
+				iwl_mvm_has_mld_api(fw) ? &iwl_mvm_mld_hw_ops :
 				&iwl_mvm_hw_ops);
 	if (!hw)
 		return NULL;
@@ -1291,6 +1304,7 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 
 	iwl_mvm_get_acpi_tables(mvm);
 	iwl_uefi_get_sgom_table(trans, &mvm->fwrt);
+	iwl_uefi_get_step_table(trans);
 
 	mvm->init_status = 0;
 
@@ -1464,6 +1478,8 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	mvm->sta_remove_requires_queue_remove =
 		trans_cfg.queue_alloc_cmd_ver > 0;
 
+	mvm->mld_api_is_used = iwl_mvm_has_mld_api(mvm->fw);
+
 	/* Configure transport layer */
 	iwl_trans_configure(mvm->trans, &trans_cfg);
 
@@ -1535,9 +1551,15 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	mvm->is_bar_enabled = true;
 #endif
 
+	iwl_mvm_init_time_sync(&mvm->time_sync);
+
 	mvm->debugfs_dir = dbgfs_dir;
 
 	mvm->mei_registered = !iwl_mei_register(mvm, &mei_ops);
+
+#ifdef CPTCFG_IWLMVM_MEI_SCAN_FILTER
+	iwl_mvm_mei_scan_filter_init(&mvm->mei_scan_filter);
+#endif
 
 	if (iwl_mvm_start_get_nvm(mvm)) {
 		/*
@@ -1592,7 +1614,7 @@ void iwl_mvm_stop_device(struct iwl_mvm *mvm)
 	iwl_trans_stop_device(mvm->trans);
 	iwl_free_fw_paging(&mvm->fwrt);
 	iwl_fw_dump_conf_clear(&mvm->fwrt);
-	iwl_mvm_mei_device_down(mvm);
+	iwl_mvm_mei_device_state(mvm, false);
 }
 
 static void iwl_op_mode_mvm_stop(struct iwl_op_mode *op_mode)
@@ -1638,8 +1660,6 @@ static void iwl_op_mode_mvm_stop(struct iwl_op_mode *op_mode)
 #ifdef CPTCFG_IWLMVM_VENDOR_CMDS
 	kfree(mvm->mcast_active_filter_cmd);
 	mvm->mcast_active_filter_cmd = NULL;
-	mvm->time_msmt_cfg = 0;
-	mvm->time_sync_wdev = NULL;
 
 	if (mvm->hw_registered)
 		iwl_mvm_vendor_cmds_unregister(mvm);

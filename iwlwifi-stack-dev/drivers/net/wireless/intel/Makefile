@@ -5,3 +5,4 @@
 #obj-$(CONFIG_IWLEGACY)	+= iwlegacy/
 
 obj-$(CPTCFG_IWLWIFI)	+= iwlwifi/
+obj-$(CPTCFG_IWLMEI)	+= iwlwifi/

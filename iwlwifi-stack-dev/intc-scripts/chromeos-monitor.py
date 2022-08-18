@@ -13,15 +13,15 @@ COMMON_JIRA_FIELDS = {
     'issuetype': {'name': 'Task'},
     'components': [{'name': 'LinuxDriver->SMAC'}],
 }
-WATCHERS = ['amalamud', 'lcoelho', 'jberg1']
+WATCHERS = ['amalamud', 'ggreenma', 'jberg1']
 ASSIGNEE = 'gbenami'
 PROXY = 'http://proxy.iil.intel.com:911/'
 
 CACHEDIR = None # use "../kernel-cache/"
-DBTREE = "ssh://git-ger-8/iwlwifi-chrome-kernel.git"
+DBTREE = "ssh://gerritwcs.ir.intel.com:29418/iwlwifi-chrome-kernel.git"
 # test variables for Johannes:
 #CACHEDIR = '/home/jberg1/tmp/cros-cache/'
-#DBTREE = "ssh://git-ger-8.devtools.intel.com/iwlwifi-chrome-kernel.git"
+#DBTREE = "ssh://gerritwcs.ir.intel.com:29418/iwlwifi-chrome-kernel.git"
 
 for v in VERSIONS:
     v.start = None

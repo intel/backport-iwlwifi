@@ -32,4 +32,12 @@ static inline void sk_pacing_shift_update(struct sock *sk, int val)
 }
 #endif /* < 4.16 */
 
+#if LINUX_VERSION_IS_LESS(5,14,0)
+static inline void backport_sk_error_report(struct sock *sk)
+{
+	sk->sk_error_report(sk);
+}
+#define sk_error_report LINUX_BACKPORT(sk_error_report)
+#endif /* <= 5.14 */
+
 #endif /* __BACKPORT_NET_SOCK_H */

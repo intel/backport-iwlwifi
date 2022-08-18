@@ -68,6 +68,8 @@ enum {
 	IWL_TM_USER_CMD_BUS_DATA_ACCESS,
 	IWL_TM_USER_CMD_GET_SIL_TYPE,
 	IWL_TM_USER_CMD_GET_RFID,
+	IWL_TM_USER_CMD_RESERVED,
+	IWL_TM_USER_CMD_GET_RFID_V2,
 
 	IWL_TM_USER_CMD_NOTIF_UCODE_RX_PKT = TM_CMD_NOTIF_BASE,
 	IWL_TM_USER_CMD_NOTIF_DRIVER,
@@ -647,17 +649,17 @@ struct iwl_xvt_txq_config_resp {
 /**
  * struct iwl_xvt_txq_cfg_mld - add/modify/remove TX queue
  * @action: see &enum iwl_tx_queue_action
- * @tid: TID (add only)
- * @queue_id: queue ID (modify & remove)
- * @sta_mask: station mask (add & modify)
+ * @tid: TID
+ * @sta_mask: (old) station mask (add, modify, remove)
+ * @new_sta_mask: new station mask (modify only)
  * @flags: flags for the command (add)
  * @queue_size: queue size, must be a power of two
  */
 struct iwl_xvt_txq_cfg_mld {
-	u8 action;
-	u8 tid;
-	u16 queue_id;
+	u32 action;
+	u32 tid;
 	u32 sta_mask;
+	u32 new_sta_mask;
 	u32 flags;
 	u32 queue_size;
 } __packed;
@@ -666,7 +668,8 @@ struct iwl_xvt_txq_cfg_mld {
  * iwl_xvt_txq_cfg_mld_resp - response from IWL_DRV_CMD_CONFIG_TX_QUEUE
  * @sta_mask: taken from command
  * @tid: taken from command
- * @queue_id: queue number assigned to this RA -TID
+ * @queue_id: queue number assigned to this RA-TID (add command only,
+ *	otherwise 0xffff is returned)
  * @reserved: (padding)
  */
 struct iwl_xvt_txq_cfg_mld_resp {

@@ -95,19 +95,6 @@
  *	HLTK for secure LTF bits generation.
  * @IWL_MVM_VENDOR_CMD_REMOVE_PASN_STA: remove the PASN station with the mac
  *	address specified with &IWL_MVM_VENDOR_ATTR_ADDR.
- * @IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG: configure TM/FTM
- *	measurement protocol for time synchronization.
- *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE specifies bitmap of
- *	time sync measurement protocols for which to record timestamps.
- *	&IWL_MVM_VENDOR_ATTR_ADDR specifies peer MAC address.
- * @IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT: Time Sync measurement
- *	confirmation notification for TM/FTM. Sent on receipt of 802.11 Ack from
- *	peer for the Tx'ed TM/FTM measurement action frame.
- *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_* specifies the details.
- * @IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT: Time Sync measurement
- *	notification for TM/FTM. Sent on receipt of respective WNM action frame
- *	for TM protocol or public action frame for FTM protocol, from peer device.
- *	&IWL_MVM_VENDOR_ATTR_TIME_SYNC_* specifies the details.
  * @IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO: reports CSME connection info.
  * @IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP: host ask for ownership on the device.
  * @IWL_MVM_VENDOR_CMD_ROAMING_FORBIDDEN_EVENT: notifies if roaming is allowed.
@@ -169,9 +156,9 @@ enum iwl_mvm_vendor_cmd {
 	IWL_MVM_VENDOR_CMD_RFIM_SET_TABLE			= 0x27,
 	IWL_MVM_VENDOR_CMD_RFIM_GET_TABLE			= 0x28,
 	IWL_MVM_VENDOR_CMD_RFIM_GET_CAPA			= 0x29,
-	IWL_MVM_VENDOR_CMD_TIME_SYNC_MEASUREMENT_CONFIG		= 0x2a,
-	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_CFM_EVENT		= 0x2b,
-	IWL_MVM_VENDOR_CMD_TIME_SYNC_MSMT_EVENT			= 0x2c,
+	/* 0x2a is deprecated */
+	/* 0x2b is deprecated */
+	/* 0x2c is deprecated */
 	IWL_MVM_VENDOR_CMD_GET_CSME_CONN_INFO			= 0x2d,
 	IWL_MVM_VENDOR_CMD_HOST_GET_OWNERSHIP			= 0x30,
 	IWL_MVM_VENDOR_CMD_ROAMING_FORBIDDEN_EVENT		= 0x32,
@@ -623,21 +610,6 @@ enum iwl_vendor_fips_test_vector_hw {
 		NUM_IWL_VENDOR_FIPS_TEST_VECTOR_HW - 1,
 };
 
-/**
- * enum iwl_mvm_vendor_time_sync_protocol_type - bitmap of time sync
- * measurement protocols.
- *
- * @IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_NONE: Disable TM/FTM time sync
- *	measurement protocol.
- * @IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_TM: Timing measurement protocol.
- * @IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_FTM: Fine Timing measurement protocol.
- */
-enum iwl_mvm_vendor_time_sync_protocol_type {
-	IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_NONE,
-	IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_TM = BIT(0),
-	IWL_MVM_VENDOR_TIME_SYNC_PROTOCOL_FTM = BIT(1),
-};
-
 enum iwl_vendor_auth_akm_mode {
 	IWL_VENDOR_AUTH_OPEN,
 	IWL_VENDOR_AUTH_SHARED,
@@ -788,33 +760,6 @@ enum iwl_vendor_auth_akm_mode {
  * @IWL_MVM_VENDOR_ATTR_STA_CIPHER: the cipher to use for the station with the
  *	mac address specified in &IWL_MVM_VENDOR_ATTR_ADDR.
  *	One of WLAN_CIPHER_SUITE_*.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE: bitmap of time sync
- *	measurement protocols for which to record timestamps,
- *	one of &enum iwl_mvm_vendor_time_sync_protocol_type.
- * @IWL_MVM_VENDOR_ATTR_PAD: attribute used for padding for 64-bit alignment
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN: u32 attribute. Measurement
- *	flow dialog token number.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1: u64 attribute. t1-time of the Tx'ed
- *	 action frame departure on sender side in units of 10 nano seconds.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR: u32 attribute. Maximum t1-time
- *	error in units of 10 nano seconds.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4: u64 attribute. t4-time of the Rx'ed
- *	action frame's ack arrival on sender side in units of 10 nano seconds.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR: u32 attribute. Maximum t4-time
- *	error in units of 10 nano seconds.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN: u32 attribute. Measurement
- *	 flow previous dialog token number
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2: u64 attribute. t1-time of the Rx'ed
- *	action frame arrival on receiver side in units of 10 nano seconds.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR: u32 attribute. Maximum t1-time
- *	error in units of 10 nano seconds.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3: u64 attribute. t4-time of the Tx'ed
- *	action frame's Ack departure on receiver side in units of
- *	10 nano seconds.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR: u32 attribute. Maximum t4-time
- *	error in units of 10 nano seconds.
- * @IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA: vendor specific data. This does not
- *	include the IE header.
  * @IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN: u8 attribute. Indicates whether
  *	roaming is forbidden or not. Value 1 means roaming is forbidden,
  *	0 mean roaming is allowed.
@@ -936,19 +881,19 @@ enum iwl_mvm_vendor_attr {
 	IWL_MVM_VENDOR_ATTR_RFIM_CHANNELS			= 0x54,
 	IWL_MVM_VENDOR_ATTR_RFIM_BANDS				= 0x55,
 	IWL_MVM_VENDOR_ATTR_RFIM_CAPA				= 0x56,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_PROTOCOL_TYPE		= 0x57,
-	IWL_MVM_VENDOR_ATTR_PAD					= 0x58,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_DIALOG_TOKEN		= 0x59,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1			= 0x5a,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T1_MAX_ERROR		= 0x5b,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4			= 0x5c,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T4_MAX_ERROR		= 0x5d,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_FUP_DIALOG_TOKEN		= 0x5e,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2			= 0x5f,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T2_MAX_ERROR		= 0x60,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3			= 0x61,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_T3_MAX_ERROR		= 0x62,
-	IWL_MVM_VENDOR_ATTR_TIME_SYNC_VS_DATA			= 0x63,
+	/* 0x57 is deprecated */
+	/* 0x58 is deprecated */
+	/* 0x59 is deprecated */
+	/* 0x5a is deprecated */
+	/* 0x5b is deprecated */
+	/* 0x5c is deprecated */
+	/* 0x5d is deprecated */
+	/* 0x5e is deprecated */
+	/* 0x5f is deprecated */
+	/* 0x60 is deprecated */
+	/* 0x61 is deprecated */
+	/* 0x62 is deprecated */
+	/* 0x63 is deprecated */
 	IWL_MVM_VENDOR_ATTR_ROAMING_FORBIDDEN			= 0x64,
 	IWL_MVM_VENDOR_ATTR_AUTH_MODE				= 0x65,
 	IWL_MVM_VENDOR_ATTR_CHANNEL_NUM				= 0x66,

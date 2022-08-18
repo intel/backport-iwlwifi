@@ -7,3 +7,7 @@ iwlmei-$(CPTCFG_IWLWIFI_DEVICE_TRACING) += trace.o
 CFLAGS_trace.o := -I$(src)
 
 ccflags-y += -I $(src)/../
+
+ifeq ($(CPTCFG_IWLWIFI_SIMULATION),y)
+UBSAN_SANITIZE := y
+endif

@@ -147,9 +147,14 @@ drivers/net/wireless/intel/iwlwifi/mvm/fw-api.h
 drivers/net/wireless/intel/iwlwifi/mvm/fw.c
 drivers/net/wireless/intel/iwlwifi/mvm/led.c
 drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c
+drivers/net/wireless/intel/iwlwifi/mvm/mld-key.c
 drivers/net/wireless/intel/iwlwifi/mvm/tdls.c
 drivers/net/wireless/intel/iwlwifi/mvm/mac-ctxt.c
 drivers/net/wireless/intel/iwlwifi/mvm/Makefile
+drivers/net/wireless/intel/iwlwifi/mvm/mld-mac80211.c
+drivers/net/wireless/intel/iwlwifi/mvm/mld-mac.c
+drivers/net/wireless/intel/iwlwifi/mvm/mld-sta.c
+drivers/net/wireless/intel/iwlwifi/mvm/link.c
 drivers/net/wireless/intel/iwlwifi/mvm/mvm.h
 drivers/net/wireless/intel/iwlwifi/mvm/nvm.c
 drivers/net/wireless/intel/iwlwifi/mvm/offloading.c
@@ -180,6 +185,8 @@ drivers/net/wireless/intel/iwlwifi/mvm/ftm-initiator.c
 drivers/net/wireless/intel/iwlwifi/mvm/ftm-responder.c
 drivers/net/wireless/intel/iwlwifi/mvm/nan.c
 drivers/net/wireless/intel/iwlwifi/mvm/ax-softap-testmode.c
+drivers/net/wireless/intel/iwlwifi/mvm/time-sync.c
+drivers/net/wireless/intel/iwlwifi/mvm/time-sync.h
 drivers/net/wireless/intel/iwlwifi/mei
 drivers/net/wireless/intel/iwlwifi/mei/Makefile
 drivers/net/wireless/intel/iwlwifi/mei/internal.h

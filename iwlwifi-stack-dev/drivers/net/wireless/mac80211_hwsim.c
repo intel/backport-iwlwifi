@@ -893,7 +893,7 @@ static void hwsim_send_ps_poll(void *dat, u8 *mac, struct ieee80211_vif *vif)
 
 	rcu_read_lock();
 	mac80211_hwsim_tx_frame(data->hw, skb,
-				rcu_dereference(vif->chanctx_conf)->def.chan);
+				rcu_dereference(vif->bss_conf.chanctx_conf)->def.chan);
 	rcu_read_unlock();
 }
 
@@ -926,7 +926,7 @@ static void hwsim_send_nullfunc(struct mac80211_hwsim_data *data, u8 *mac,
 
 	rcu_read_lock();
 	mac80211_hwsim_tx_frame(data->hw, skb,
-				rcu_dereference(vif->chanctx_conf)->def.chan);
+				rcu_dereference(vif->bss_conf.chanctx_conf)->def.chan);
 	rcu_read_unlock();
 }
 
@@ -1041,9 +1041,9 @@ static int hwsim_fops_rx_rssi_write(void *dat, u64 val)
 	return 0;
 }
 
-DEFINE_SIMPLE_ATTRIBUTE(hwsim_fops_rx_rssi,
-			hwsim_fops_rx_rssi_read, hwsim_fops_rx_rssi_write,
-			"%lld\n");
+DEFINE_DEBUGFS_ATTRIBUTE(hwsim_fops_rx_rssi,
+			 hwsim_fops_rx_rssi_read, hwsim_fops_rx_rssi_write,
+			 "%lld\n");
 
 static netdev_tx_t hwsim_mon_xmit(struct sk_buff *skb,
 					struct net_device *dev)
@@ -1469,11 +1469,11 @@ static void mac80211_hwsim_tx_iter(void *_data, u8 *addr,
 {
 	struct tx_iter_data *data = _data;
 
-	if (!vif->chanctx_conf)
+	if (!vif->bss_conf.chanctx_conf)
 		return;
 
 	if (!hwsim_chans_compat(data->channel,
-				rcu_dereference(vif->chanctx_conf)->def.chan))
+				rcu_dereference(vif->bss_conf.chanctx_conf)->def.chan))
 		return;
 
 	data->receive = true;
@@ -1492,37 +1492,38 @@ static void mac80211_hwsim_add_vendor_rtap(struct sk_buff *skb)
 	 * the values accordingly.
 	 */
 #ifdef HWSIM_RADIOTAP_OUI
-	struct ieee80211_vendor_radiotap *rtap;
+	struct ieee80211_radiotap_vendor_tlv *rtap;
+	static const char vendor_data[8] = "ABCDEFGH";
+
+	// Make sure no padding is needed
+	BUILD_BUG_ON(sizeof(vendor_data) % 4);
+	/* this is last radiotap info before the mac header, so
+	 * skb_reset_mac_header for mac8022 to know the end of
+	 * the radiotap TLV/beginning of the 802.11 header
+	 */
+	skb_reset_mac_header(skb);
 
 	/*
 	 * Note that this code requires the headroom in the SKB
 	 * that was allocated earlier.
 	 */
-	rtap = skb_push(skb, sizeof(*rtap) + 8 + 4);
-	rtap->oui[0] = HWSIM_RADIOTAP_OUI[0];
-	rtap->oui[1] = HWSIM_RADIOTAP_OUI[1];
-	rtap->oui[2] = HWSIM_RADIOTAP_OUI[2];
-	rtap->subns = 127;
+	rtap = skb_push(skb, sizeof(*rtap) + sizeof(vendor_data));
 
-	/*
-	 * Radiotap vendor namespaces can (and should) also be
-	 * split into fields by using the standard radiotap
-	 * presence bitmap mechanism. Use just BIT(0) here for
-	 * the presence bitmap.
-	 */
-	rtap->present = BIT(0);
-	/* We have 8 bytes of (dummy) data */
-	rtap->len = 8;
-	/* For testing, also require it to be aligned */
-	rtap->align = 8;
-	/* And also test that padding works, 4 bytes */
-	rtap->pad = 4;
-	/* push the data */
-	memcpy(rtap->data, "ABCDEFGH", 8);
-	/* make sure to clear padding, mac80211 doesn't */
-	memset(rtap->data + 8, 0, 4);
+	rtap->len = cpu_to_le16(sizeof(*rtap) -
+				sizeof(struct ieee80211_radiotap_tlv) +
+				sizeof(vendor_data));
+	rtap->type = cpu_to_le16(IEEE80211_RADIOTAP_VENDOR_NAMESPACE);
 
-	IEEE80211_SKB_RXCB(skb)->flag |= RX_FLAG_RADIOTAP_VENDOR_DATA;
+	rtap->content.oui[0] = HWSIM_RADIOTAP_OUI[0];
+	rtap->content.oui[1] = HWSIM_RADIOTAP_OUI[1];
+	rtap->content.oui[2] = HWSIM_RADIOTAP_OUI[2];
+	rtap->content.oui_subtype = 127;
+	/* clear reserved field */
+	rtap->content.reserved = 0;
+	rtap->content.vendor_type = 0;
+	memcpy(rtap->content.data, vendor_data, sizeof(vendor_data));
+
+	IEEE80211_SKB_RXCB(skb)->flag |= RX_FLAG_RADIOTAP_TLV_AT_END;
 #endif
 }
 
@@ -1691,7 +1692,11 @@ static void mac80211_hwsim_tx(struct ieee80211_hw *hw,
 	} else if (txi->hw_queue == 4) {
 		channel = data->tmp_chan;
 	} else {
-		chanctx_conf = rcu_dereference(txi->control.vif->chanctx_conf);
+		struct ieee80211_bss_conf *bss_conf;
+
+		bss_conf = &txi->control.vif->bss_conf;
+
+		chanctx_conf = rcu_dereference(bss_conf->chanctx_conf);
 		if (chanctx_conf) {
 			channel = chanctx_conf->def.chan;
 			confbw = chanctx_conf->def.width;
@@ -1940,14 +1945,14 @@ static void mac80211_hwsim_beacon_tx(void *arg, u8 *mac,
 	}
 
 	mac80211_hwsim_tx_frame(hw, skb,
-				rcu_dereference(vif->chanctx_conf)->def.chan);
+				rcu_dereference(vif->bss_conf.chanctx_conf)->def.chan);
 
 	while ((skb = ieee80211_get_buffered_bc(hw, vif)) != NULL) {
 		mac80211_hwsim_tx_frame(hw, skb,
-				rcu_dereference(vif->chanctx_conf)->def.chan);
+				rcu_dereference(vif->bss_conf.chanctx_conf)->def.chan);
 	}
 
-	if (vif->csa_active && ieee80211_beacon_cntdwn_is_complete(vif))
+	if (vif->bss_conf.csa_active && ieee80211_beacon_cntdwn_is_complete(vif))
 		ieee80211_csa_finish(vif);
 }
 
@@ -2119,9 +2124,9 @@ static void mac80211_hwsim_bss_info_changed(struct ieee80211_hw *hw,
 
 	if (changed & BSS_CHANGED_ASSOC) {
 		wiphy_dbg(hw->wiphy, "  ASSOC: assoc=%d aid=%d\n",
-			  info->assoc, info->aid);
-		vp->assoc = info->assoc;
-		vp->aid = info->aid;
+			  vif->cfg.assoc, vif->cfg.aid);
+		vp->assoc = vif->cfg.assoc;
+		vp->aid = vif->cfg.aid;
 	}
 
 	if (changed & BSS_CHANGED_BEACON_ENABLED) {
@@ -2193,7 +2198,7 @@ mac80211_hwsim_sta_rc_update(struct ieee80211_hw *hw,
 	u32 bw = U32_MAX;
 	enum nl80211_chan_width confbw = NL80211_CHAN_WIDTH_20_NOHT;
 
-	switch (sta->bandwidth) {
+	switch (sta->deflink.bandwidth) {
 #define C(_bw) case IEEE80211_STA_RX_BW_##_bw: bw = _bw; break
 	C(20);
 	C(40);
@@ -2206,16 +2211,19 @@ mac80211_hwsim_sta_rc_update(struct ieee80211_hw *hw,
 	if (!data->use_chanctx) {
 		confbw = data->bw;
 	} else {
-		struct ieee80211_chanctx_conf *chanctx_conf =
-			rcu_dereference(vif->chanctx_conf);
+		struct ieee80211_chanctx_conf *chanctx_conf;
+
+		rcu_read_lock();
+		chanctx_conf = rcu_dereference(vif->bss_conf.chanctx_conf);
 
 		if (!WARN_ON(!chanctx_conf))
 			confbw = chanctx_conf->def.width;
+		rcu_read_unlock();
 	}
 
 	WARN(bw > hwsim_get_chanwidth(confbw),
 	     "intf %pM: bad STA %pM bandwidth %d MHz (%d) > channel config %d MHz (%d)\n",
-	     vif->addr, sta->addr, bw, sta->bandwidth,
+	     vif->addr, sta->addr, bw, sta->deflink.bandwidth,
 	     hwsim_get_chanwidth(data->bw), data->bw);
 }
 
@@ -2479,11 +2487,13 @@ static void hw_scan_work(struct work_struct *work)
 			if (req->ie_len)
 				skb_put_data(probe, req->ie, req->ie_len);
 
+			rcu_read_lock();
 			if (!ieee80211_tx_prepare_skb(hwsim->hw,
 						      hwsim->hw_scan_vif,
 						      probe,
 						      hwsim->tmp_chan->band,
 						      NULL)) {
+				rcu_read_unlock();
 				kfree_skb(probe);
 				continue;
 			}
@@ -2491,6 +2501,7 @@ static void hw_scan_work(struct work_struct *work)
 			local_bh_disable();
 			mac80211_hwsim_tx_frame(hwsim->hw, probe,
 						hwsim->tmp_chan);
+			rcu_read_unlock();
 			local_bh_enable();
 		}
 	}
@@ -2717,6 +2728,7 @@ static void mac80211_hwsim_change_chanctx(struct ieee80211_hw *hw,
 
 static int mac80211_hwsim_assign_vif_chanctx(struct ieee80211_hw *hw,
 					     struct ieee80211_vif *vif,
+					     unsigned int link_id,
 					     struct ieee80211_chanctx_conf *ctx)
 {
 	hwsim_check_magic(vif);
@@ -2727,6 +2739,7 @@ static int mac80211_hwsim_assign_vif_chanctx(struct ieee80211_hw *hw,
 
 static void mac80211_hwsim_unassign_vif_chanctx(struct ieee80211_hw *hw,
 						struct ieee80211_vif *vif,
+						unsigned int link_id,
 						struct ieee80211_chanctx_conf *ctx)
 {
 	hwsim_check_magic(vif);

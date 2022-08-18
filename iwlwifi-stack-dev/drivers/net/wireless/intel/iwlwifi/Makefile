@@ -53,3 +53,7 @@ obj-$(CPTCFG_IWLMEI)	+= mei/
 obj-$(CPTCFG_IWLXVT)	+= xvt/
 
 CFLAGS_iwl-devtrace.o := -I$(src)
+
+ifeq ($(CPTCFG_IWLWIFI_SIMULATION),y)
+UBSAN_SANITIZE := y
+endif

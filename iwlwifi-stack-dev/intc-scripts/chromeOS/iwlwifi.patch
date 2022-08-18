@@ -1,23 +1,8 @@
-diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/rxmq.c b/drivers/net/wireless/intel/iwlwifi/mvm/rxmq.c
-index 3e8d7b25d388..39f9535969da 100644
---- a/drivers/net/wireless/intel/iwlwifi/mvm/rxmq.c
-+++ b/drivers/net/wireless/intel/iwlwifi/mvm/rxmq.c
-@@ -1610,8 +1610,10 @@ static inline u8 iwl_mvm_nl80211_band_from_rx_msdu(u8 phy_band)
- 		return NL80211_BAND_2GHZ;
- 	case PHY_BAND_5:
- 		return NL80211_BAND_5GHZ;
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,10,0)
- 	case PHY_BAND_6:
- 		return NL80211_BAND_6GHZ;
-+#endif
- 	default:
- 		WARN_ONCE(1, "Unsupported phy band (%u)\n", phy_band);
- 		return NL80211_BAND_5GHZ;
 diff --git a/drivers/net/wireless/intel/iwlwifi/cfg/22000.c b/drivers/net/wireless/intel/iwlwifi/cfg/22000.c
-index 92f2a192aadb..40ab9d5c36d2 100644
+index 18e389a569..53d433cb4a 100644
 --- a/drivers/net/wireless/intel/iwlwifi/cfg/22000.c
 +++ b/drivers/net/wireless/intel/iwlwifi/cfg/22000.c
-@@ -145,8 +145,12 @@ static const struct iwl_base_params iwl_ax210_base_params = {
+@@ -168,15 +168,23 @@ static const struct iwl_base_params iwl_ax210_base_params = {
  static const struct iwl_ht_params iwl_22000_ht_params = {
  	.stbc = true,
  	.ldpc = true,
@@ -29,9 +14,20 @@ index 92f2a192aadb..40ab9d5c36d2 100644
 +#endif
  };
  
+ static const struct iwl_ht_params iwl_gl_a_ht_params = {
+ 	.stbc = false, /* we explicitly disable STBC for GL step A */
+ 	.ldpc = true,
++#if CFG80211_VERSION >= KERNEL_VERSION(5,10,0)
+ 	.ht40_bands = BIT(NL80211_BAND_2GHZ) | BIT(NL80211_BAND_5GHZ) |
+ 		      BIT(NL80211_BAND_6GHZ),
++#else
++	.ht40_bands = BIT(NL80211_BAND_2GHZ) | BIT(NL80211_BAND_5GHZ),
++#endif
+ };
+ 
  #define IWL_DEVICE_22000_COMMON						\
 diff --git a/drivers/net/wireless/intel/iwlwifi/iwl-nvm-parse.c b/drivers/net/wireless/intel/iwlwifi/iwl-nvm-parse.c
-index 5bffa9d2f8..5aa158c85d 100644
+index 657dc56fc6..b918078bcf 100644
 --- a/drivers/net/wireless/intel/iwlwifi/iwl-nvm-parse.c
 +++ b/drivers/net/wireless/intel/iwlwifi/iwl-nvm-parse.c
 @@ -334,7 +334,11 @@ static u32 iwl_get_channel_flags(u8 ch_num, int ch_idx, enum nl80211_band band,
@@ -46,7 +42,7 @@ index 5bffa9d2f8..5aa158c85d 100644
  
  	if (ch_idx >= NUM_2GHZ_CHANNELS)
  		return NL80211_BAND_5GHZ;
-@@ -544,6 +544,7 @@ static void iwl_init_vht_hw_capab(struct iwl_trans *trans,
+@@ -536,6 +540,7 @@ static void iwl_init_vht_hw_capab(struct iwl_trans *trans,
  		cpu_to_le16(IEEE80211_VHT_EXT_NSS_BW_CAPABLE);
  }
  
@@ -54,15 +50,15 @@ index 5bffa9d2f8..5aa158c85d 100644
  static const u8 iwl_vendor_caps[] = {
  	0xdd,			/* vendor element */
  	0x06,			/* length */
-@@ -556,6 +557,7 @@ static const u8 iwl_vendor_caps[] = {
+@@ -546,6 +551,7 @@ static const u8 iwl_vendor_caps[] = {
  	IWL_VENDOR_CAP_IMPROVED_BF_FDBK_HE,
  	0x00
  };
 +#endif
  
- static const struct ieee80211_sband_iftype_data iwl_he_capa[] = {
+ static const struct ieee80211_sband_iftype_data iwl_he_eht_capa[] = {
  	{
-@@ -878,14 +878,18 @@ iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
+@@ -874,14 +880,18 @@ iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
  	case NL80211_BAND_2GHZ:
  		iftype_data->he_cap.he_cap_elem.phy_cap_info[0] |=
  			IEEE80211_HE_PHY_CAP0_CHANNEL_WIDTH_SET_40MHZ_IN_2G;
@@ -81,7 +77,7 @@ index 5bffa9d2f8..5aa158c85d 100644
  		fallthrough;
  	case NL80211_BAND_5GHZ:
  		iftype_data->he_cap.he_cap_elem.phy_cap_info[0] |=
-@@ -805,11 +807,13 @@ iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
+@@ -957,11 +967,13 @@ iwl_nvm_fixup_sband_iftd(struct iwl_trans *trans,
  		iftype_data->he_cap.he_cap_elem.mac_cap_info[2] |=
  			IEEE80211_HE_MAC_CAP2_BCAST_TWT;
  
@@ -95,7 +91,7 @@ index 5bffa9d2f8..5aa158c85d 100644
  }
  
  static void iwl_init_he_hw_capab(struct iwl_trans *trans,
-@@ -1047,6 +1051,7 @@ static void iwl_init_sbands(struct iwl_trans *trans,
+@@ -1192,6 +1204,7 @@ static void iwl_init_sbands(struct iwl_trans *trans,
  		iwl_init_he_hw_capab(trans, data, sband, tx_chains, rx_chains,
  				     fw);
  
@@ -103,7 +99,7 @@ index 5bffa9d2f8..5aa158c85d 100644
  	/* 6GHz band. */
  	sband = &data->bands[NL80211_BAND_6GHZ];
  	sband->band = NL80211_BAND_6GHZ;
-@@ -1061,6 +1066,7 @@ static void iwl_init_sbands(struct iwl_trans *trans,
+@@ -1206,6 +1219,7 @@ static void iwl_init_sbands(struct iwl_trans *trans,
  				     fw);
  	else
  		sband->n_channels = 0;
@@ -111,7 +107,7 @@ index 5bffa9d2f8..5aa158c85d 100644
  	if (n_channels != n_used)
  		IWL_ERR_DEV(dev, "NVM: used only %d of %d channels\n",
  			    n_used, n_channels);
-@@ -1649,7 +1653,9 @@ iwl_parse_nvm_mcc_info(struct device *dev, const struct iwl_cfg *cfg,
+@@ -1801,7 +1815,9 @@ iwl_parse_nvm_mcc_info(struct device *dev, const struct iwl_cfg *cfg,
  		    band == NL80211_BAND_2GHZ)
  			continue;
  
@@ -120,12 +116,12 @@ index 5bffa9d2f8..5aa158c85d 100644
 +#endif
  	}
  
- 	regd->n_reg_rules = valid_rules;
+ 	/*
 diff --git a/drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c b/drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c
-index 74f8ed5f07..bfcf1fde92 100644
+index f5c8c7ca87..ea6f50e0de 100644
 --- a/drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c
 +++ b/drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c
-@@ -1030,6 +1030,9 @@ static __genl_const struct genl_ops iwl_tm_gnl_ops[] = {
+@@ -1029,6 +1029,9 @@ static const struct genl_ops iwl_tm_gnl_ops[] = {
  #endif
  
  	  .doit = iwl_tm_gnl_cmd_do,
@@ -135,7 +131,7 @@ index 74f8ed5f07..bfcf1fde92 100644
  	  .dumpit = iwl_tm_gnl_dump,
  	  .done = iwl_tm_gnl_done,
  	},
-@@ -1040,6 +1043,9 @@ static __genl_const struct genl_ops iwl_tm_gnl_ops[] = {
+@@ -1039,6 +1042,9 @@ static const struct genl_ops iwl_tm_gnl_ops[] = {
  #endif
  
  		.doit = iwl_tm_gnl_cmd_subscribe,
@@ -145,7 +141,7 @@ index 74f8ed5f07..bfcf1fde92 100644
  	},
  };
  
-@@ -1048,7 +1054,9 @@ static struct genl_family iwl_tm_gnl_family __genl_ro_after_init = {
+@@ -1047,7 +1053,9 @@ static struct genl_family iwl_tm_gnl_family __genl_ro_after_init = {
  	.name		= IWL_TM_GNL_FAMILY_NAME,
  	.version	= IWL_TM_GNL_VERSION_NR,
  	.maxattr	= IWL_TM_GNL_MSG_ATTR_MAX,
@@ -155,11 +151,59 @@ index 74f8ed5f07..bfcf1fde92 100644
  	.module		= THIS_MODULE,
  	.ops		= iwl_tm_gnl_ops,
  	.n_ops		= ARRAY_SIZE(iwl_tm_gnl_ops),
+diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/d3.c b/drivers/net/wireless/intel/iwlwifi/mvm/d3.c
+index 38a1297b1e..d242d1fa91 100644
+--- a/drivers/net/wireless/intel/iwlwifi/mvm/d3.c
++++ b/drivers/net/wireless/intel/iwlwifi/mvm/d3.c
+@@ -3040,9 +3040,13 @@ static int iwl_mvm_d3_test_open(struct inode *inode, struct file *file)
+ 
+ 	/* start pseudo D3 */
+ 	rtnl_lock();
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(mvm->hw->wiphy);
++#endif
+ 	err = __iwl_mvm_suspend(mvm->hw, mvm->hw->wiphy->wowlan_config, true);
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(mvm->hw->wiphy);
++#endif
+ 	rtnl_unlock();
+ 	if (err > 0)
+ 		err = -EINVAL;
+@@ -3098,9 +3102,13 @@ static int iwl_mvm_d3_test_release(struct inode *inode, struct file *file)
+ 	iwl_fw_dbg_read_d3_debug_data(&mvm->fwrt);
+ 
+ 	rtnl_lock();
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_lock(mvm->hw->wiphy);
++#endif
+ 	__iwl_mvm_resume(mvm, true);
++#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
+ 	wiphy_unlock(mvm->hw->wiphy);
++#endif
+ 	rtnl_unlock();
+ 
+ 	iwl_mvm_resume_tcm(mvm);
+diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/link.c b/drivers/net/wireless/intel/iwlwifi/mvm/link.c
+index 3520b6b2b6..8fba69ba5f 100644
+--- a/drivers/net/wireless/intel/iwlwifi/mvm/link.c
++++ b/drivers/net/wireless/intel/iwlwifi/mvm/link.c
+@@ -138,7 +138,11 @@ int iwl_mvm_link_changed(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
+
+ 	cmd.bss_color = vif->bss_conf.he_bss_color.color;
+
++#if CFG80211_VERSION >= KERNEL_VERSION(5,4,0)
+ 	if (!vif->bss_conf.he_bss_color.enabled) {
++#else
++	if (vif->bss_conf.he_bss_color.disabled) {
++#endif
+ 		flags |= LINK_FLG_BSS_COLOR_DIS;
+ 		flags_mask |= LINK_FLG_BSS_COLOR_DIS;
+ 	}
 diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c b/drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c
-index 82085271c7..618094899d 100644
+index af0c51e7cf..9369d9bdb5 100644
 --- a/drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c
 +++ b/drivers/net/wireless/intel/iwlwifi/mvm/mac80211.c
-@@ -36,6 +36,37 @@
+@@ -37,6 +37,37 @@
  #endif
  #include "fw/api/nan.h"
  
@@ -197,15 +241,15 @@ index 82085271c7..618094899d 100644
  static const struct ieee80211_iface_limit iwl_mvm_limits[] = {
  	{
  		.max = CPTCFG_IWLWIFI_NUM_STA_INTERFACES,
-@@ -166,6 +197,7 @@ static const struct iwl_fw_bcast_filter iwl_mvm_default_bcast_filters[] = {
+@@ -94,6 +125,7 @@ iwl_mvm_iface_combinations_nan[] = {
+ 	},
  };
- #endif
  
 +#if CFG80211_VERSION >= KERNEL_VERSION(5,0,0)
  static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
  	.max_peers = IWL_MVM_TOF_MAX_APS,
  	.report_ap_tsf = 1,
-@@ -192,6 +224,7 @@ static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
+@@ -120,6 +152,7 @@ static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = {
  			     BIT(NL80211_PREAMBLE_HE),
  	},
  };
@@ -213,7 +257,7 @@ index 82085271c7..618094899d 100644
  
  static int __iwl_mvm_mac_set_key(struct ieee80211_hw *hw,
  				 enum set_key_cmd cmd,
-@@ -528,12 +561,14 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
+@@ -438,12 +471,14 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
  		hw->wiphy->n_cipher_suites++;
  	}
  
@@ -228,7 +272,7 @@ index 82085271c7..618094899d 100644
  
  	if (fw_has_capa(&mvm->fw->ucode_capa,
  			IWL_UCODE_TLV_CAPA_BIGTK_SUPPORT))
-@@ -705,11 +705,13 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
+@@ -565,11 +600,13 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
  			hw->wiphy->bands[NL80211_BAND_5GHZ]->vht_cap.cap |=
  				IEEE80211_VHT_CAP_SU_BEAMFORMER_CAPABLE;
  	}
@@ -242,7 +286,7 @@ index 82085271c7..618094899d 100644
  
  	hw->wiphy->hw_version = mvm->trans->hw_id;
  
-@@ -3513,6 +3550,66 @@ static void iwl_mvm_sta_rc_update(struct ieee80211_hw *hw,
+@@ -3641,6 +3678,66 @@ static void iwl_mvm_sta_rc_update(struct ieee80211_hw *hw,
  		iwl_mvm_sf_update(mvm, vif, false);
  }
  
@@ -259,7 +303,7 @@ index 82085271c7..618094899d 100644
 +	int i;
 +
 +	rcu_read_lock();
-+	chanctx_conf = rcu_dereference(vif->chanctx_conf);
++	chanctx_conf = rcu_dereference(vif->bss_conf.chanctx_conf);
 +	if (chanctx_conf)
 +		center_freq = chanctx_conf->def.chan->center_freq;
 +
@@ -309,7 +353,7 @@ index 82085271c7..618094899d 100644
  static int iwl_mvm_mac_conf_tx(struct ieee80211_hw *hw,
  			       struct ieee80211_vif *vif, u16 ac,
  			       const struct ieee80211_tx_queue_params *params)
-@@ -3522,6 +3619,10 @@ static int iwl_mvm_mac_conf_tx(struct ieee80211_hw *hw,
+@@ -3650,6 +3747,10 @@ static int iwl_mvm_mac_conf_tx(struct ieee80211_hw *hw,
  
  	mvmvif->queue_params[ac] = *params;
  
@@ -320,7 +364,7 @@ index 82085271c7..618094899d 100644
  	/*
  	 * No need to update right away, we'll get BSS_CHANGED_QOS
  	 * The exception is P2P_DEVICE interface which needs immediate update.
-@@ -5177,10 +5278,13 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
+@@ -5334,10 +5435,13 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
  
  	switch (format) {
  	case RATE_MCS_EHT_MSK:
@@ -334,7 +378,7 @@ index 82085271c7..618094899d 100644
  		gi_ltf = u32_get_bits(rate_n_flags, RATE_MCS_HE_GI_LTF_MSK);
  
  		rinfo->flags |= RATE_INFO_FLAGS_HE_MCS;
-@@ -5218,6 +5320,7 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
+@@ -5377,6 +5481,7 @@ static void iwl_mvm_set_sta_rate(u32 rate_n_flags, struct rate_info *rinfo)
  
  		if (rate_n_flags & RATE_HE_DUAL_CARRIER_MODE_MSK)
  			rinfo->he_dcm = 1;
@@ -343,12 +387,12 @@ index 82085271c7..618094899d 100644
  	case RATE_MCS_HT_MSK:
  		rinfo->flags |= RATE_INFO_FLAGS_MCS;
 diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/ops.c b/drivers/net/wireless/intel/iwlwifi/mvm/ops.c
-index 1dcaacc7b5..43d6dc3e6f 100644
+index dc0039d8f1..3e962435d2 100644
 --- a/drivers/net/wireless/intel/iwlwifi/mvm/ops.c
 +++ b/drivers/net/wireless/intel/iwlwifi/mvm/ops.c
-@@ -825,13 +825,17 @@ static int iwl_mvm_start_get_nvm(struct iwl_mvm *mvm)
- get_nvm_from_fw:
+@@ -849,13 +849,17 @@ static int iwl_mvm_start_get_nvm(struct iwl_mvm *mvm)
  
+ get_nvm_from_fw:
  	rtnl_lock();
 +#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
  	wiphy_lock(mvm->hw->wiphy);
@@ -364,7 +408,7 @@ index 1dcaacc7b5..43d6dc3e6f 100644
  		rtnl_unlock();
  		return ret;
  	}
-@@ -849,7 +853,9 @@ get_nvm_from_fw:
+@@ -872,7 +876,9 @@ get_nvm_from_fw:
  		iwl_mvm_stop_device(mvm);
  
  	mutex_unlock(&mvm->mutex);
@@ -374,11 +418,26 @@ index 1dcaacc7b5..43d6dc3e6f 100644
  	rtnl_unlock();
  
  	if (ret)
+diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/rxmq.c b/drivers/net/wireless/intel/iwlwifi/mvm/rxmq.c
+index f289de4cb1..5060d401c1 100644
+--- a/drivers/net/wireless/intel/iwlwifi/mvm/rxmq.c
++++ b/drivers/net/wireless/intel/iwlwifi/mvm/rxmq.c
+@@ -1629,8 +1629,10 @@ static inline u8 iwl_mvm_nl80211_band_from_rx_msdu(u8 phy_band)
+ 		return NL80211_BAND_2GHZ;
+ 	case PHY_BAND_5:
+ 		return NL80211_BAND_5GHZ;
++#if CFG80211_VERSION >= KERNEL_VERSION(5,10,0)
+ 	case PHY_BAND_6:
+ 		return NL80211_BAND_6GHZ;
++#endif
+ 	default:
+ 		WARN_ONCE(1, "Unsupported phy band (%u)\n", phy_band);
+ 		return NL80211_BAND_5GHZ;
 diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/scan.c b/drivers/net/wireless/intel/iwlwifi/mvm/scan.c
-index fddc6e6e0d..c0214b5e27 100644
+index 712e63cf31..0507cb25de 100644
 --- a/drivers/net/wireless/intel/iwlwifi/mvm/scan.c
 +++ b/drivers/net/wireless/intel/iwlwifi/mvm/scan.c
-@@ -794,12 +794,14 @@ iwl_mvm_build_scan_probe(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
+@@ -784,12 +784,14 @@ iwl_mvm_build_scan_probe(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
  		cpu_to_le16(ies->len[NL80211_BAND_5GHZ]);
  	pos += ies->len[NL80211_BAND_5GHZ];
  
@@ -393,7 +452,7 @@ index fddc6e6e0d..c0214b5e27 100644
  	memcpy(pos, ies->common_ies, ies->common_ie_len);
  	params->preq.common_data.offset = cpu_to_le16(pos - params->preq.buf);
  
-@@ -1922,6 +1925,7 @@ static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
+@@ -1924,6 +1926,7 @@ static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
  					   struct iwl_mvm_scan_params *params,
  					   struct ieee80211_vif *vif)
  {
@@ -401,7 +460,7 @@ index fddc6e6e0d..c0214b5e27 100644
  	struct ieee80211_supported_band *sband =
  		&mvm->nvm_data->bands[NL80211_BAND_6GHZ];
  	u32 n_disabled, i;
-@@ -2008,6 +2012,7 @@ static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
+@@ -2007,6 +2010,7 @@ static void iwl_mvm_scan_6ghz_passive_scan(struct iwl_mvm *mvm,
  	/* all conditions to enable 6ghz passive scan are satisfied */
  	IWL_DEBUG_SCAN(mvm, "6GHz passive scan: can be enabled\n");
  	params->enable_6ghz_passive = true;
@@ -409,7 +468,7 @@ index fddc6e6e0d..c0214b5e27 100644
  }
  
  static u16 iwl_mvm_scan_umac_flags_v2(struct iwl_mvm *mvm,
-@@ -2338,6 +2343,7 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
+@@ -2370,6 +2374,7 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
  					  channel_cfg_flags,
  					  vif->type);
  
@@ -417,7 +476,7 @@ index fddc6e6e0d..c0214b5e27 100644
  	if (params->enable_6ghz_passive) {
  		struct ieee80211_supported_band *sband =
  			&mvm->nvm_data->bands[NL80211_BAND_6GHZ];
-@@ -2361,6 +2367,7 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
+@@ -2393,6 +2398,7 @@ iwl_mvm_scan_umac_fill_ch_p_v6(struct iwl_mvm *mvm,
  			cp->count++;
  		}
  	}
@@ -425,9 +484,9 @@ index fddc6e6e0d..c0214b5e27 100644
  }
  
  static int iwl_mvm_scan_umac_v12(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
-@@ -2666,8 +2666,10 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
- #endif
+@@ -2807,8 +2813,10 @@ int iwl_mvm_reg_scan_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
  	iwl_mvm_fill_scan_type(mvm, &params, vif);
+ 	iwl_mvm_fill_respect_p2p_go(mvm, &params, vif);
  
 +#if CFG80211_VERSION >= KERNEL_VERSION(4,9,0)
  	if (req->duration)
@@ -437,7 +496,7 @@ index fddc6e6e0d..c0214b5e27 100644
  	iwl_mvm_build_scan_probe(mvm, vif, ies, &params);
  
 diff --git a/drivers/net/wireless/intel/iwlwifi/pcie/drv.c b/drivers/net/wireless/intel/iwlwifi/pcie/drv.c
-index dde8860f49..4bafe9edc5 100644
+index be53f3e367..cf528e9dac 100644
 --- a/drivers/net/wireless/intel/iwlwifi/pcie/drv.c
 +++ b/drivers/net/wireless/intel/iwlwifi/pcie/drv.c
 @@ -4,6 +4,7 @@
@@ -448,35 +507,3 @@ index dde8860f49..4bafe9edc5 100644
  #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
  
  #include <linux/module.h>
-diff --git a/drivers/net/wireless/intel/iwlwifi/mvm/d3.c b/drivers/net/wireless/intel/iwlwifi/mvm/d3.c
-index b04a660c5bfe..27c92f9c694f 100644
---- a/drivers/net/wireless/intel/iwlwifi/mvm/d3.c
-+++ b/drivers/net/wireless/intel/iwlwifi/mvm/d3.c
-@@ -2697,9 +2697,13 @@ static int iwl_mvm_d3_test_open(struct inode *inode, struct file *file)
- 
- 	/* start pseudo D3 */
- 	rtnl_lock();
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
- 	wiphy_lock(mvm->hw->wiphy);
-+#endif
- 	err = __iwl_mvm_suspend(mvm->hw, mvm->hw->wiphy->wowlan_config, true);
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
- 	wiphy_unlock(mvm->hw->wiphy);
-+#endif
- 	rtnl_unlock();
- 	if (err > 0)
- 		err = -EINVAL;
-@@ -2755,9 +2759,13 @@ static int iwl_mvm_d3_test_release(struct inode *inode, struct file *file)
- 	iwl_fw_dbg_read_d3_debug_data(&mvm->fwrt);
- 
- 	rtnl_lock();
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
- 	wiphy_lock(mvm->hw->wiphy);
-+#endif
- 	__iwl_mvm_resume(mvm, true);
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,12,0)
- 	wiphy_unlock(mvm->hw->wiphy);
-+#endif
- 	rtnl_unlock();
- 
- 	iwl_mvm_resume_tcm(mvm);

@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2013-2014 Intel Mobile Communications GmbH
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
- * Copyright (C) 2018 Intel Corporation
+ * Copyright (C) 2018, 2022 Intel Corporation
  */
 #include <net/mac80211.h>
 #include "mvm.h"
@@ -55,7 +55,7 @@ static void iwl_mvm_quota_iterator(void *_data, u8 *mac,
 
 	switch (vif->type) {
 	case NL80211_IFTYPE_STATION:
-		if (vif->bss_conf.assoc) {
+		if (vif->cfg.assoc) {
 			data->vifs[data->num_active_macs] = vif;
 			data->num_active_macs++;
 		}

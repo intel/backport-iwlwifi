@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -8,6 +8,7 @@
 #include <linux/err.h>
 #include <linux/ieee80211.h>
 #include <linux/netdevice.h>
+#include <linux/dmi.h>
 
 #include "mvm.h"
 #include "sta.h"
@@ -15,6 +16,7 @@
 #include "debugfs.h"
 #include "iwl-modparams.h"
 #include "fw/error-dump.h"
+#include "fw/api/phy-ctxt.h"
 #ifdef CPTCFG_IWLMVM_AX_SOFTAP_TESTMODE
 #include "fw/api/ax-softap-testmode.h"
 #endif
@@ -291,9 +293,9 @@ static ssize_t iwl_dbgfs_set_nic_temperature_read(struct file *file,
 	int pos;
 
 	if (!mvm->temperature_test)
-		pos = scnprintf(buf , sizeof(buf), "disabled\n");
+		pos = scnprintf(buf, sizeof(buf), "disabled\n");
 	else
-		pos = scnprintf(buf , sizeof(buf), "%d\n", mvm->temperature);
+		pos = scnprintf(buf, sizeof(buf), "%d\n", mvm->temperature);
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
@@ -338,7 +340,7 @@ static ssize_t iwl_dbgfs_set_nic_temperature_write(struct iwl_mvm *mvm,
 		mvm->temperature = temperature;
 	}
 	IWL_DEBUG_TEMP(mvm, "%sabling debug set temperature (temp = %d)\n",
-		       mvm->temperature_test ? "En" : "Dis" ,
+		       mvm->temperature_test ? "En" : "Dis",
 		       mvm->temperature);
 	/* handle the temperature change */
 	iwl_mvm_tt_handler(mvm);
@@ -368,7 +370,7 @@ static ssize_t iwl_dbgfs_nic_temp_read(struct file *file,
 	if (ret)
 		return -EIO;
 
-	pos = scnprintf(buf , sizeof(buf), "%d\n", temp);
+	pos = scnprintf(buf, sizeof(buf), "%d\n", temp);
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
@@ -401,12 +403,12 @@ static ssize_t iwl_dbgfs_sar_geo_profile_read(struct file *file,
 		pos += scnprintf(buf + pos, bufsz - pos,
 				 "Use geographic profile %d\n", tbl_idx);
 		pos += scnprintf(buf + pos, bufsz - pos,
-				 "2.4GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
+				 "2.4GHz:\n\tChain A offset: %u dBm\n\tChain B offset: %u dBm\n\tmax tx power: %u dBm\n",
 				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[0].chains[0],
 				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[0].chains[1],
 				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[0].max);
 		pos += scnprintf(buf + pos, bufsz - pos,
-				 "5.2GHz:\n\tChain A offset: %hhu dBm\n\tChain B offset: %hhu dBm\n\tmax tx power: %hhu dBm\n",
+				 "5.2GHz:\n\tChain A offset: %u dBm\n\tChain B offset: %u dBm\n\tmax tx power: %u dBm\n",
 				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[1].chains[0],
 				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[1].chains[1],
 				 mvm->fwrt.geo_profiles[tbl_idx - 1].bands[1].max);
@@ -1001,6 +1003,137 @@ static ssize_t iwl_dbgfs_fw_ver_read(struct file *file, char __user *user_buf,
 	return ret;
 }
 
+static ssize_t iwl_dbgfs_tas_get_status_read(struct file *file,
+					     char __user *user_buf,
+					     size_t count, loff_t *ppos)
+{
+	struct iwl_mvm *mvm = file->private_data;
+	struct iwl_mvm_tas_status_resp tas_rsp;
+	struct iwl_mvm_tas_status_resp *rsp = &tas_rsp;
+	static const size_t bufsz = 1024;
+	char *buff, *pos, *endpos;
+	char tas_approved_list[256];
+	const char * const tas_dis_reason[TAS_DISABLED_REASON_MAX] = {
+		[TAS_DISABLED_DUE_TO_BIOS] = "Due To BIOS",
+		[TAS_DISABLED_DUE_TO_SAR_6DBM] = "Due To SAR Limit Less Than 6 dBm",
+		[TAS_DISABLED_REASON_INVALID] = "INVALID",
+	};
+	const char * const tas_current_status[TAS_DYNA_STATUS_MAX] = {
+		[TAS_DYNA_INACTIVE] = "INACTIVE",
+		[TAS_DYNA_INACTIVE_MVM_MODE] = "Inactive Due To MVM Mode",
+		[TAS_DYNA_INACTIVE_TRIGGER_MODE] = "Inactive Due To Trigger Mode",
+		[TAS_DYNA_INACTIVE_BLOCK_LISTED] = "Inactive Due To Block Listed",
+		[TAS_DYNA_INACTIVE_UHB_NON_US] = "Inactive Due To UHB Non USA",
+		[TAS_DYNA_ACTIVE] = "ACTIVE",
+	};
+	struct iwl_host_cmd hcmd = {
+		.id = WIDE_ID(DEBUG_GROUP, GET_TAS_STATUS),
+		.flags = CMD_WANT_SKB,
+		.len = { 0, },
+		.data = { NULL, },
+	};
+	int ret, i, tmp;
+	unsigned long dyn_status;
+
+	if (!iwl_mvm_firmware_running(mvm))
+		return -ENODEV;
+
+	mutex_lock(&mvm->mutex);
+	ret = iwl_mvm_send_cmd(mvm, &hcmd);
+	mutex_unlock(&mvm->mutex);
+	if (ret < 0)
+		return ret;
+
+	buff = kzalloc(bufsz, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+	pos = buff;
+	endpos = pos + bufsz;
+
+	rsp = (void *)hcmd.resp_pkt->data;
+	pos += scnprintf(pos, endpos - pos, "TAS Report\n");
+	pos += scnprintf(pos, endpos - pos, "\tTAS FW version: %d\n", rsp->tas_fw_version);
+	pos += scnprintf(pos, endpos - pos, "\tIs UHB Enabled For USA?: %s\n",
+			 rsp->is_uhb_for_usa_enable ? "TRUE" : "FALSE");
+	pos += scnprintf(pos, endpos - pos, "\tCurrent Country: 0x%x\n",
+			 le16_to_cpu(rsp->curr_mcc));
+
+	pos += scnprintf(pos, endpos - pos, "\tBlock List Countries:");
+	for (i = 0; i < APCI_WTAS_BLACK_LIST_MAX; i++)
+		pos += scnprintf(pos, endpos - pos, " 0x%x", le16_to_cpu(rsp->block_list[i]));
+
+	pos += scnprintf(pos, endpos - pos, "\n\tVendor: %s\n",
+			 dmi_get_system_info(DMI_SYS_VENDOR));
+	iwl_mvm_get_tas_approved_list(tas_approved_list, ARRAY_SIZE(tas_approved_list));
+	pos += scnprintf(pos, endpos - pos, "\tVendor Approved List: %s\n",
+			 tas_approved_list);
+	pos += scnprintf(pos, endpos - pos, "\tDo TAS Support Dual Radio?: %s\n",
+			 rsp->in_dual_radio ? "TRUE" : "FALSE");
+
+	for (i = 0; i < rsp->in_dual_radio + 1; i++) {
+		if (rsp->tas_status_mac[i].static_dis_reason == 0) {
+			pos += scnprintf(pos, endpos - pos, "\tStatic Status: Disabled\n");
+			pos += scnprintf(pos, endpos - pos, "\tStatic Disabled Reason: %s (0)\n",
+					 tas_dis_reason[0]);
+			goto out;
+		}
+
+		pos += scnprintf(pos, endpos - pos, "\nTAS status for ");
+		switch (rsp->tas_status_mac[i].band) {
+		case TAS_LMAC_BAND_HB:
+			pos += scnprintf(pos, endpos - pos, "HB\n");
+			break;
+		case TAS_LMAC_BAND_LB:
+			pos += scnprintf(pos, endpos - pos, "LB\n");
+			break;
+		case TAS_LMAC_BAND_UHB:
+			pos += scnprintf(pos, endpos - pos, "UHB\n");
+			break;
+		case TAS_LMAC_BAND_INVALID:
+			pos += scnprintf(pos, endpos - pos, "INVALID BAND\n");
+			break;
+		default:
+			IWL_ERR(mvm, "Unsupported band (%d)\n", rsp->tas_status_mac[i].band);
+			ret = -EIO;
+			goto out;
+		}
+		pos += scnprintf(pos, endpos - pos, "\tStatic Status: %sabled\n",
+				 rsp->tas_status_mac[i].static_status ? "En" : "Dis");
+		pos += scnprintf(pos, endpos - pos, "\tStatic Disabled Reason: ");
+		if (rsp->tas_status_mac[i].static_dis_reason >= 0 &&
+		    rsp->tas_status_mac[i].static_dis_reason < TAS_DISABLED_REASON_MAX)
+			pos += scnprintf(pos, endpos - pos, "%s (%d)\n",
+					 tas_dis_reason[rsp->tas_status_mac[i].static_dis_reason],
+					 rsp->tas_status_mac[i].static_dis_reason);
+		else
+			pos += scnprintf(pos, endpos - pos, "unsupported value (%d)\n",
+					 rsp->tas_status_mac[i].static_dis_reason);
+
+		pos += scnprintf(pos, endpos - pos, "\tDynamic Status:\n");
+		dyn_status = (rsp->tas_status_mac[i].dynamic_status);
+		for_each_set_bit(tmp, &dyn_status, sizeof(dyn_status)) {
+			if (tmp >= 0 && tmp < TAS_DYNA_STATUS_MAX)
+				pos += scnprintf(pos, endpos - pos, "\t\t%s (%d)\n",
+						 tas_current_status[tmp], tmp);
+		}
+
+		pos += scnprintf(pos, endpos - pos, "\tIs Near Disconnection?: %s\n",
+				 rsp->tas_status_mac[i].near_disconnection ? "TRUE" : "FALSE");
+		tmp = le16_to_cpu(rsp->tas_status_mac[i].max_reg_pwr_limit);
+		pos += scnprintf(pos, endpos - pos, "\tMax. Regulatory Pwr Limit (dBm): %d.%03d\n",
+				 tmp / 8, 125 * (tmp % 8));
+		tmp = le16_to_cpu(rsp->tas_status_mac[i].sar_limit);
+		pos += scnprintf(pos, endpos - pos, "\tSAR limit (dBm): %d.%03d\n",
+				 tmp / 8, 125 * (tmp % 8));
+	}
+
+out:
+	ret = simple_read_from_buffer(user_buf, count, ppos, buff, pos - buff);
+	kfree(buff);
+	iwl_free_resp(&hcmd);
+	return ret;
+}
+
 static ssize_t iwl_dbgfs_phy_integration_ver_read(struct file *file,
 						  char __user *user_buf,
 						  size_t count, loff_t *ppos)
@@ -1356,7 +1489,7 @@ iwl_dbgfs_scan_ant_rxchain_read(struct file *file,
 		pos += scnprintf(buf + pos, bufsz - pos, "A");
 	if (mvm->scan_rx_ant & ANT_B)
 		pos += scnprintf(buf + pos, bufsz - pos, "B");
-	pos += scnprintf(buf + pos, bufsz - pos, " (%hhx)\n", mvm->scan_rx_ant);
+	pos += scnprintf(buf + pos, bufsz - pos, " (%x)\n", mvm->scan_rx_ant);
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
@@ -1535,7 +1668,7 @@ static int _iwl_dbgfs_inject_beacon_ie(struct iwl_mvm *mvm, char *bin, int len)
 
 	mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	info = IEEE80211_SKB_CB(beacon);
-	rate = iwl_mvm_mac_ctxt_get_lowest_rate(info, vif);
+	rate = iwl_mvm_mac_ctxt_get_beacon_rate(mvm, info, vif);
 
 	beacon_cmd.flags =
 		cpu_to_le16(iwl_mvm_mac_ctxt_get_beacon_flags(mvm->fw, rate));
@@ -2428,6 +2561,7 @@ MVM_DEBUGFS_READ_FILE_OPS(fw_rx_stats);
 MVM_DEBUGFS_READ_FILE_OPS(drv_rx_stats);
 MVM_DEBUGFS_READ_FILE_OPS(fw_ver);
 MVM_DEBUGFS_READ_FILE_OPS(phy_integration_ver);
+MVM_DEBUGFS_READ_FILE_OPS(tas_get_status);
 MVM_DEBUGFS_WRITE_FILE_OPS(fw_restart, 10);
 MVM_DEBUGFS_WRITE_FILE_OPS(fw_nmi, 10);
 MVM_DEBUGFS_WRITE_FILE_OPS(bt_tx_prio, 10);
@@ -2679,6 +2813,7 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm)
 	if (mvm->fw->phy_integration_ver)
 		MVM_DEBUGFS_ADD_FILE(phy_integration_ver, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(iwl_tlc_dhc, mvm->debugfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(tas_get_status, mvm->debugfs_dir, 0400);
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	MVM_DEBUGFS_ADD_FILE(debug_profile, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(enable_adwell_fine_tune_report,

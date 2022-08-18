@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0
 obj-$(CPTCFG_MAC80211) += mac80211.o
 
+ifeq ($(CPTCFG_IWLWIFI_SIMULATION),y)
+UBSAN_SANITIZE := y
+endif
+
 # mac80211 objects
 mac80211-y := \
 	main.o status.o \

@@ -736,7 +736,7 @@ static int iwl_mvm_d3_reprogram(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		return -EINVAL;
 
 	rcu_read_lock();
-	ctx = rcu_dereference(vif->chanctx_conf);
+	ctx = rcu_dereference(vif->bss_conf.chanctx_conf);
 	if (WARN_ON(!ctx)) {
 		rcu_read_unlock();
 		return -EINVAL;
@@ -754,7 +754,7 @@ static int iwl_mvm_d3_reprogram(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	/* add back the MAC */
 	mvmvif->uploaded = false;
 
-	if (WARN_ON(!vif->bss_conf.assoc))
+	if (WARN_ON(!vif->cfg.assoc))
 		return -EINVAL;
 
 	ret = iwl_mvm_mac_ctxt_add(mvm, vif);
@@ -920,7 +920,7 @@ iwl_mvm_get_wowlan_config(struct iwl_mvm *mvm,
 	/* TODO: wowlan_config_cmd->wowlan_ba_teardown_tids */
 
 	wowlan_config_cmd->is_11n_connection =
-					ap_sta->ht_cap.ht_supported;
+					ap_sta->deflink.ht_cap.ht_supported;
 	wowlan_config_cmd->flags = ENABLE_L3_FILTERING |
 		ENABLE_NBNS_FILTERING | ENABLE_DHCP_FILTERING;
 
@@ -2217,25 +2217,6 @@ out_free_resp:
 	return status;
 }
 
-static struct iwl_wowlan_status_data *
-iwl_mvm_get_wakeup_status(struct iwl_mvm *mvm, u8 sta_id)
-{
-	u8 cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw, OFFLOADS_QUERY_CMD,
-					   IWL_FW_CMD_VER_UNKNOWN);
-	__le32 station_id = cpu_to_le32(sta_id);
-	u32 cmd_size = cmd_ver != IWL_FW_CMD_VER_UNKNOWN ? sizeof(station_id) : 0;
-
-	if (!mvm->net_detect) {
-		/* only for tracing for now */
-		int ret = iwl_mvm_send_cmd_pdu(mvm, OFFLOADS_QUERY_CMD, 0,
-					       cmd_size, &station_id);
-		if (ret)
-			IWL_ERR(mvm, "failed to query offload statistics (%d)\n", ret);
-	}
-
-	return iwl_mvm_send_wowlan_get_status(mvm, sta_id);
-}
-
 /* releases the MVM mutex */
 static bool iwl_mvm_query_wakeup_reasons(struct iwl_mvm *mvm,
 					 struct ieee80211_vif *vif,
@@ -2594,10 +2575,9 @@ iwl_mvm_choose_query_wakeup_reasons(struct iwl_mvm *mvm,
 	/* if FW uses status notification, status shouldn't be NULL here */
 	if (!d3_data->status) {
 		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
+		u8 sta_id = mvm->net_detect ? IWL_MVM_INVALID_STA : mvmvif->ap_sta_id;
 
-		d3_data->status = iwl_mvm_get_wakeup_status(mvm, mvm->net_detect ?
-							    IWL_MVM_INVALID_STA :
-							    mvmvif->ap_sta_id);
+		d3_data->status = iwl_mvm_send_wowlan_get_status(mvm, sta_id);
 	}
 
 	if (mvm->net_detect) {

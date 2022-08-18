@@ -3,6 +3,11 @@
 #include <linux/version.h>
 #if LINUX_VERSION_IS_GEQ(5,13,0)
 #include_next <linux/wwan.h>
+
+#if LINUX_VERSION_IS_LESS(5,14,0)
+#define WWAN_PORT_UNKNOWN (WWAN_PORT_MAX + 1)
+#endif /* <= 5.14 */
+
 #else
 
 /**
