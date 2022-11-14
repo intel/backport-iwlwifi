@@ -112,3 +112,11 @@ iwl_mvm_chandef_get_primary_80(struct cfg80211_chan_def *chandef)
 +return 0;
 +#endif
 }
+
+@@
+expression field_name;
+identifier bin =~ "eht_";
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
+IWL_COPY_BIN(bin, field_name);
++#endif

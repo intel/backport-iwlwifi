@@ -438,16 +438,18 @@ static void mesh_sta_info_init(struct ieee80211_sub_if_data *sdata,
 	sta->sta.deflink.supp_rates[sband->band] = rates;
 
 	if (ieee80211_ht_cap_ie_to_sta_ht_cap(sdata, sband,
-					      elems->ht_cap_elem, sta, 0))
+					      elems->ht_cap_elem,
+					      &sta->deflink))
 		changed |= IEEE80211_RC_BW_CHANGED;
 
 	ieee80211_vht_cap_ie_to_sta_vht_cap(sdata, sband,
-					    elems->vht_cap_elem, sta);
+					    elems->vht_cap_elem,
+					    &sta->deflink);
 
 	ieee80211_he_cap_ie_to_sta_he_cap(sdata, sband, elems->he_cap,
 					  elems->he_cap_len,
 					  elems->he_6ghz_capa,
-					  sta, 0);
+					  &sta->deflink);
 
 	if (bw != sta->sta.deflink.bandwidth)
 		changed |= IEEE80211_RC_BW_CHANGED;
@@ -475,8 +477,7 @@ static int mesh_allocate_aid(struct ieee80211_sub_if_data *sdata)
 	unsigned long *aid_map;
 	int aid;
 
-	aid_map = kcalloc(BITS_TO_LONGS(IEEE80211_MAX_AID + 1),
-			  sizeof(*aid_map), GFP_KERNEL);
+	aid_map = bitmap_zalloc(IEEE80211_MAX_AID + 1, GFP_KERNEL);
 	if (!aid_map)
 		return -ENOMEM;
 
@@ -489,7 +490,7 @@ static int mesh_allocate_aid(struct ieee80211_sub_if_data *sdata)
 	rcu_read_unlock();
 
 	aid = find_first_zero_bit(aid_map, IEEE80211_MAX_AID + 1);
-	kfree(aid_map);
+	bitmap_free(aid_map);
 
 	if (aid > IEEE80211_MAX_AID)
 		return -ENOBUFS;
@@ -1228,8 +1229,7 @@ void mesh_rx_plink_frame(struct ieee80211_sub_if_data *sdata,
 		if (baselen > len)
 			return;
 	}
-	elems = ieee802_11_parse_elems(baseaddr, len - baselen, true,
-				       mgmt->bssid, NULL);
+	elems = ieee802_11_parse_elems(baseaddr, len - baselen, true, NULL);
 	mesh_process_plink_frame(sdata, mgmt, elems, rx_status);
 	kfree(elems);
 }

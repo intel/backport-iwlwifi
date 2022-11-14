@@ -4,12 +4,33 @@
  */
 #include "mvm.h"
 
+static void iwl_mvm_mld_set_he_support(struct iwl_mvm *mvm,
+				       struct ieee80211_vif *vif,
+				       struct iwl_mac_config_cmd *cmd)
+{
+#ifdef CPTCFG_IWLMVM_AX_SOFTAP_TESTMODE
+	if (vif->type == NL80211_IFTYPE_AP &&
+	    fw_has_capa(&mvm->fw->ucode_capa,
+			IWL_UCODE_TLV_CAPA_AX_SAP_TM_V2)) {
+		cmd->he_support = cpu_to_le16(1);
+		return;
+	}
+#endif
+
+	if (vif->type == NL80211_IFTYPE_AP)
+		cmd->he_ap_support = cpu_to_le16(1);
+	else
+		cmd->he_support = cpu_to_le16(1);
+}
+
 static void iwl_mvm_mld_mac_ctxt_cmd_common(struct iwl_mvm *mvm,
 					    struct ieee80211_vif *vif,
 					    struct iwl_mac_config_cmd *cmd,
 					    u32 action)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
+	struct ieee80211_bss_conf *link_conf;
+	unsigned int link_id;
 
 	cmd->id_and_color = cpu_to_le32(mvmvif->id);
 	cmd->action = cpu_to_le32(action);
@@ -18,19 +39,54 @@ static void iwl_mvm_mld_mac_ctxt_cmd_common(struct iwl_mvm *mvm,
 
 	memcpy(cmd->local_mld_addr, vif->addr, ETH_ALEN);
 
-	cmd->filter_flags = cpu_to_le32(0);
-	cmd->he_support = cpu_to_le32(0);
-	cmd->eht_support = cpu_to_le32(0);
+	cmd->he_support = 0;
+	cmd->eht_support = 0;
+
+	/* should be set by specific context type handler */
+	cmd->filter_flags = 0;
 
 	cmd->nic_not_ack_enabled =
 		cpu_to_le32(!iwl_mvm_is_nic_ack_enabled(mvm, vif));
 
 	if (iwlwifi_mod_params.disable_11ax)
 		return;
-	cmd->he_support = cpu_to_le32(vif->bss_conf.he_support);
 
-	if (!iwlwifi_mod_params.disable_11be && cmd->he_support)
-		cmd->eht_support = cpu_to_le32(vif->bss_conf.eht_support);
+	/*
+	 * If we have MLO enabled, then the firmware needs to enable
+	 * address translation for the station(s) we add. That depends
+	 * on having EHT enabled in firmware, which in turn depends on
+	 * mac80211 in the code below.
+	 * However, mac80211 doesn't enable HE/EHT until it has parsed
+	 * the association response successfully, so just skip all that
+	 * and enable both when we have MLO.
+	 */
+	if (vif->valid_links) {
+		iwl_mvm_mld_set_he_support(mvm, vif, cmd);
+		cmd->eht_support = cpu_to_le32(1);
+		return;
+	}
+
+	rcu_read_lock();
+	for (link_id = 0; link_id < ARRAY_SIZE((vif)->link_conf); link_id++) {
+		link_conf = rcu_dereference(vif->link_conf[link_id]);
+		if (!link_conf)
+			continue;
+
+		if (link_conf->he_support)
+			iwl_mvm_mld_set_he_support(mvm, vif, cmd);
+
+		/* it's not reasonable to have EHT without HE and FW API doesn't
+		 * support it. Ignore EHT in this case.
+		 */
+		if (!link_conf->he_support && link_conf->eht_support)
+			continue;
+
+		if (link_conf->eht_support) {
+			cmd->eht_support = cpu_to_le32(1);
+			break;
+		}
+	}
+	rcu_read_unlock();
 }
 
 static int iwl_mvm_mld_mac_ctxt_send_cmd(struct iwl_mvm *mvm,
@@ -66,8 +122,7 @@ static int iwl_mvm_mld_mac_ctxt_cmd_sta(struct iwl_mvm *mvm,
 		cmd.client.ctwin =
 			iwl_mvm_mac_ctxt_cmd_p2p_sta_get_oppps_ctwin(mvm, vif);
 
-	if (vif->cfg.assoc && vif->bss_conf.dtim_period &&
-	    !force_assoc_off) {
+	if (vif->cfg.assoc && !force_assoc_off) {
 		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 
 		cmd.client.is_assoc = cpu_to_le32(1);

@@ -41,11 +41,11 @@ static void iwl_mvm_quota_iterator(void *_data, u8 *mac,
 	if (vif == data->disabled_vif)
 		goto out;
 
-	if (!mvmvif->phy_ctxt)
+	if (!mvmvif->deflink.phy_ctxt)
 		goto out;
 
 	/* currently, PHY ID == binding ID */
-	id = mvmvif->phy_ctxt->id;
+	id = mvmvif->deflink.phy_ctxt->id;
 
 	/* need at least one binding per PHY */
 	BUILD_BUG_ON(NUM_PHY_CTX > MAX_BINDINGS);
@@ -326,8 +326,8 @@ iwl_mvm_calculate_advanced_quotas(struct iwl_mvm *mvm,
 		u32 color;
 
 		/* we always set binding id/color == phy id/color */
-		idx = mvmvif->phy_ctxt->id;
-		color = mvmvif->phy_ctxt->color;
+		idx = mvmvif->deflink.phy_ctxt->id;
+		color = mvmvif->deflink.phy_ctxt->color;
 
 		if (WARN_ON_ONCE(idx >= MAX_BINDINGS))
 			continue;
@@ -391,7 +391,7 @@ static void iwl_mvm_quota_dbg_iterator(void *_data, u8 *mac,
 
 	md->macs[mvmvif->id].iftype = ieee80211_iftype_p2p(vif->type, vif->p2p);
 	md->macs[mvmvif->id].phy_id =
-		mvmvif->phy_ctxt ? mvmvif->phy_ctxt->id : -1;
+		mvmvif->deflink.phy_ctxt ? mvmvif->deflink.phy_ctxt->id : -1;
 	md->macs[mvmvif->id].low_latency = iwl_mvm_vif_low_latency(mvmvif);
 	md->macs[mvmvif->id].quota = mvmvif->pct_quota;
 }

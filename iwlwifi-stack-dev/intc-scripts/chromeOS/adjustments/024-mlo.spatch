@@ -1,3 +1,44 @@
+@@
+struct cfg80211_disassoc_request *req;
+@@
+-req->ap_addr
++cfg80211_disassoc_ap_addr(req)
+
+@@
+identifier fn;
+expression e_dev, e_timeout, e_if;
+identifier assoc_data;
+@@
++static void
++ieee80211_assoc_comeback(struct net_device *dev,
++			  struct ieee80211_mgd_assoc_data *assoc_data,
++			  u32 timeout)
++{
++#if CFG80211_VERSION < KERNEL_VERSION(6,0,0)
++	int i;
++
++	if (WARN_ON(!assoc_data->link[0].bss))
++		return;
++	for (i = 1; i < ARRAY_SIZE(assoc_data->link); i++)
++		WARN_ON(assoc_data->link[i].bss);
++	cfg80211_assoc_comeback(dev, assoc_data->link[0].bss, timeout);
++#else
++	cfg80211_assoc_comeback(dev, assoc_data->ap_addr, timeout);
++#endif
++}
+
+fn(...)
+{
+...
+if (e_if) {
+...
+-cfg80211_assoc_comeback(e_dev, assoc_data->ap_addr, e_timeout)
++ieee80211_assoc_comeback(e_dev, assoc_data, e_timeout)
+...
+}
+...
+}
+
 @stop_ap@
 identifier ops;
 identifier fn;
@@ -13,12 +54,12 @@ identifier stop_ap.fn;
 identifier wiphy, dev, link_id;
 @@
 int fn(struct wiphy *wiphy, struct net_device *dev
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,20,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
 , unsigned int link_id
 +#endif
  )
 {
-+#if CFG80211_VERSION < KERNEL_VERSION(5,20,0)
++#if CFG80211_VERSION < KERNEL_VERSION(6,0,0)
 +	unsigned int link_id = 0;
 +#endif
 ...
@@ -40,7 +81,7 @@ identifier wiphy, dev, link_id, addr, mask;
 type u8;
 @@
 int fn(struct wiphy *wiphy, struct net_device *dev,
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,20,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
 unsigned int link_id,
 +#endif
 const u8 *addr, const struct cfg80211_bitrate_mask *mask)
@@ -63,12 +104,12 @@ identifier get_channel.fn;
 identifier wiphy, wdev, link_id, chandef;
 @@
 int fn(struct wiphy *wiphy, struct wireless_dev *wdev,
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,20,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
 unsigned int link_id,
 +#endif
 struct cfg80211_chan_def *chandef)
 {
-+#if CFG80211_VERSION < KERNEL_VERSION(5,20,0)
++#if CFG80211_VERSION < KERNEL_VERSION(6,0,0)
 +	unsigned int link_id = 0;
 +#endif
 ...
@@ -77,28 +118,43 @@ struct cfg80211_chan_def *chandef)
 @set_ap_chanwidth@
 identifier ops;
 identifier fn;
+fresh identifier locked_fn = "__" ## fn;
 @@
 struct cfg80211_ops ops = {
 ...,
-	.set_ap_chanwidth = fn,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
+ 	.set_ap_chanwidth = fn,
++#else
++	.set_ap_chanwidth = locked_fn,
++#endif
 ...
 };
 
 @@
 identifier set_ap_chanwidth.fn;
+identifier set_ap_chanwidth.locked_fn;
 identifier wiphy, dev, link_id, chandef;
 @@
 int fn(struct wiphy *wiphy, struct net_device *dev,
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,20,0)
 unsigned int link_id,
-+#endif
 struct cfg80211_chan_def *chandef)
 {
-+#if CFG80211_VERSION < KERNEL_VERSION(5,20,0)
-+	unsigned int link_id = 0;
-+#endif
 ...
 }
+
++#if CFG80211_VERSION < KERNEL_VERSION(6,0,0)
++static int locked_fn(struct wiphy *wiphy,
++		      struct net_device *dev,
++		      struct cfg80211_chan_def *chandef)
++{
++	int ret;
++
++	sdata_lock(IEEE80211_DEV_TO_SUB_IF(dev));
++	ret = fn(wiphy, dev, 0, chandef);
++	sdata_unlock(IEEE80211_DEV_TO_SUB_IF(dev));
++	return ret;
++}
++#endif /* CFG80211_VERSION < KERNEL_VERSION(6,0,0) */
 
 @@
 struct cfg80211_beacon_data *params;
@@ -111,3 +167,354 @@ struct cfg80211_ap_settings *params;
 @@
 -params->beacon.link_id
 +cfg80211_beacon_data_link_id(&params->beacon)
+
+@mlo_link@
+identifier ops;
+identifier fn;
+identifier cb = { add_intf_link, del_intf_link };
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
+	.cb = fn,
++#endif
+...
+};
+
+@@
+identifier mlo_link.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
+fn(...)
+{
+...
+}
++#endif
+
+@station@
+identifier ops;
+identifier method = { add_station, change_station };
+identifier fn;
+fresh identifier locked_fn = "__" ## fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
+ 	.method = fn,
++#else
++	.method = locked_fn,
++#endif
+...
+};
+
+@@
+identifier station.fn;
+identifier station.locked_fn;
+identifier wiphy, dev, mac, params;
+type u8;
+@@
+int fn(struct wiphy *wiphy, struct net_device *dev,
+ const u8 *mac,
+ struct station_parameters *params)
+{
+...
+}
+
++#if CFG80211_VERSION < KERNEL_VERSION(6,0,0)
++static int locked_fn(struct wiphy *wiphy,
++		      struct net_device *dev,
++		      const u8 *mac,
++		      struct station_parameters *params)
++{
++	int ret;
++
++	sdata_lock(IEEE80211_DEV_TO_SUB_IF(dev));
++	ret = fn(wiphy, dev, mac, params);
++	sdata_unlock(IEEE80211_DEV_TO_SUB_IF(dev));
++	return ret;
++}
++#endif /* CFG80211_VERSION < KERNEL_VERSION(6,0,0) */
+
+@del_station@
+identifier ops;
+identifier method = { del_station };
+identifier fn;
+fresh identifier locked_fn = "__" ## fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
+ 	.method = fn,
++#else
++	.method = locked_fn,
++#endif
+...
+};
+
+@@
+identifier del_station.fn;
+identifier del_station.locked_fn;
+identifier wiphy, dev, params;
+type u8;
+@@
+int fn(struct wiphy *wiphy, struct net_device *dev,
+struct station_del_parameters *params)
+{
+...
+}
+
++#if CFG80211_VERSION < KERNEL_VERSION(6,0,0)
++static int locked_fn(struct wiphy *wiphy,
++		      struct net_device *dev,
++		      struct station_del_parameters *params)
++{
++	int ret;
++
++	sdata_lock(IEEE80211_DEV_TO_SUB_IF(dev));
++	ret = fn(wiphy, dev, params);
++	sdata_unlock(IEEE80211_DEV_TO_SUB_IF(dev));
++	return ret;
++}
++#endif /* CFG80211_VERSION < KERNEL_VERSION(6,0,0) */
+
+@@
+identifier params;
+@@
+-params->link_sta_params.link_id
++link_sta_params_link_id(params)
+
+@@
+identifier params;
+@@
+-params->link_sta_params.mld_mac
++link_sta_params_mld_mac(params)
+
+@@
+identifier params;
+@@
+-params->link_sta_params.link_mac
++link_sta_params_link_mac(params)
+
+@@
+struct cfg80211_auth_request *req;
+@@
+-req->link_id
++cfg80211_req_link_id(req)
+
+@@
+struct cfg80211_auth_request *req;
+@@
+-req->ap_mld_addr
++cfg80211_req_ap_mld_addr(req)
+
+@@
+struct cfg80211_assoc_request *req;
+@@
+-req->link_id
++cfg80211_req_link_id(req)
+
+@@
+struct cfg80211_assoc_request *req;
+@@
+-req->ap_mld_addr
++cfg80211_req_ap_mld_addr(req)
+
+@@
+struct cfg80211_assoc_request *req;
+expression link_id;
+@@
+-req->links[link_id].bss
++cfg80211_req_link_bss(req, link_id)
+
+@@
+struct cfg80211_assoc_request *req;
+expression link_id;
+@@
+-req->links[link_id].elems_len
++cfg80211_req_link_elems_len(req, link_id)
+
+@@
+struct cfg80211_mgmt_tx_params *params;
+@@
+-BIT(params->link_id)
++cfg80211_mgmt_tx_params_link_id_mask(params)
+
+@@
+struct cfg80211_mgmt_tx_params *params;
+@@
+-params->link_id
++cfg80211_mgmt_tx_params_link_id(params)
+
+@@
+struct ieee80211_txq_params *params;
+@@
+-params->link_id
++cfg80211_txq_params_link_id(params)
+
+@add_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.add_key = fn,
+...
+};
+
+@@
+identifier add_key.fn;
+identifier wiphy, dev, link_id, key_idx, pairwise, mac_addr, params;
+type u8;
+@@
+ int fn(struct wiphy *wiphy, struct net_device *dev,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,1,0)
+ 	int link_id,
++#endif
+ 	u8 key_idx, bool pairwise,
+ 	const u8 *mac_addr, struct key_params *params)
+{
++#if CFG80211_VERSION < KERNEL_VERSION(6,1,0)
++	int link_id = -1;
++#endif
+...
+}
+
+@del_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.del_key = fn,
+...
+};
+
+@@
+identifier del_key.fn;
+identifier wiphy, dev, link_id, key_idx, pairwise, mac_addr;
+type u8;
+@@
+ int fn(struct wiphy *wiphy, struct net_device *dev,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,1,0)
+ 	int link_id,
++#endif
+ 	u8 key_idx, bool pairwise,
+ 	const u8 *mac_addr)
+{
++#if CFG80211_VERSION < KERNEL_VERSION(6,1,0)
++	int link_id = -1;
++#endif
+...
+}
+
+@get_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.get_key = fn,
+...
+};
+
+@@
+identifier get_key.fn;
+identifier wiphy, dev, link_id, key_idx, pairwise, mac_addr, cookie, callback, params;
+type u8;
+@@
+ int fn(struct wiphy *wiphy, struct net_device *dev,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,1,0)
+ 	int link_id,
++#endif
+ 	u8 key_idx, bool pairwise,
+ 	const u8 *mac_addr,
+ 	void *cookie,
+ 	void (*callback)(void *cookie,
+ 			 struct key_params *params))
+{
++#if CFG80211_VERSION < KERNEL_VERSION(6,1,0)
++	int link_id = -1;
++#endif
+...
+}
+
+@def_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_default_key = fn,
+...
+};
+
+@@
+identifier def_key.fn;
+identifier wiphy, dev, link_id, key_idx, uni, multi;
+type u8;
+@@
+ int fn(struct wiphy *wiphy, struct net_device *dev,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,1,0)
+ 	int link_id,
++#endif
+ 	u8 key_idx, bool uni, bool multi)
+{
++#if CFG80211_VERSION < KERNEL_VERSION(6,1,0)
++	int link_id = -1;
++#endif
+...
+}
+
+@def_mgmt_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_default_mgmt_key = fn,
+...
+};
+
+@@
+identifier def_mgmt_key.fn;
+identifier wiphy, dev, link_id, key_idx;
+type u8;
+@@
+ int fn(struct wiphy *wiphy, struct net_device *dev,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,1,0)
+        int link_id,
++#endif
+        u8 key_idx)
+{
++#if CFG80211_VERSION < KERNEL_VERSION(6,1,0)
++	int link_id = -1;
++#endif
+...
+}
+
+@def_bcon_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_default_beacon_key = fn,
+...
+};
+
+@@
+identifier def_bcon_key.fn;
+identifier wiphy, dev, link_id, key_idx;
+type u8;
+@@
+ int fn(struct wiphy *wiphy, struct net_device *dev,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,1,0)
+ 	int link_id,
++#endif
+ 	u8 key_idx)
+{
++#if CFG80211_VERSION < KERNEL_VERSION(6,1,0)
++	int link_id = -1;
++#endif
+...
+}

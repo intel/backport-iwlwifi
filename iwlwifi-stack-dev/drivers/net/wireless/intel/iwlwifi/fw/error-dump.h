@@ -96,7 +96,7 @@ struct iwl_dump_file_name_info {
 struct iwl_fw_error_dump_file {
 	__le32 barker;
 	__le32 file_len;
-	u8 data[0];
+	u8 data[];
 } __packed;
 
 /**

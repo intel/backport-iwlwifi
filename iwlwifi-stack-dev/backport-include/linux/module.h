@@ -3,6 +3,10 @@
 #include_next <linux/module.h>
 #include <linux/rcupdate.h>
 
+#ifndef __CFI_ADDRESSABLE
+#define __CFI_ADDRESSABLE(fn, __attr)
+#endif
+
 /*
  * The define overwriting module_init is based on the original module_init
  * which looks like this:
@@ -34,6 +38,7 @@ extern void backport_dependency_symbol(void);
 		return initfn();					\
 	}								\
 	int init_module(void) __attribute__((cold,alias("__init_backport")));\
+	__CFI_ADDRESSABLE(init_module, __initdata); \
 	BACKPORT_MOD_VERSIONS
 
 /*
@@ -58,7 +63,8 @@ extern void backport_dependency_symbol(void);
 		exitfn();						\
 		rcu_barrier();						\
 	}								\
-	void cleanup_module(void) __attribute__((cold,alias("__exit_compat")));
+	void cleanup_module(void) __attribute__((cold,alias("__exit_compat"))); \
+	__CFI_ADDRESSABLE(cleanup_module, __exitdata);
 #endif
 
 #if LINUX_VERSION_IS_LESS(5,4,0)

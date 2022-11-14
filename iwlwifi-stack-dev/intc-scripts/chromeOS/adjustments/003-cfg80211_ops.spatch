@@ -272,7 +272,7 @@ identifier fn;
 struct cfg80211_ops ops = {
 ...,
 +#if CFG80211_VERSION >= KERNEL_VERSION(4,17,0)
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,8,0)
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
 	.tx_control_port = fn,
 +#else
 +	.tx_control_port = bp_ieee80211_tx_control_port,
@@ -307,6 +307,28 @@ struct cfg80211_ops ops = {
 identifier radar_bg.fn;
 @@
 +#if CFG80211_VERSION >= KERNEL_VERSION(5,17,0)
+fn(...)
+{
+...
+}
++#endif
+
+@set_hw_timestamp@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
+	.set_hw_timestamp = fn,
++#endif
+...
+};
+
+@@
+identifier set_hw_timestamp.fn;
+@@
++#if CFG80211_VERSION >= KERNEL_VERSION(6,0,0)
 fn(...)
 {
 ...

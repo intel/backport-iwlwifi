@@ -544,6 +544,10 @@ LINUX_BACKPORT(acpi_evaluate_dsm)(acpi_handle handle, const guid_t *guid,
 		pos = list_entry_rcu(pos->member.next, typeof(*pos), member))
 #endif /* < 5.4 */
 
+#if LINUX_VERSION_IS_LESS(5,7,0)
+#define efi_rt_services_supported(...) efi_enabled(EFI_RUNTIME_SERVICES)
+#endif
+
 #if LINUX_VERSION_IS_LESS(5,11,0)
 
 enum rfkill_hard_block_reasons {

@@ -42,16 +42,6 @@ fn(...)
 }
 +#endif
 
-@@
-expression dev, bss, mgmt, len;
-expression uapsd_queues, ies, ies_len;
-@@
-+#if CFG80211_VERSION >= KERNEL_VERSION(5,1,0)
-cfg80211_rx_assoc_resp(dev, bss, mgmt, len, uapsd_queues, ies, ies_len);
-+#else
-+cfg80211_rx_assoc_resp(dev, bss, mgmt, len, uapsd_queues);
-+#endif
-
 @probe_mesh_link@
 identifier ops;
 identifier fn;

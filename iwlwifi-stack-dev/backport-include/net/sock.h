@@ -37,7 +37,7 @@ static inline void backport_sk_error_report(struct sock *sk)
 {
 	sk->sk_error_report(sk);
 }
-#define sk_error_report LINUX_BACKPORT(sk_error_report)
+#define sk_error_report(sk) LINUX_BACKPORT(sk_error_report(sk))
 #endif /* <= 5.14 */
 
 #endif /* __BACKPORT_NET_SOCK_H */

@@ -40,3 +40,15 @@ struct wiphy_iftype_ext_capab b[] = {
 ...,
 };
 +#endif
+
+@@
+struct wiphy_iftype_ext_capab *ift_ext_capa;
+@@
+-ift_ext_capa->eml_capabilities
++cfg80211_ext_capa_eml_capabilities(ift_ext_capa)
+
+@@
+struct wiphy_iftype_ext_capab *ift_ext_capa;
+@@
+-ift_ext_capa->mld_capa_and_ops
++cfg80211_ext_capa_mld_capa_and_ops(ift_ext_capa)

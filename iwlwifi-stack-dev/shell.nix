@@ -1,7 +1,7 @@
 { pkgs ? import (builtins.fetchGit {
-    name = "nixpkgs-unstable-2021-06-16";
+    name = "nixpkgs-unstable-2022-05-17";
     url = https://github.com/nixos/nixpkgs/;
-    rev = "0747387223edf1aa5beaedf48983471315d95e16";
+    rev = "acc4a0bbb9485e155e0a20786f9f48d7eda0ba40";
 }) {} }:
 
 with pkgs;
@@ -27,6 +27,7 @@ in
             ccache
             perl
             which
+            rsync
         ];
 
         shellHook = ''

@@ -9,6 +9,13 @@ struct lockdep_map { };
 #endif /* CONFIG_LOCKDEP */
 #endif /* LINUX_VERSION_IS_LESS(4,15,0) */
 
+#if LINUX_VERSION_IS_LESS(5,11,0)
+#if !defined(CONFIG_LOCKDEP) && !defined(lockdep_is_held)
+/* upstream since 5.11 in this exact same way - calls compile away */
+int lockdep_is_held(const void *);
+#endif
+#endif
+
 #ifndef lockdep_assert_not_held
 #ifdef CONFIG_LOCKDEP
 #ifndef LOCK_STATE_HELD

@@ -343,6 +343,7 @@ static void iwl_dealloc_ucode(struct iwl_drv *drv)
 	kfree(drv->fw.iml);
 	kfree(drv->fw.ucode_capa.cmd_versions);
 	kfree(drv->fw.phy_integration_ver);
+	kfree(drv->trans->dbg.pc_data);
 
 	for (i = 0; i < IWL_UCODE_TYPE_MAX; i++)
 		iwl_free_fw_img(drv, drv->fw.img + i);
@@ -1178,7 +1179,7 @@ fw_dbg_conf:
 				drv->fw.img[IWL_UCODE_WOWLAN].is_dual_cpus =
 					true;
 			} else if ((num_of_cpus > 2) || (num_of_cpus < 1)) {
-				IWL_ERR(drv, "Driver support upto 2 CPUs\n");
+				IWL_ERR(drv, "Driver support up to 2 CPUs\n");
 				return -EINVAL;
 			}
 			break;
@@ -1526,6 +1527,12 @@ fw_dbg_conf:
 			iwl_drv_set_dump_exclude(drv, tlv_type,
 						 tlv_data, tlv_len);
 			break;
+		case IWL_UCODE_TLV_CURRENT_PC:
+			if (tlv_len < sizeof(struct iwl_pc_data))
+				goto invalid_tlv_len;
+			drv->trans->dbg.num_pc = tlv_len / sizeof(struct iwl_pc_data);
+			drv->trans->dbg.pc_data = kmemdup(tlv_data, tlv_len, GFP_KERNEL);
+		break;
 		default:
 			IWL_DEBUG_INFO(drv, "unknown TLV: %d\n", tlv_type);
 			break;

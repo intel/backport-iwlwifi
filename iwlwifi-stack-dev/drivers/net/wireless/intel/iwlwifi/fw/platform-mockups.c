@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2021 Intel Corporation
+ * Copyright (C) 2021-2022 Intel Corporation
  */
 
 #include "iwl-drv.h"
 #include "platform-mockups.h"
 #include "acpi.h"
 #include "fw/runtime.h"
+
+#undef efi
+struct efi _efi;
 
 /*
  * Define a dummy root handle, later we should make this point to the
@@ -222,18 +225,82 @@ static int iwl_acpi_mockup_parse_dsm(const u8 *data, int len)
 	return used;
 }
 
+static int _wcsncmp(const efi_char16_t *s1, const efi_char16_t *s2, size_t n)
+{
+	efi_char16_t c1 = 0;
+	efi_char16_t c2 = 0;
+
+	while (n > 0) {
+		c1 = *s1++;
+		c2 = *s2++;
+
+		if (!c1 || c1 != c2)
+			return c1 - c2;
+		n--;
+	}
+
+	return 0;
+}
+
+static efi_status_t mockup_efi_get_variable(efi_char16_t *name,
+					    efi_guid_t *vendor, u32 *attr,
+					    unsigned long *data_size,
+					    void *data)
+{
+	struct mockup_efi_var *var;
+
+	list_for_each_entry(var, &mockup_efi_var_list, list) {
+		if (memcmp(&var->key.VendorGuid, vendor, sizeof(*vendor)))
+			continue;
+		if (_wcsncmp(var->key.VariableName, name,
+			     EFI_VAR_NAME_LEN / sizeof(efi_char16_t)))
+			continue;
+
+		memcpy(data, var->data,
+		       min_t(unsigned long, data_size, var->size));
+		*data_size = var->size;
+		return EFI_SUCCESS;
+	}
+
+	return EFI_NOT_FOUND;
+}
+
+#ifdef EFI_RT_SUPPORTED_GET_VARIABLE
+bool _efi_rt_services_supported(unsigned int mask)
+{
+	if (iwlwifi_mod_params.enable_efi_mockups)
+		return mask == EFI_RT_SUPPORTED_GET_VARIABLE;
+/* we need the original efi_rt_services_supported here */
+#undef efi_rt_services_supported
+	return efi_rt_services_supported(mask);
+}
+#else
+bool _efi_enabled(int feature)
+{
+	if (iwlwifi_mod_params.enable_efi_mockups)
+		return feature == EFI_RUNTIME_SERVICES;
+/* we need the original efi_enabled here */
+#undef efi_enabled
+	return efi_enabled(feature);
+}
+#endif
+
 int iwl_platform_mockups_init(void)
 {
 	const struct firmware *tables_file;
 	const struct mockup_object *obj;
 	int ret, len;
 
+#ifdef IWL_HAVE_REAL_EFI
+	_efi = efi;
+#endif
+
 	if (!iwlwifi_mod_params.enable_acpi_mockups &&
 	    !iwlwifi_mod_params.enable_efi_mockups &&
 	    !iwlwifi_mod_params.enable_dmi_mockups)
 		return 0;
 
-	ret = request_firmware(&tables_file, "iwlwifi-platform.dat", NULL);
+	ret = firmware_request_nowarn(&tables_file, "iwlwifi-platform.dat", NULL);
 	if (ret)
 		goto out;
 
@@ -329,6 +396,12 @@ int iwl_platform_mockups_init(void)
 	}
 
 	ret = 0;
+
+	if (iwlwifi_mod_params.enable_efi_mockups) {
+		memset(&_efi, 0, sizeof(_efi));
+		_efi.get_variable = mockup_efi_get_variable;
+	}
+
 	goto release;
 
 free:
@@ -428,43 +501,6 @@ union acpi_object *_acpi_evaluate_dsm(acpi_handle handle,
 	return iwlwifi_mod_params.enable_acpi_mockups ?
 		mockup_acpi_evaluate_dsm(handle, guid, rev, func, argv4) :
 		acpi_evaluate_dsm(handle, guid, rev, func, argv4);
-}
-
-static int mockup_efivar_entry_get(struct efivar_entry *entry, u32 *attributes,
-				   unsigned long *size, void *data)
-{
-	struct mockup_efi_var *var;
-
-	/* for the memcmp to work correctly */
-	BUILD_BUG_ON(offsetof(struct efi_variable, VariableName) != 0);
-	BUILD_BUG_ON(offsetofend(struct efi_variable, VariableName) !=
-		     offsetof(struct efi_variable, VendorGuid));
-	BUILD_BUG_ON(offsetofend(struct efi_variable, VendorGuid) !=
-		     sizeof(var->key));
-
-	list_for_each_entry(var, &mockup_efi_var_list, list) {
-		if (!memcmp(&var->key, &entry->var, sizeof(var->key))) {
-			*size = var->size;
-			memcpy(data, var->data, var->size);
-			return 0;
-		}
-	}
-
-	return -ENOENT;
-}
-
-int _efivar_entry_get(struct efivar_entry *entry, u32 *attributes,
-		      unsigned long *size, void *data)
-{
-	if (iwlwifi_mod_params.enable_efi_mockups)
-		return mockup_efivar_entry_get(entry, attributes, size, data);
-#ifdef IWL_HAVE_REAL_EFI
-/* we need the original efivar_entry_get here */
-#undef efivar_entry_get
-	return efivar_entry_get(entry, attributes, size, data);
-#else
-	return -ENOENT;
-#endif
 }
 
 bool _dmi_match(enum dmi_field f, const char *str)

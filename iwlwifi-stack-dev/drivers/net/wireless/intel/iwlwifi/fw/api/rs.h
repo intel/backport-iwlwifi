@@ -256,6 +256,10 @@ enum iwl_tlc_debug_types {
 	 */
 	IWL_TLC_DEBUG_RTS_DISABLE,
 	/**
+	 * @IWL_TLC_DEBUG_PARTIAL_FIXED_RATE: set partial fixed rate to fw
+	 */
+	IWL_TLC_DEBUG_PARTIAL_FIXED_RATE,
+	/**
 	 * @IWL_TLC_DEBUG_TYPES_NUM: number of types. Used to define the max
 	 * type id in %struct iwl_dhc_tlc_cmd
 	 */
