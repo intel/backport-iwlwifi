@@ -9,7 +9,6 @@
 #include "mvm.h"
 #include "sta.h"
 #include "rs.h"
-#include "time-sync.h"
 
 /*
  * New version of ADD_STA_sta command added new fields at the end of the
@@ -52,26 +51,31 @@ int iwl_mvm_find_free_sta_id(struct iwl_mvm *mvm, enum nl80211_iftype iftype)
 }
 
 /* Calculate the ampdu density and max size */
-u32 iwl_mvm_get_sta_ampdu_dens(struct ieee80211_sta *sta, u32 *_agg_size)
+u32 iwl_mvm_get_sta_ampdu_dens(struct ieee80211_link_sta *link_sta,
+			       struct ieee80211_bss_conf *link_conf,
+			       u32 *_agg_size)
 {
-	struct iwl_mvm_sta *mvm_sta = iwl_mvm_sta_from_mac80211(sta);
 	u32 agg_size = 0, mpdu_dens = 0;
 
-	if (sta->deflink.ht_cap.ht_supported)
-		mpdu_dens = sta->deflink.ht_cap.ampdu_density;
+	if (WARN_ON(!link_sta))
+		return 0;
 
-	if (mvm_sta->vif->bss_conf.chandef.chan->band == NL80211_BAND_6GHZ) {
-		mpdu_dens = le16_get_bits(sta->deflink.he_6ghz_capa.capa,
+	if (link_sta->ht_cap.ht_supported)
+		mpdu_dens = link_sta->ht_cap.ampdu_density;
+
+	if (link_conf->chandef.chan->band ==
+	    NL80211_BAND_6GHZ) {
+		mpdu_dens = le16_get_bits(link_sta->he_6ghz_capa.capa,
 					  IEEE80211_HE_6GHZ_CAP_MIN_MPDU_START);
-		agg_size = le16_get_bits(sta->deflink.he_6ghz_capa.capa,
+		agg_size = le16_get_bits(link_sta->he_6ghz_capa.capa,
 					 IEEE80211_HE_6GHZ_CAP_MAX_AMPDU_LEN_EXP);
-	} else if (sta->deflink.vht_cap.vht_supported) {
-		agg_size = sta->deflink.vht_cap.cap &
+	} else if (link_sta->vht_cap.vht_supported) {
+		agg_size = link_sta->vht_cap.cap &
 			IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_MASK;
 		agg_size >>=
 			IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_SHIFT;
-	} else if (sta->deflink.ht_cap.ht_supported) {
-		agg_size = sta->deflink.ht_cap.ampdu_factor;
+	} else if (link_sta->ht_cap.ht_supported) {
+		agg_size = link_sta->ht_cap.ampdu_factor;
 	}
 
 	/* D6.0 10.12.2 A-MPDU length limit rules
@@ -82,8 +86,8 @@ u32 iwl_mvm_get_sta_ampdu_dens(struct ieee80211_sta *sta, u32 *_agg_size)
 	 * Maximum AMPDU Length Exponent Extension field in its HE
 	 * Capabilities element
 	 */
-	if (sta->deflink.he_cap.has_he)
-		agg_size += u8_get_bits(sta->deflink.he_cap.he_cap_elem.mac_cap_info[3],
+	if (link_sta->he_cap.has_he)
+		agg_size += u8_get_bits(link_sta->he_cap.he_cap_elem.mac_cap_info[3],
 					IEEE80211_HE_MAC_CAP3_MAX_AMPDU_LEN_EXP_MASK);
 
 	/* Limit to max A-MPDU supported by FW */
@@ -117,7 +121,7 @@ int iwl_mvm_sta_send_to_fw(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 {
 	struct iwl_mvm_sta *mvm_sta = iwl_mvm_sta_from_mac80211(sta);
 	struct iwl_mvm_add_sta_cmd add_sta_cmd = {
-		.sta_id = mvm_sta->sta_id,
+		.sta_id = mvm_sta->deflink.sta_id,
 		.mac_id_n_color = cpu_to_le32(mvm_sta->mac_id_n_color),
 		.add_modify = update ? 1 : 0,
 		.station_flags_msk = cpu_to_le32(STA_FLG_FAT_EN_MSK |
@@ -176,7 +180,7 @@ int iwl_mvm_sta_send_to_fw(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 		break;
 	}
 
-	switch (sta->smps_mode) {
+	switch (sta->deflink.smps_mode) {
 	case IEEE80211_SMPS_AUTOMATIC:
 	case IEEE80211_SMPS_NUM_MODES:
 		WARN_ON(1);
@@ -200,7 +204,9 @@ int iwl_mvm_sta_send_to_fw(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 			cpu_to_le32(STA_FLG_MAX_AGG_SIZE_MSK |
 				    STA_FLG_AGG_MPDU_DENS_MSK);
 
-	mpdu_dens = iwl_mvm_get_sta_ampdu_dens(sta, &agg_size);
+	mpdu_dens = iwl_mvm_get_sta_ampdu_dens(&sta->deflink,
+					       &mvm_sta->vif->bss_conf,
+					       &agg_size);
 	add_sta_cmd.station_flags |=
 		cpu_to_le32(agg_size << STA_FLG_MAX_AGG_SIZE_SHIFT);
 	add_sta_cmd.station_flags |=
@@ -312,7 +318,7 @@ static int iwl_mvm_invalidate_sta_queue(struct iwl_mvm *mvm, int queue,
 	mvmsta->tid_disable_agg |= disable_agg_tids;
 
 	cmd.mac_id_n_color = cpu_to_le32(mvmsta->mac_id_n_color);
-	cmd.sta_id = mvmsta->sta_id;
+	cmd.sta_id = mvmsta->deflink.sta_id;
 	cmd.add_modify = STA_MODE_MODIFY;
 	cmd.modify_mask = STA_MODIFY_QUEUES;
 	if (disable_agg_tids)
@@ -349,9 +355,13 @@ static int iwl_mvm_disable_txq(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 					     SCD_QUEUE_CONFIG_CMD);
 			struct iwl_scd_queue_cfg_cmd remove_cmd = {
 				.operation = cpu_to_le32(IWL_SCD_QUEUE_REMOVE),
-				.u.remove.tid = cpu_to_le32(tid),
 				.u.remove.sta_mask = cpu_to_le32(BIT(sta_id)),
 			};
+
+			if (tid == IWL_MAX_TID_COUNT)
+				tid = IWL_MGMT_TID;
+
+			remove_cmd.u.remove.tid = cpu_to_le32(tid);
 
 			ret = iwl_mvm_send_cmd_pdu(mvm, cmd_id, 0,
 						   sizeof(remove_cmd),
@@ -401,6 +411,7 @@ static int iwl_mvm_disable_txq(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 			iwl_mvm_txq_from_tid(sta, tid);
 
 		mvmtxq->txq_id = IWL_MVM_INVALID_QUEUE;
+		list_del_init(&mvmtxq->list);
 	}
 
 	/* Regardless if this is a reserved TXQ for a STA - mark it as false */
@@ -495,6 +506,7 @@ static int iwl_mvm_remove_sta_queue_marking(struct iwl_mvm *mvm, int queue)
 		mvmsta->tid_data[tid].txq_id = IWL_MVM_INVALID_QUEUE;
 
 		mvmtxq->txq_id = IWL_MVM_INVALID_QUEUE;
+		list_del_init(&mvmtxq->list);
 	}
 
 	mvmsta->tfd_queue_msk &= ~BIT(queue); /* Don't use this queue anymore */
@@ -782,19 +794,35 @@ static int iwl_mvm_find_free_queue(struct iwl_mvm *mvm, u8 sta_id,
 
 static int iwl_mvm_get_queue_size(struct ieee80211_sta *sta)
 {
+	int max_size = IWL_DEFAULT_QUEUE_SIZE;
+	unsigned int link_id;
+
 	/* this queue isn't used for traffic (cab_queue) */
 	if (!sta)
 		return IWL_MGMT_QUEUE_SIZE;
 
-	/* support for 1k ba size */
-	if (sta->deflink.eht_cap.has_eht)
-		return IWL_DEFAULT_QUEUE_SIZE_EHT;
+	rcu_read_lock();
 
-	/* support for 256 ba size */
-	if (sta->deflink.he_cap.has_he)
-		return IWL_DEFAULT_QUEUE_SIZE_HE;
+	for (link_id = 0; link_id < ARRAY_SIZE(sta->link); link_id++) {
+		struct ieee80211_link_sta *link =
+			rcu_dereference(sta->link[link_id]);
 
-	return IWL_DEFAULT_QUEUE_SIZE;
+		if (!link)
+			continue;
+
+		/* support for 1k ba size */
+		if (link->eht_cap.has_eht &&
+		    max_size < IWL_DEFAULT_QUEUE_SIZE_EHT)
+			max_size = IWL_DEFAULT_QUEUE_SIZE_EHT;
+
+		/* support for 256 ba size */
+		if (link->he_cap.has_he &&
+		    max_size < IWL_DEFAULT_QUEUE_SIZE_HE)
+			max_size = IWL_DEFAULT_QUEUE_SIZE_HE;
+	}
+
+	rcu_read_unlock();
+	return max_size;
 }
 
 int iwl_mvm_tvqm_enable_txq(struct iwl_mvm *mvm,
@@ -802,6 +830,7 @@ int iwl_mvm_tvqm_enable_txq(struct iwl_mvm *mvm,
 			    u8 sta_id, u8 tid, unsigned int timeout)
 {
 	int queue, size;
+	u32 sta_mask = 0;
 
 	if (tid == IWL_MAX_TID_COUNT) {
 		tid = IWL_MGMT_TID;
@@ -817,22 +846,43 @@ int iwl_mvm_tvqm_enable_txq(struct iwl_mvm *mvm,
 	/* size needs to be power of 2 values for calculating read/write pointers */
 	size = rounddown_pow_of_two(size);
 
+	if (sta) {
+		struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
+		unsigned int link_id;
+
+		for (link_id = 0; link_id < ARRAY_SIZE(mvmsta->link); link_id++) {
+			struct iwl_mvm_link_sta *link =
+				rcu_dereference_protected(mvmsta->link[link_id],
+							  lockdep_is_held(&mvm->mutex));
+
+			if (!link)
+				continue;
+
+			sta_mask |= BIT(link->sta_id);
+		}
+	} else {
+		sta_mask |= BIT(sta_id);
+	}
+
+	if (!sta_mask)
+		return -EINVAL;
+
 	do {
-		queue = iwl_trans_txq_alloc(mvm->trans, 0, BIT(sta_id),
+		queue = iwl_trans_txq_alloc(mvm->trans, 0, sta_mask,
 					    tid, size, timeout);
 
 		if (queue < 0)
 			IWL_DEBUG_TX_QUEUES(mvm,
-					    "Failed allocating TXQ of size %d for sta %d tid %d, ret: %d\n",
-					    size, sta_id, tid, queue);
+					    "Failed allocating TXQ of size %d for sta mask %x tid %d, ret: %d\n",
+					    size, sta_mask, tid, queue);
 		size /= 2;
 	} while (queue < 0 && size >= 16);
 
 	if (queue < 0)
 		return queue;
 
-	IWL_DEBUG_TX_QUEUES(mvm, "Enabling TXQ #%d for sta %d tid %d\n",
-			    queue, sta_id, tid);
+	IWL_DEBUG_TX_QUEUES(mvm, "Enabling TXQ #%d for sta mask 0x%x tid %d\n",
+			    queue, sta_mask, tid);
 
 	return queue;
 }
@@ -852,15 +902,15 @@ static int iwl_mvm_sta_alloc_queue_tvqm(struct iwl_mvm *mvm,
 
 	IWL_DEBUG_TX_QUEUES(mvm,
 			    "Allocating queue for sta %d on tid %d\n",
-			    mvmsta->sta_id, tid);
-	queue = iwl_mvm_tvqm_enable_txq(mvm, sta, mvmsta->sta_id,
+			    mvmsta->deflink.sta_id, tid);
+	queue = iwl_mvm_tvqm_enable_txq(mvm, sta, mvmsta->deflink.sta_id,
 					tid, wdg_timeout);
 	if (queue < 0)
 		return queue;
 
 	mvmtxq->txq_id = queue;
 	mvm->tvqm_info[queue].txq_tid = tid;
-	mvm->tvqm_info[queue].sta_id = mvmsta->sta_id;
+	mvm->tvqm_info[queue].sta_id = mvmsta->deflink.sta_id;
 
 	IWL_DEBUG_TX_QUEUES(mvm, "Allocated queue is %d\n", queue);
 
@@ -1045,7 +1095,7 @@ static void iwl_mvm_unshare_queue(struct iwl_mvm *mvm, int queue)
 		mvmsta->tid_disable_agg &= ~BIT(tid);
 
 		cmd.mac_id_n_color = cpu_to_le32(mvmsta->mac_id_n_color);
-		cmd.sta_id = mvmsta->sta_id;
+		cmd.sta_id = mvmsta->deflink.sta_id;
 		cmd.add_modify = STA_MODE_MODIFY;
 		cmd.modify_mask = STA_MODIFY_TID_DISABLE_TX;
 		cmd.tfd_queue_msk = cpu_to_le32(mvmsta->tfd_queue_msk);
@@ -1270,7 +1320,7 @@ static int iwl_mvm_sta_alloc_queue(struct iwl_mvm *mvm,
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 	struct iwl_trans_txq_scd_cfg cfg = {
 		.fifo = iwl_mvm_mac_ac_to_tx_fifo(mvm, ac),
-		.sta_id = mvmsta->sta_id,
+		.sta_id = mvmsta->deflink.sta_id,
 		.tid = tid,
 		.frame_limit = IWL_FRAME_LIMIT,
 	};
@@ -1296,7 +1346,7 @@ static int iwl_mvm_sta_alloc_queue(struct iwl_mvm *mvm,
 	spin_unlock_bh(&mvmsta->lock);
 
 	if (tid == IWL_MAX_TID_COUNT) {
-		queue = iwl_mvm_find_free_queue(mvm, mvmsta->sta_id,
+		queue = iwl_mvm_find_free_queue(mvm, mvmsta->deflink.sta_id,
 						IWL_MVM_DQA_MIN_MGMT_QUEUE,
 						IWL_MVM_DQA_MAX_MGMT_QUEUE);
 		if (queue >= IWL_MVM_DQA_MIN_MGMT_QUEUE)
@@ -1315,12 +1365,12 @@ static int iwl_mvm_sta_alloc_queue(struct iwl_mvm *mvm,
 	}
 
 	if (queue < 0)
-		queue = iwl_mvm_find_free_queue(mvm, mvmsta->sta_id,
+		queue = iwl_mvm_find_free_queue(mvm, mvmsta->deflink.sta_id,
 						IWL_MVM_DQA_MIN_DATA_QUEUE,
 						IWL_MVM_DQA_MAX_DATA_QUEUE);
 	if (queue < 0) {
 		/* try harder - perhaps kill an inactive queue */
-		queue = iwl_mvm_inactivity_check(mvm, mvmsta->sta_id);
+		queue = iwl_mvm_inactivity_check(mvm, mvmsta->deflink.sta_id);
 	}
 
 	/* No free queue - we'll have to share */
@@ -1360,7 +1410,7 @@ static int iwl_mvm_sta_alloc_queue(struct iwl_mvm *mvm,
 	IWL_DEBUG_TX_QUEUES(mvm,
 			    "Allocating %squeue #%d to sta %d on tid %d\n",
 			    shared_queue ? "shared " : "", queue,
-			    mvmsta->sta_id, tid);
+			    mvmsta->deflink.sta_id, tid);
 
 	if (shared_queue) {
 		/* Disable any open aggs on this queue */
@@ -1427,7 +1477,7 @@ static int iwl_mvm_sta_alloc_queue(struct iwl_mvm *mvm,
 
 out_err:
 	queue_tmp = queue;
-	iwl_mvm_disable_txq(mvm, sta, mvmsta->sta_id, &queue_tmp, tid);
+	iwl_mvm_disable_txq(mvm, sta, mvmsta->deflink.sta_id, &queue_tmp, tid);
 
 	return ret;
 }
@@ -1496,12 +1546,12 @@ static int iwl_mvm_reserve_sta_stream(struct iwl_mvm *mvm,
 	     IWL_MVM_QUEUE_FREE))
 		queue = IWL_MVM_DQA_BSS_CLIENT_QUEUE;
 	else
-		queue = iwl_mvm_find_free_queue(mvm, mvmsta->sta_id,
+		queue = iwl_mvm_find_free_queue(mvm, mvmsta->deflink.sta_id,
 						IWL_MVM_DQA_MIN_DATA_QUEUE,
 						IWL_MVM_DQA_MAX_DATA_QUEUE);
 	if (queue < 0) {
 		/* try again - this time kick out a queue if needed */
-		queue = iwl_mvm_inactivity_check(mvm, mvmsta->sta_id);
+		queue = iwl_mvm_inactivity_check(mvm, mvmsta->deflink.sta_id);
 		if (queue < 0) {
 			IWL_ERR(mvm, "No available queues for new station\n");
 			return -ENOSPC;
@@ -1512,7 +1562,7 @@ static int iwl_mvm_reserve_sta_stream(struct iwl_mvm *mvm,
 	mvmsta->reserved_queue = queue;
 
 	IWL_DEBUG_TX_QUEUES(mvm, "Reserving data queue #%d for sta_id %d\n",
-			    queue, mvmsta->sta_id);
+			    queue, mvmsta->deflink.sta_id);
 
 	return 0;
 }
@@ -1532,7 +1582,7 @@ void iwl_mvm_realloc_queues_after_restart(struct iwl_mvm *mvm,
 		iwl_mvm_get_wd_timeout(mvm, mvm_sta->vif, false, false);
 	int i;
 	struct iwl_trans_txq_scd_cfg cfg = {
-		.sta_id = mvm_sta->sta_id,
+		.sta_id = mvm_sta->deflink.sta_id,
 		.frame_limit = IWL_FRAME_LIMIT,
 	};
 
@@ -1554,9 +1604,9 @@ void iwl_mvm_realloc_queues_after_restart(struct iwl_mvm *mvm,
 		if (iwl_mvm_has_new_tx_api(mvm)) {
 			IWL_DEBUG_TX_QUEUES(mvm,
 					    "Re-mapping sta %d tid %d\n",
-					    mvm_sta->sta_id, i);
+					    mvm_sta->deflink.sta_id, i);
 			txq_id = iwl_mvm_tvqm_enable_txq(mvm, sta,
-							 mvm_sta->sta_id,
+							 mvm_sta->deflink.sta_id,
 							 i, wdg);
 			/*
 			 * on failures, just set it to IWL_MVM_INVALID_QUEUE
@@ -1585,7 +1635,8 @@ void iwl_mvm_realloc_queues_after_restart(struct iwl_mvm *mvm,
 
 			IWL_DEBUG_TX_QUEUES(mvm,
 					    "Re-mapping sta %d tid %d to queue %d\n",
-					    mvm_sta->sta_id, i, txq_id);
+					    mvm_sta->deflink.sta_id, i,
+					    txq_id);
 
 			iwl_mvm_enable_txq(mvm, sta, txq_id, seq, &cfg, wdg);
 			mvm->queue_info[txq_id].status = IWL_MVM_QUEUE_READY;
@@ -1654,14 +1705,27 @@ int iwl_mvm_sta_init(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 
 	lockdep_assert_held(&mvm->mutex);
 
-	mvm_sta->sta_id = sta_id;
 	mvm_sta->mac_id_n_color = FW_CMD_ID_AND_COLOR(mvmvif->id,
 						      mvmvif->color);
 	mvm_sta->vif = vif;
-	if (!mvm->trans->trans_cfg->gen2)
-		mvm_sta->max_agg_bufsize = LINK_QUAL_AGG_FRAME_LIMIT_DEF;
-	else
-		mvm_sta->max_agg_bufsize = LINK_QUAL_AGG_FRAME_LIMIT_GEN2_DEF;
+
+	/* for MLD sta_id(s) should be allocated for each link before calling
+	 * this function
+	 */
+	if (!mvm->mld_api_is_used) {
+		if (WARN_ON(sta_id == IWL_MVM_INVALID_STA))
+			return -EINVAL;
+
+		mvm_sta->deflink.sta_id = sta_id;
+		rcu_assign_pointer(mvm_sta->link[0], &mvm_sta->deflink);
+
+		if (!mvm->trans->trans_cfg->gen2)
+			mvm_sta->deflink.lq_sta.rs_drv.max_agg_bufsize =
+				LINK_QUAL_AGG_FRAME_LIMIT_DEF;
+		else
+			mvm_sta->deflink.lq_sta.rs_drv.max_agg_bufsize =
+				LINK_QUAL_AGG_FRAME_LIMIT_GEN2_DEF;
+	}
 	mvm_sta->tt_tx_protection = false;
 	mvm_sta->sta_type = sta_type;
 
@@ -1720,7 +1784,7 @@ int iwl_mvm_sta_init(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	if (iwl_mvm_has_tlc_offload(mvm))
 		iwl_mvm_rs_add_sta(mvm, mvm_sta);
 	else
-		spin_lock_init(&mvm_sta->lq_sta.rs_drv.pers.lock);
+		spin_lock_init(&mvm_sta->deflink.lq_sta.rs_drv.pers.lock);
 
 	iwl_mvm_toggle_tx_ant(mvm, &mvm_sta->tx_ant);
 
@@ -1743,7 +1807,7 @@ int iwl_mvm_add_sta(struct iwl_mvm *mvm,
 		sta_id = iwl_mvm_find_free_sta_id(mvm,
 						  ieee80211_vif_type_p2p(vif));
 	else
-		sta_id = mvm_sta->sta_id;
+		sta_id = mvm_sta->deflink.sta_id;
 
 	if (sta_id == IWL_MVM_INVALID_STA)
 		return -ENOSPC;
@@ -1782,17 +1846,12 @@ update_fw:
 
 	if (vif->type == NL80211_IFTYPE_STATION) {
 		if (!sta->tdls) {
-			WARN_ON(mvmvif->ap_sta_id != IWL_MVM_INVALID_STA);
-			mvmvif->ap_sta_id = sta_id;
+			WARN_ON(mvmvif->deflink.ap_sta_id != IWL_MVM_INVALID_STA);
+			mvmvif->deflink.ap_sta_id = sta_id;
 		} else {
-			WARN_ON(mvmvif->ap_sta_id == IWL_MVM_INVALID_STA);
+			WARN_ON(mvmvif->deflink.ap_sta_id == IWL_MVM_INVALID_STA);
 		}
 	}
-
-	if (!sta->tdls)
-		iwl_mvm_time_sync_config(mvm, sta->addr,
-					 IWL_TIME_SYNC_PROTOCOL_TM |
-					 IWL_TIME_SYNC_PROTOCOL_FTM);
 
 	rcu_assign_pointer(mvm->fw_id_to_mac_id[sta_id], sta);
 
@@ -1812,7 +1871,7 @@ int iwl_mvm_drain_sta(struct iwl_mvm *mvm, struct iwl_mvm_sta *mvmsta,
 	lockdep_assert_held(&mvm->mutex);
 
 	cmd.mac_id_n_color = cpu_to_le32(mvmsta->mac_id_n_color);
-	cmd.sta_id = mvmsta->sta_id;
+	cmd.sta_id = mvmsta->deflink.sta_id;
 	cmd.add_modify = STA_MODE_MODIFY;
 	cmd.station_flags = drain ? cpu_to_le32(STA_FLG_DRAIN_FLOW) : 0;
 	cmd.station_flags_msk = cpu_to_le32(STA_FLG_DRAIN_FLOW);
@@ -1827,12 +1886,12 @@ int iwl_mvm_drain_sta(struct iwl_mvm *mvm, struct iwl_mvm_sta *mvmsta,
 	switch (status & IWL_ADD_STA_STATUS_MASK) {
 	case ADD_STA_SUCCESS:
 		IWL_DEBUG_INFO(mvm, "Frames for staid %d will drained in fw\n",
-			       mvmsta->sta_id);
+			       mvmsta->deflink.sta_id);
 		break;
 	default:
 		ret = -EIO;
 		IWL_ERR(mvm, "Couldn't drain frames for staid %d\n",
-			mvmsta->sta_id);
+			mvmsta->deflink.sta_id);
 		break;
 	}
 
@@ -1884,7 +1943,7 @@ static void iwl_mvm_disable_sta_queues(struct iwl_mvm *mvm,
 		if (mvm_sta->tid_data[i].txq_id == IWL_MVM_INVALID_QUEUE)
 			continue;
 
-		iwl_mvm_disable_txq(mvm, sta, mvm_sta->sta_id,
+		iwl_mvm_disable_txq(mvm, sta, mvm_sta->deflink.sta_id,
 				    &mvm_sta->tid_data[i].txq_id, i);
 		mvm_sta->tid_data[i].txq_id = IWL_MVM_INVALID_QUEUE;
 	}
@@ -1894,6 +1953,7 @@ static void iwl_mvm_disable_sta_queues(struct iwl_mvm *mvm,
 			iwl_mvm_txq_from_mac80211(sta->txq[i]);
 
 		mvmtxq->txq_id = IWL_MVM_INVALID_QUEUE;
+		list_del_init(&mvmtxq->list);
 	}
 }
 
@@ -1926,11 +1986,12 @@ int iwl_mvm_wait_sta_queues_empty(struct iwl_mvm *mvm,
  * with error or success
  */
 bool iwl_mvm_sta_del(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
-		     struct ieee80211_sta *sta, int *ret)
+		     struct ieee80211_sta *sta,
+		     struct iwl_mvm_link_sta *mvm_link_sta, int *ret)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	struct iwl_mvm_sta *mvm_sta = iwl_mvm_sta_from_mac80211(sta);
-	u8 sta_id = mvm_sta->sta_id;
+	u8 sta_id = mvm_link_sta->sta_id;
 
 	lockdep_assert_held(&mvm->mutex);
 
@@ -1956,17 +2017,16 @@ bool iwl_mvm_sta_del(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		*status = IWL_MVM_QUEUE_FREE;
 	}
 
-	if (vif->type == NL80211_IFTYPE_STATION &&
-	    mvmvif->ap_sta_id == sta_id) {
+	if (vif->type == NL80211_IFTYPE_STATION) {
 		/* if associated - we can't remove the AP STA now */
 		if (vif->cfg.assoc)
 			return true;
 
 		/* first remove remaining keys */
-		iwl_mvm_sec_key_remove_ap(mvm, vif);
+		iwl_mvm_sec_key_remove_ap(mvm, vif, &mvmvif->deflink, 0);
 
 		/* unassoc - go ahead - remove the AP STA now */
-		mvmvif->ap_sta_id = IWL_MVM_INVALID_STA;
+		mvmvif->deflink.ap_sta_id = IWL_MVM_INVALID_STA;
 	}
 
 	/*
@@ -1984,8 +2044,6 @@ bool iwl_mvm_sta_del(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	 */
 	spin_lock_bh(&mvm_sta->lock);
 	spin_unlock_bh(&mvm_sta->lock);
-
-	iwl_mvm_time_sync_sta_rm(mvm, sta);
 
 	return false;
 }
@@ -2025,11 +2083,11 @@ int iwl_mvm_rm_sta(struct iwl_mvm *mvm,
 
 	iwl_mvm_disable_sta_queues(mvm, vif, sta);
 
-	if (iwl_mvm_sta_del(mvm, vif, sta, &ret))
+	if (iwl_mvm_sta_del(mvm, vif, sta, &mvm_sta->deflink, &ret))
 		return ret;
 
-	ret = iwl_mvm_rm_sta_common(mvm, mvm_sta->sta_id);
-	RCU_INIT_POINTER(mvm->fw_id_to_mac_id[mvm_sta->sta_id], NULL);
+	ret = iwl_mvm_rm_sta_common(mvm, mvm_sta->deflink.sta_id);
+	RCU_INIT_POINTER(mvm->fw_id_to_mac_id[mvm_sta->deflink.sta_id], NULL);
 
 	return ret;
 }
@@ -2143,11 +2201,13 @@ static int iwl_mvm_add_int_sta_with_queue(struct iwl_mvm *mvm, int macidx,
 int iwl_mvm_add_aux_sta(struct iwl_mvm *mvm, u32 lmac_id)
 {
 	int ret;
+	u32 qmask = mvm->aux_queue == IWL_MVM_INVALID_QUEUE ? 0 :
+		BIT(mvm->aux_queue);
 
 	lockdep_assert_held(&mvm->mutex);
 
 	/* Allocate aux station and assign to it the aux queue */
-	ret = iwl_mvm_allocate_int_sta(mvm, &mvm->aux_sta, BIT(mvm->aux_queue),
+	ret = iwl_mvm_allocate_int_sta(mvm, &mvm->aux_sta, qmask,
 				       NL80211_IFTYPE_UNSPECIFIED,
 				       IWL_STA_AUX_ACTIVITY);
 	if (ret)
@@ -2233,7 +2293,7 @@ void iwl_mvm_dealloc_snif_sta(struct iwl_mvm *mvm)
 int iwl_mvm_send_add_bcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-	struct iwl_mvm_int_sta *bsta = &mvmvif->bcast_sta;
+	struct iwl_mvm_int_sta *bsta = &mvmvif->deflink.bcast_sta;
 	static const u8 _baddr[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 	const u8 *baddr = _baddr;
 	int queue;
@@ -2242,7 +2302,7 @@ int iwl_mvm_send_add_bcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 		iwl_mvm_get_wd_timeout(mvm, vif, false, false);
 	struct iwl_trans_txq_scd_cfg cfg = {
 		.fifo = IWL_MVM_TX_FIFO_VO,
-		.sta_id = mvmvif->bcast_sta.sta_id,
+		.sta_id = mvmvif->deflink.bcast_sta.sta_id,
 		.tid = IWL_MAX_TID_COUNT,
 		.aggregate = false,
 		.frame_limit = IWL_FRAME_LIMIT,
@@ -2308,7 +2368,7 @@ void iwl_mvm_free_bcast_sta_queues(struct iwl_mvm *mvm,
 
 	lockdep_assert_held(&mvm->mutex);
 
-	iwl_mvm_flush_sta(mvm, &mvmvif->bcast_sta, true);
+	iwl_mvm_flush_sta(mvm, &mvmvif->deflink.bcast_sta, true);
 
 	switch (vif->type) {
 	case NL80211_IFTYPE_AP:
@@ -2325,13 +2385,13 @@ void iwl_mvm_free_bcast_sta_queues(struct iwl_mvm *mvm,
 	}
 
 	queue = *queueptr;
-	iwl_mvm_disable_txq(mvm, NULL, mvmvif->bcast_sta.sta_id,
+	iwl_mvm_disable_txq(mvm, NULL, mvmvif->deflink.bcast_sta.sta_id,
 			    queueptr, IWL_MAX_TID_COUNT);
 	if (iwl_mvm_has_new_tx_api(mvm))
 		return;
 
-	WARN_ON(!(mvmvif->bcast_sta.tfd_queue_msk & BIT(queue)));
-	mvmvif->bcast_sta.tfd_queue_msk &= ~BIT(queue);
+	WARN_ON(!(mvmvif->deflink.bcast_sta.tfd_queue_msk & BIT(queue)));
+	mvmvif->deflink.bcast_sta.tfd_queue_msk &= ~BIT(queue);
 }
 
 /* Send the FW a request to remove the station from it's internal data
@@ -2345,7 +2405,7 @@ int iwl_mvm_send_rm_bcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 
 	iwl_mvm_free_bcast_sta_queues(mvm, vif);
 
-	ret = iwl_mvm_rm_sta_common(mvm, mvmvif->bcast_sta.sta_id);
+	ret = iwl_mvm_rm_sta_common(mvm, mvmvif->deflink.bcast_sta.sta_id);
 	if (ret)
 		IWL_WARN(mvm, "Failed sending remove station\n");
 	return ret;
@@ -2357,7 +2417,7 @@ int iwl_mvm_alloc_bcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 
 	lockdep_assert_held(&mvm->mutex);
 
-	return iwl_mvm_allocate_int_sta(mvm, &mvmvif->bcast_sta, 0,
+	return iwl_mvm_allocate_int_sta(mvm, &mvmvif->deflink.bcast_sta, 0,
 					ieee80211_vif_type_p2p(vif),
 					IWL_STA_GENERAL_PURPOSE);
 }
@@ -2372,7 +2432,7 @@ int iwl_mvm_alloc_bcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 int iwl_mvm_add_p2p_bcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-	struct iwl_mvm_int_sta *bsta = &mvmvif->bcast_sta;
+	struct iwl_mvm_int_sta *bsta = &mvmvif->deflink.bcast_sta;
 	int ret;
 
 	lockdep_assert_held(&mvm->mutex);
@@ -2393,7 +2453,7 @@ void iwl_mvm_dealloc_bcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 
-	iwl_mvm_dealloc_int_sta(mvm, &mvmvif->bcast_sta);
+	iwl_mvm_dealloc_int_sta(mvm, &mvmvif->deflink.bcast_sta);
 }
 
 /*
@@ -2424,7 +2484,7 @@ int iwl_mvm_rm_p2p_bcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 int iwl_mvm_add_mcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-	struct iwl_mvm_int_sta *msta = &mvmvif->mcast_sta;
+	struct iwl_mvm_int_sta *msta = &mvmvif->deflink.mcast_sta;
 	static const u8 _maddr[] = {0x03, 0x00, 0x00, 0x00, 0x00, 0x00};
 	const u8 *maddr = _maddr;
 	struct iwl_trans_txq_scd_cfg cfg = {
@@ -2451,7 +2511,7 @@ int iwl_mvm_add_mcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	 * changes in mac80211 layer.
 	 */
 	if (vif->type == NL80211_IFTYPE_ADHOC)
-		mvmvif->cab_queue = IWL_MVM_DQA_GCAST_QUEUE;
+		mvmvif->deflink.cab_queue = IWL_MVM_DQA_GCAST_QUEUE;
 
 	/*
 	 * While in previous FWs we had to exclude cab queue from TFD queue
@@ -2459,9 +2519,10 @@ int iwl_mvm_add_mcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	 */
 	if (!iwl_mvm_has_new_tx_api(mvm) &&
 	    fw_has_api(&mvm->fw->ucode_capa, IWL_UCODE_TLV_API_STA_TYPE)) {
-		iwl_mvm_enable_txq(mvm, NULL, mvmvif->cab_queue, 0, &cfg,
+		iwl_mvm_enable_txq(mvm, NULL, mvmvif->deflink.cab_queue, 0,
+				   &cfg,
 				   timeout);
-		msta->tfd_queue_msk |= BIT(mvmvif->cab_queue);
+		msta->tfd_queue_msk |= BIT(mvmvif->deflink.cab_queue);
 	}
 	ret = iwl_mvm_add_int_sta_common(mvm, msta, maddr,
 					 mvmvif->id, mvmvif->color);
@@ -2482,10 +2543,11 @@ int iwl_mvm_add_mcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 			ret = queue;
 			goto err;
 		}
-		mvmvif->cab_queue = queue;
+		mvmvif->deflink.cab_queue = queue;
 	} else if (!fw_has_api(&mvm->fw->ucode_capa,
 			       IWL_UCODE_TLV_API_STA_TYPE))
-		iwl_mvm_enable_txq(mvm, NULL, mvmvif->cab_queue, 0, &cfg,
+		iwl_mvm_enable_txq(mvm, NULL, mvmvif->deflink.cab_queue, 0,
+				   &cfg,
 				   timeout);
 
 	return 0;
@@ -2558,12 +2620,12 @@ int iwl_mvm_rm_mcast_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 
 	lockdep_assert_held(&mvm->mutex);
 
-	iwl_mvm_flush_sta(mvm, &mvmvif->mcast_sta, true);
+	iwl_mvm_flush_sta(mvm, &mvmvif->deflink.mcast_sta, true);
 
-	iwl_mvm_disable_txq(mvm, NULL, mvmvif->mcast_sta.sta_id,
-			    &mvmvif->cab_queue, 0);
+	iwl_mvm_disable_txq(mvm, NULL, mvmvif->deflink.mcast_sta.sta_id,
+			    &mvmvif->deflink.cab_queue, 0);
 
-	ret = iwl_mvm_rm_sta_common(mvm, mvmvif->mcast_sta.sta_id);
+	ret = iwl_mvm_rm_sta_common(mvm, mvmvif->deflink.mcast_sta.sta_id);
 	if (ret)
 		IWL_WARN(mvm, "Failed sending remove station\n");
 
@@ -2658,7 +2720,7 @@ static int iwl_mvm_fw_baid_op_sta(struct iwl_mvm *mvm,
 {
 	struct iwl_mvm_add_sta_cmd cmd = {
 		.mac_id_n_color = cpu_to_le32(mvm_sta->mac_id_n_color),
-		.sta_id = mvm_sta->sta_id,
+		.sta_id = mvm_sta->deflink.sta_id,
 		.add_modify = STA_MODE_MODIFY,
 	};
 	u32 status;
@@ -2714,7 +2776,7 @@ static int iwl_mvm_fw_baid_op_cmd(struct iwl_mvm *mvm,
 	BUILD_BUG_ON(sizeof(struct iwl_rx_baid_cfg_resp) != sizeof(baid));
 
 	if (start) {
-		cmd.alloc.sta_id_mask = cpu_to_le32(BIT(mvm_sta->sta_id));
+		cmd.alloc.sta_id_mask = cpu_to_le32(BIT(mvm_sta->deflink.sta_id));
 		cmd.alloc.tid = tid;
 		cmd.alloc.ssn = cpu_to_le16(ssn);
 		cmd.alloc.win_size = cpu_to_le16(buf_size);
@@ -2723,7 +2785,7 @@ static int iwl_mvm_fw_baid_op_cmd(struct iwl_mvm *mvm,
 		cmd.remove_v1.baid = cpu_to_le32(baid);
 		BUILD_BUG_ON(sizeof(cmd.remove_v1) > sizeof(cmd.remove));
 	} else {
-		cmd.remove.sta_id_mask = cpu_to_le32(BIT(mvm_sta->sta_id));
+		cmd.remove.sta_id_mask = cpu_to_le32(BIT(mvm_sta->deflink.sta_id));
 		cmd.remove.tid = cpu_to_le32(tid);
 	}
 
@@ -2847,7 +2909,7 @@ int iwl_mvm_sta_rx_agg(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 			    iwl_mvm_rx_agg_session_expired, 0);
 		baid_data->mvm = mvm;
 		baid_data->tid = tid;
-		baid_data->sta_id = mvm_sta->sta_id;
+		baid_data->sta_id = mvm_sta->deflink.sta_id;
 
 		mvm_sta->tid_to_baid[tid] = baid;
 		if (timeout)
@@ -2862,7 +2924,7 @@ int iwl_mvm_sta_rx_agg(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 		 * RX is being processed in parallel
 		 */
 		IWL_DEBUG_HT(mvm, "Sta %d(%d) is assigned to BAID %d\n",
-			     mvm_sta->sta_id, tid, baid);
+			     mvm_sta->deflink.sta_id, tid, baid);
 		WARN_ON(rcu_access_pointer(mvm->baid_map[baid]));
 		rcu_assign_pointer(mvm->baid_map[baid], baid_data);
 	} else  {
@@ -2924,7 +2986,7 @@ int iwl_mvm_sta_tx_agg(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 	}
 
 	cmd.mac_id_n_color = cpu_to_le32(mvm_sta->mac_id_n_color);
-	cmd.sta_id = mvm_sta->sta_id;
+	cmd.sta_id = mvm_sta->deflink.sta_id;
 	cmd.add_modify = STA_MODE_MODIFY;
 	if (!iwl_mvm_has_new_tx_api(mvm))
 		cmd.modify_mask = STA_MODIFY_QUEUES;
@@ -3016,7 +3078,7 @@ int iwl_mvm_sta_tx_agg_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	 */
 	txq_id = mvmsta->tid_data[tid].txq_id;
 	if (txq_id == IWL_MVM_INVALID_QUEUE) {
-		ret = iwl_mvm_find_free_queue(mvm, mvmsta->sta_id,
+		ret = iwl_mvm_find_free_queue(mvm, mvmsta->deflink.sta_id,
 					      IWL_MVM_DQA_MIN_DATA_QUEUE,
 					      IWL_MVM_DQA_MAX_DATA_QUEUE);
 		if (ret < 0) {
@@ -3054,7 +3116,8 @@ int iwl_mvm_sta_tx_agg_start(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 
 	IWL_DEBUG_TX_QUEUES(mvm,
 			    "Start AGG: sta %d tid %d queue %d - ssn = %d, next_recl = %d\n",
-			    mvmsta->sta_id, tid, txq_id, tid_data->ssn,
+			    mvmsta->deflink.sta_id, tid, txq_id,
+			    tid_data->ssn,
 			    tid_data->next_reclaimed);
 
 	/*
@@ -3093,7 +3156,7 @@ int iwl_mvm_sta_tx_agg_oper(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	u16 ssn;
 
 	struct iwl_trans_txq_scd_cfg cfg = {
-		.sta_id = mvmsta->sta_id,
+		.sta_id = mvmsta->deflink.sta_id,
 		.tid = tid,
 		.frame_limit = buf_size,
 		.aggregate = true,
@@ -3165,7 +3228,7 @@ int iwl_mvm_sta_tx_agg_oper(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		}
 
 		ret = iwl_mvm_reconfig_scd(mvm, queue, cfg.fifo,
-					   mvmsta->sta_id, tid,
+					   mvmsta->deflink.sta_id, tid,
 					   buf_size, ssn);
 		if (ret) {
 			IWL_ERR(mvm,
@@ -3196,14 +3259,15 @@ out:
 	 * for each station. Therefore, use the minimum of all the
 	 * aggregation sessions and our default value.
 	 */
-	mvmsta->max_agg_bufsize =
-		min(mvmsta->max_agg_bufsize, buf_size);
-	mvmsta->lq_sta.rs_drv.lq.agg_frame_cnt_limit = mvmsta->max_agg_bufsize;
+	mvmsta->deflink.lq_sta.rs_drv.max_agg_bufsize =
+		min(mvmsta->deflink.lq_sta.rs_drv.max_agg_bufsize, buf_size);
+	mvmsta->deflink.lq_sta.rs_drv.lq.agg_frame_cnt_limit =
+		mvmsta->deflink.lq_sta.rs_drv.max_agg_bufsize;
 
 	IWL_DEBUG_HT(mvm, "Tx aggregation enabled on ra = %pM tid = %d\n",
 		     sta->addr, tid);
 
-	return iwl_mvm_send_lq_cmd(mvm, &mvmsta->lq_sta.rs_drv.lq);
+	return iwl_mvm_send_lq_cmd(mvm, &mvmsta->deflink.lq_sta.rs_drv.lq);
 }
 
 static void iwl_mvm_unreserve_agg_queue(struct iwl_mvm *mvm,
@@ -3252,7 +3316,8 @@ int iwl_mvm_sta_tx_agg_stop(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	txq_id = tid_data->txq_id;
 
 	IWL_DEBUG_TX_QUEUES(mvm, "Stop AGG: sta %d tid %d q %d state %d\n",
-			    mvmsta->sta_id, tid, txq_id, tid_data->state);
+			    mvmsta->deflink.sta_id, tid, txq_id,
+			    tid_data->state);
 
 	mvmsta->agg_tids &= ~BIT(tid);
 
@@ -3291,7 +3356,7 @@ int iwl_mvm_sta_tx_agg_stop(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	default:
 		IWL_ERR(mvm,
 			"Stopping AGG while state not ON or starting for %d on %d (%d)\n",
-			mvmsta->sta_id, tid, tid_data->state);
+			mvmsta->deflink.sta_id, tid, tid_data->state);
 		IWL_ERR(mvm,
 			"\ttid_data->txq_id = %d\n", tid_data->txq_id);
 		err = -EINVAL;
@@ -3317,7 +3382,8 @@ int iwl_mvm_sta_tx_agg_flush(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 	spin_lock_bh(&mvmsta->lock);
 	txq_id = tid_data->txq_id;
 	IWL_DEBUG_TX_QUEUES(mvm, "Flush AGG: sta %d tid %d q %d state %d\n",
-			    mvmsta->sta_id, tid, txq_id, tid_data->state);
+			    mvmsta->deflink.sta_id, tid, txq_id,
+			    tid_data->state);
 	old_state = tid_data->state;
 	tid_data->state = IWL_AGG_OFF;
 	mvmsta->agg_tids &= ~BIT(tid);
@@ -3329,7 +3395,7 @@ int iwl_mvm_sta_tx_agg_flush(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		iwl_mvm_drain_sta(mvm, mvmsta, true);
 
 		if (iwl_mvm_has_new_tx_api(mvm)) {
-			if (iwl_mvm_flush_sta_tids(mvm, mvmsta->sta_id,
+			if (iwl_mvm_flush_sta_tids(mvm, mvmsta->deflink.sta_id,
 						   BIT(tid)))
 				IWL_ERR(mvm, "Couldn't flush the AGG queue\n");
 			iwl_trans_wait_txq_empty(mvm->trans, txq_id);
@@ -3389,8 +3455,8 @@ static struct iwl_mvm_sta *iwl_mvm_get_key_sta(struct iwl_mvm *mvm,
 	 * station ID, then use AP's station ID.
 	 */
 	if (vif->type == NL80211_IFTYPE_STATION &&
-	    mvmvif->ap_sta_id != IWL_MVM_INVALID_STA) {
-		u8 sta_id = mvmvif->ap_sta_id;
+	    mvmvif->deflink.ap_sta_id != IWL_MVM_INVALID_STA) {
+		u8 sta_id = mvmvif->deflink.ap_sta_id;
 
 		sta = rcu_dereference_check(mvm->fw_id_to_mac_id[sta_id],
 					    lockdep_is_held(&mvm->mutex));
@@ -3667,8 +3733,8 @@ static inline u8 *iwl_mvm_get_mac_addr(struct iwl_mvm *mvm,
 		return sta->addr;
 
 	if (vif->type == NL80211_IFTYPE_STATION &&
-	    mvmvif->ap_sta_id != IWL_MVM_INVALID_STA) {
-		u8 sta_id = mvmvif->ap_sta_id;
+	    mvmvif->deflink.ap_sta_id != IWL_MVM_INVALID_STA) {
+		u8 sta_id = mvmvif->deflink.ap_sta_id;
 		sta = rcu_dereference_protected(mvm->fw_id_to_mac_id[sta_id],
 						lockdep_is_held(&mvm->mutex));
 		return sta->addr;
@@ -3694,13 +3760,13 @@ static int __iwl_mvm_set_sta_key(struct iwl_mvm *mvm,
 	if (sta) {
 		struct iwl_mvm_sta *mvm_sta = iwl_mvm_sta_from_mac80211(sta);
 
-		sta_id = mvm_sta->sta_id;
+		sta_id = mvm_sta->deflink.sta_id;
 		mfp = sta->mfp;
 	} else if (vif->type == NL80211_IFTYPE_AP &&
 		   !(keyconf->flags & IEEE80211_KEY_FLAG_PAIRWISE)) {
 		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 
-		sta_id = mvmvif->mcast_sta.sta_id;
+		sta_id = mvmvif->deflink.mcast_sta.sta_id;
 	} else {
 		IWL_ERR(mvm, "Failed to find station id\n");
 		return -EINVAL;
@@ -3743,7 +3809,7 @@ int iwl_mvm_set_sta_key(struct iwl_mvm *mvm,
 			IWL_ERR(mvm, "Failed to find station\n");
 			return -EINVAL;
 		}
-		sta_id = mvm_sta->sta_id;
+		sta_id = mvm_sta->deflink.sta_id;
 
 		/*
 		 * It is possible that the 'sta' parameter is NULL, and thus
@@ -3765,7 +3831,7 @@ int iwl_mvm_set_sta_key(struct iwl_mvm *mvm,
 	} else {
 		struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 
-		sta_id = mvmvif->mcast_sta.sta_id;
+		sta_id = mvmvif->deflink.mcast_sta.sta_id;
 	}
 
 	if (keyconf->cipher == WLAN_CIPHER_SUITE_AES_CMAC ||
@@ -3838,9 +3904,9 @@ int iwl_mvm_remove_sta_key(struct iwl_mvm *mvm,
 	/* Get the station from the mvm local station table */
 	mvm_sta = iwl_mvm_get_key_sta(mvm, vif, sta);
 	if (mvm_sta)
-		sta_id = mvm_sta->sta_id;
+		sta_id = mvm_sta->deflink.sta_id;
 	else if (!sta && vif->type == NL80211_IFTYPE_AP && mcast)
-		sta_id = iwl_mvm_vif_from_mac80211(vif)->mcast_sta.sta_id;
+		sta_id = iwl_mvm_vif_from_mac80211(vif)->deflink.mcast_sta.sta_id;
 
 
 	IWL_DEBUG_WEP(mvm, "mvm remove dynamic key: idx=%d sta=%d\n",
@@ -3896,7 +3962,7 @@ void iwl_mvm_update_tkip_key(struct iwl_mvm *mvm,
 	mvm_sta = iwl_mvm_get_key_sta(mvm, vif, sta);
 	if (WARN_ON_ONCE(!mvm_sta))
 		goto unlock;
-	iwl_mvm_send_sta_key(mvm, mvm_sta->sta_id, keyconf, mcast,
+	iwl_mvm_send_sta_key(mvm, mvm_sta->deflink.sta_id, keyconf, mcast,
 			     iv32, phase1key, CMD_ASYNC, keyconf->hw_key_idx,
 			     mfp);
 
@@ -3910,7 +3976,7 @@ void iwl_mvm_sta_modify_ps_wake(struct iwl_mvm *mvm,
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 	struct iwl_mvm_add_sta_cmd cmd = {
 		.add_modify = STA_MODE_MODIFY,
-		.sta_id = mvmsta->sta_id,
+		.sta_id = mvmsta->deflink.sta_id,
 		.station_flags_msk = cpu_to_le32(STA_FLG_PS),
 		.mac_id_n_color = cpu_to_le32(mvmsta->mac_id_n_color),
 	};
@@ -3931,7 +3997,7 @@ void iwl_mvm_sta_modify_sleep_tx_count(struct iwl_mvm *mvm,
 	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 	struct iwl_mvm_add_sta_cmd cmd = {
 		.add_modify = STA_MODE_MODIFY,
-		.sta_id = mvmsta->sta_id,
+		.sta_id = mvmsta->deflink.sta_id,
 		.modify_mask = STA_MODIFY_SLEEPING_STA_TX_COUNT,
 		.sleep_tx_count = cpu_to_le16(cnt),
 		.mac_id_n_color = cpu_to_le32(mvmsta->mac_id_n_color),
@@ -4029,7 +4095,7 @@ void iwl_mvm_sta_modify_disable_tx(struct iwl_mvm *mvm,
 {
 	struct iwl_mvm_add_sta_cmd cmd = {
 		.add_modify = STA_MODE_MODIFY,
-		.sta_id = mvmsta->sta_id,
+		.sta_id = mvmsta->deflink.sta_id,
 		.station_flags = disable ? cpu_to_le32(STA_FLG_DISABLE_TX) : 0,
 		.station_flags_msk = cpu_to_le32(STA_FLG_DISABLE_TX),
 		.mac_id_n_color = cpu_to_le32(mvmsta->mac_id_n_color),
@@ -4135,17 +4201,19 @@ void iwl_mvm_modify_all_sta_disable_tx(struct iwl_mvm *mvm,
 		return;
 
 	/* Need to block/unblock also multicast station */
-	if (mvmvif->mcast_sta.sta_id != IWL_MVM_INVALID_STA)
+	if (mvmvif->deflink.mcast_sta.sta_id != IWL_MVM_INVALID_STA)
 		iwl_mvm_int_sta_modify_disable_tx(mvm, mvmvif,
-						  &mvmvif->mcast_sta, disable);
+						  &mvmvif->deflink.mcast_sta,
+						  disable);
 
 	/*
 	 * Only unblock the broadcast station (FW blocks it for immediate
 	 * quiet, not the driver)
 	 */
-	if (!disable && mvmvif->bcast_sta.sta_id != IWL_MVM_INVALID_STA)
+	if (!disable && mvmvif->deflink.bcast_sta.sta_id != IWL_MVM_INVALID_STA)
 		iwl_mvm_int_sta_modify_disable_tx(mvm, mvmvif,
-						  &mvmvif->bcast_sta, disable);
+						  &mvmvif->deflink.bcast_sta,
+						  disable);
 }
 
 void iwl_mvm_csa_client_absent(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
@@ -4155,7 +4223,7 @@ void iwl_mvm_csa_client_absent(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 
 	rcu_read_lock();
 
-	mvmsta = iwl_mvm_sta_from_staid_rcu(mvm, mvmvif->ap_sta_id);
+	mvmsta = iwl_mvm_sta_from_staid_rcu(mvm, mvmvif->deflink.ap_sta_id);
 
 	if (mvmsta)
 		iwl_mvm_sta_modify_disable_tx(mvm, mvmsta, true);

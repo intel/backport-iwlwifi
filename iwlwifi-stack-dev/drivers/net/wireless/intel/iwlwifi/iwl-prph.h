@@ -352,6 +352,11 @@
 #define WFPM_OTP_CFG1_ADDR		0x00a03098
 #define WFPM_OTP_CFG1_IS_JACKET_BIT	BIT(4)
 #define WFPM_OTP_CFG1_IS_CDB_BIT	BIT(5)
+#define WFPM_OTP_BZ_BNJ_JACKET_BIT	5
+#define WFPM_OTP_BZ_BNJ_CDB_BIT		4
+#define WFPM_OTP_CFG1_IS_JACKET(_val)   (((_val) & 0x00000020) >> WFPM_OTP_BZ_BNJ_JACKET_BIT)
+#define WFPM_OTP_CFG1_IS_CDB(_val)      (((_val) & 0x00000010) >> WFPM_OTP_BZ_BNJ_CDB_BIT)
+
 
 #define WFPM_GP2			0xA030B4
 
@@ -425,21 +430,6 @@ enum {
 #define REG_CRF_ID_STEP(val)		(((val) & 0x07000000) >> 24)
 #define REG_CRF_ID_FLAVOR(val)		(((val) & 0xF8000000) >> 27)
 
-/*
- * CRF ID register
- *
- * type: bits 0-11
- * reserved: bits 12-18
- * slave_exist: bit 19
- * dash: bits 20-23
- * step: bits 24-26
- * flavor: bits 27-31
- */
-#define REG_CRF_ID_TYPE(val)		(((val) & 0x00000FFF) >> 0)
-#define REG_CRF_ID_SLAVE(val)		(((val) & 0x00080000) >> 19)
-#define REG_CRF_ID_DASH(val)		(((val) & 0x00F00000) >> 20)
-#define REG_CRF_ID_STEP(val)		(((val) & 0x07000000) >> 24)
-#define REG_CRF_ID_FLAVOR(val)		(((val) & 0xF8000000) >> 27)
 
 #define UREG_CHICK		(0xA05C00)
 #define UREG_CHICK_MSI_ENABLE	BIT(24)
@@ -458,6 +448,8 @@ enum {
 #define REG_CRF_ID_TYPE_GF_TC			0xF08
 #define REG_CRF_ID_TYPE_MR			0x810
 #define REG_CRF_ID_TYPE_FM			0x910
+#define REG_CRF_ID_TYPE_FMI			0x930
+#define REG_CRF_ID_TYPE_FMR			0x900
 
 #define HPM_DEBUG			0xA03440
 #define PERSISTENCE_BIT			BIT(12)
@@ -514,5 +506,8 @@ enum {
 #define WFPM_DPHY_OFF 0xDF10FF
 
 #define REG_OTP_MINOR 0xA0333C
+
+#define WFPM_LMAC2_PD_NOTIFICATION 0xA033CC
+#define WFPM_LMAC2_PD_RE_READ BIT(31)
 
 #endif				/* __iwl_prph_h__ */

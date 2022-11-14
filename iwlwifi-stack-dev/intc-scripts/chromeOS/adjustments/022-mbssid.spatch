@@ -1,9 +1,10 @@
 @@
-identifier sdata, params;
+identifier sdata, params, link_conf;
 @@
 +#if CFG80211_VERSION >= KERNEL_VERSION(5,16,0)
 static int ieee80211_set_ap_mbssid_options(struct ieee80211_sub_if_data *sdata,
-					   struct cfg80211_mbssid_config params)
+					   struct cfg80211_mbssid_config params,
+					   struct ieee80211_bss_conf *link_conf)
 {
 ...
 }
@@ -97,7 +98,7 @@ if (beacon->mbssid_ies && beacon->mbssid_ies->cnt) {
 @@
 
 +#if CFG80211_VERSION >= KERNEL_VERSION(5,18,0)
-kfree(sdata->deflink.u.ap.next_beacon->mbssid_ies);
+kfree(link->u.ap.next_beacon->mbssid_ies);
 +#endif
 
 @@

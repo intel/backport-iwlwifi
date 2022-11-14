@@ -1,9 +1,0 @@
-@@
-@@
-iwl_mvm_sched_scan_start(...)
-{
-+#if CFG80211_VERSION < KERNEL_VERSION(4,4,0)
-+	struct cfg80211_sched_scan_plan scan_plan = {};
-+#endif
-...
-}

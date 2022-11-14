@@ -172,8 +172,7 @@ static int iwl_mvm_create_skb(struct iwl_mvm *mvm, struct sk_buff *skb,
 	 * Starting from Bz hardware, it calculates starting directly after
 	 * the MAC header, so that matches mac80211's expectation.
 	 */
-	if (skb->ip_summed == CHECKSUM_COMPLETE &&
-	    mvm->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_BZ) {
+	if (skb->ip_summed == CHECKSUM_COMPLETE) {
 		struct {
 			u8 hdr[6];
 			__be16 type;
@@ -188,7 +187,7 @@ static int iwl_mvm_create_skb(struct iwl_mvm *mvm, struct sk_buff *skb,
 			      shdr->type != htons(ETH_P_PAE) &&
 			      shdr->type != htons(ETH_P_TDLS))))
 			skb->ip_summed = CHECKSUM_NONE;
-		else
+		else if (mvm->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_BZ)
 			/* mac80211 assumes full CSUM including SNAP header */
 			skb_postpush_rcsum(skb, shdr, sizeof(*shdr));
 	}
@@ -252,12 +251,22 @@ static void iwl_mvm_add_rtap_sniffer_config(struct iwl_mvm *mvm,
 static void iwl_mvm_pass_packet_to_mac80211(struct iwl_mvm *mvm,
 					    struct napi_struct *napi,
 					    struct sk_buff *skb, int queue,
-					    struct ieee80211_sta *sta)
+					    struct ieee80211_sta *sta,
+					    struct ieee80211_link_sta *link_sta)
 {
-	if (iwl_mvm_check_pn(mvm, skb, queue, sta))
+	if (unlikely(iwl_mvm_check_pn(mvm, skb, queue, sta))) {
 		kfree_skb(skb);
-	else
-		ieee80211_rx_napi(mvm->hw, sta, skb, napi);
+		return;
+	}
+
+	if (sta && sta->valid_links && link_sta) {
+		struct ieee80211_rx_status *rx_status = IEEE80211_SKB_RXCB(skb);
+
+		rx_status->link_valid = 1;
+		rx_status->link_id = link_sta->link_id;
+	}
+
+	ieee80211_rx_napi(mvm->hw, sta, skb, napi);
 }
 
 static void iwl_mvm_get_signal_strength(struct iwl_mvm *mvm,
@@ -628,7 +637,7 @@ static void iwl_mvm_release_frames(struct iwl_mvm *mvm,
 		while ((skb = __skb_dequeue(skb_list))) {
 			iwl_mvm_pass_packet_to_mac80211(mvm, napi, skb,
 							reorder_buf->queue,
-							sta);
+							sta, NULL /* FIXME */);
 			reorder_buf->num_stored--;
 		}
 	}
@@ -976,9 +985,9 @@ static bool iwl_mvm_reorder(struct iwl_mvm *mvm,
 		return false;
 	}
 
-	if (WARN(tid != baid_data->tid || mvm_sta->sta_id != baid_data->sta_id,
+	if (WARN(tid != baid_data->tid || mvm_sta->deflink.sta_id != baid_data->sta_id,
 		 "baid 0x%x is mapped to sta:%d tid:%d, but was received for sta:%d tid:%d\n",
-		 baid, baid_data->sta_id, baid_data->tid, mvm_sta->sta_id,
+		 baid, baid_data->sta_id, baid_data->tid, mvm_sta->deflink.sta_id,
 		 tid))
 		return false;
 
@@ -1719,7 +1728,7 @@ static void iwl_mvm_decode_eht_phy_data(struct iwl_mvm *mvm,
 					     IEEE80211_RADIOTAP_EHT_USIG_COMMON_UL_DL);
 		usig->common |= LE32_DEC_ENC(data0,
 					     IWL_RX_PHY_DATA0_EHT_BSS_COLOR_MASK,
-					     IEEE80211_RADIOTAP_EHT_USIG_COMMON_BSS_COLOR_KNOWN);
+						 IEEE80211_RADIOTAP_EHT_USIG_COMMON_BSS_COLOR);
 	} else {
 		usig->common |= LE32_DEC_ENC(usig_a1,
 					     IWL_RX_USIG_A1_UL_FLAG,
@@ -1831,17 +1840,18 @@ static void iwl_mvm_rx_eht(struct iwl_mvm *mvm, struct sk_buff *skb,
 		rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT_KNOWN;
 		if (phy_data->d0 & cpu_to_le32(IWL_RX_PHY_DATA0_EHT_DELIM_EOF))
 			rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT;
+	}
 
-		/* update aggregation data for monitor sake on default queue */
-		if (phy_info & IWL_RX_MPDU_PHY_TSF_OVERLOAD) {
-			bool toggle_bit = phy_info & IWL_RX_MPDU_PHY_AMPDU_TOGGLE;
+	/* update aggregation data for monitor sake on default queue */
+	if (!queue && (phy_info & IWL_RX_MPDU_PHY_TSF_OVERLOAD) &&
+	    (phy_info & IWL_RX_MPDU_PHY_AMPDU)) {
+		bool toggle_bit = phy_info & IWL_RX_MPDU_PHY_AMPDU_TOGGLE;
 
-			/* toggle is switched whenever new aggregation starts */
-			if (toggle_bit != mvm->ampdu_toggle) {
-				rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT_KNOWN;
-				if (phy_data->d0 & cpu_to_le32(IWL_RX_PHY_DATA0_EHT_DELIM_EOF))
-					rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT;
-			}
+		/* toggle is switched whenever new aggregation starts */
+		if (toggle_bit != mvm->ampdu_toggle) {
+			rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT_KNOWN;
+			if (phy_data->d0 & cpu_to_le32(IWL_RX_PHY_DATA0_EHT_DELIM_EOF))
+				rx_status->flag |= RX_FLAG_AMPDU_EOF_BIT;
 		}
 	}
 
@@ -1892,9 +1902,9 @@ static void iwl_mvm_rx_eht(struct iwl_mvm *mvm, struct sk_buff *skb,
 	if (ltf != IEEE80211_RADIOTAP_HE_DATA5_LTF_SIZE_UNKNOWN) {
 		eht->known |= cpu_to_le32
 			(IEEE80211_RADIOTAP_EHT_KNOWN_GI |
-			 IEEE80211_RADIOTAP_EHT_KNOWN_EHT_LTF);
+			 IEEE80211_RADIOTAP_EHT_KNOWN_LTF);
 		eht->data[0] |= cpu_to_le32
-			(FIELD_PREP(IEEE80211_RADIOTAP_EHT_DATA0_EHT_LTF,
+			(FIELD_PREP(IEEE80211_RADIOTAP_EHT_DATA0_LTF,
 				    ltf) |
 			 FIELD_PREP(IEEE80211_RADIOTAP_EHT_DATA0_GI,
 				    rx_status->eht.gi));
@@ -1919,7 +1929,7 @@ static void iwl_mvm_rx_eht(struct iwl_mvm *mvm, struct sk_buff *skb,
 		(FIELD_PREP(IEEE80211_RADIOTAP_EHT_USER_INFO_MCS,
 			    FIELD_GET(RATE_VHT_MCS_RATE_CODE_MSK, rate_n_flags)) |
 		 FIELD_PREP(IEEE80211_RADIOTAP_EHT_USER_INFO_NSS_O,
-			    FIELD_GET(RATE_MCS_NSS_MSK, rate_n_flags) + 1));
+			    FIELD_GET(RATE_MCS_NSS_MSK, rate_n_flags)));
 }
 
 static void iwl_mvm_rx_he(struct iwl_mvm *mvm, struct sk_buff *skb,
@@ -2249,6 +2259,7 @@ static bool iwl_mvm_is_valid_packet_channel(struct ieee80211_rx_status *rx_statu
 	int packet_channel = ieee80211_frequency_to_channel(rx_status->freq);
 	int lb_hb_ie_channel, uhb_ie_channel;
 	size_t ie_len;
+	bool ret;
 
 	if (!(ieee80211_is_probe_resp(mgmt->frame_control) ||
 	      ieee80211_is_beacon(mgmt->frame_control)))
@@ -2278,20 +2289,27 @@ static bool iwl_mvm_is_valid_packet_channel(struct ieee80211_rx_status *rx_statu
 
 	if (uhb_ie_channel < 0 && lb_hb_ie_channel < 0) {
 		if (rx_status->band == NL80211_BAND_6GHZ ||
-		    rx_status->band == NL80211_BAND_2GHZ)
+		    rx_status->band == NL80211_BAND_2GHZ) {
 			/*
 			 * drop the packet since packet Rx on 2GHz / 6GHz and we failed to get
 			 * channel from IE (DS_PARAMS IE is mandatory for 2GHz, HE_OPER IE is
-			 * mandatory for GHz). otherwise, don't drop the packet since HT_OPER IE
+			 * mandatory for 6GHz). otherwise, don't drop the packet since HT_OPER IE
 			 * is optional on 5GHz (it is possible issue in case AP is operating on
 			 * 5GHz without HT).
 			 */
+			kfree_skb(skb);
 			return false;
+		}
 		return true;
 	}
 
-	return uhb_ie_channel > 0 ? uhb_ie_channel == packet_channel :
+	ret = uhb_ie_channel > 0 ? uhb_ie_channel == packet_channel :
 		lb_hb_ie_channel == packet_channel;
+
+	if (!ret)
+		kfree_skb(skb);
+
+	return ret;
 #else
 	return true;
 #endif
@@ -2307,6 +2325,7 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 	u32 len;
 	u32 pkt_len = iwl_rx_packet_payload_len(pkt);
 	struct ieee80211_sta *sta = NULL;
+	struct ieee80211_link_sta *link_sta = NULL;
 	struct sk_buff *skb;
 	u8 crypt_len = 0;
 	size_t desc_size;
@@ -2462,6 +2481,7 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 			sta = rcu_dereference(mvm->fw_id_to_mac_id[id]);
 			if (IS_ERR(sta))
 				sta = NULL;
+			link_sta = rcu_dereference(mvm->fw_id_to_link_sta[id]);
 		}
 	} else if (!is_multicast_ether_addr(hdr->addr2)) {
 		/*
@@ -2610,7 +2630,8 @@ void iwl_mvm_rx_mpdu_mq(struct iwl_mvm *mvm, struct napi_struct *napi,
 	    && (likely(!iwl_mvm_mei_filter_scan(mvm, skb)))
 #endif
 	   )
-		iwl_mvm_pass_packet_to_mac80211(mvm, napi, skb, queue, sta);
+		iwl_mvm_pass_packet_to_mac80211(mvm, napi, skb, queue, sta,
+						link_sta);
 out:
 	rcu_read_unlock();
 }

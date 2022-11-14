@@ -3,7 +3,7 @@
  *
  * Copyright(c) 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2017 Intel Deutschland GmbH
- * Copyright (C) 2003 - 2014, 2018 - 2021 Intel Corporation
+ * Copyright (C) 2003 - 2014, 2018 - 2022 Intel Corporation
  *****************************************************************************/
 
 #ifndef __rs_h__
@@ -198,6 +198,7 @@ struct rs_rate {
 /**
  * struct iwl_lq_sta_rs_fw - rate and related statistics for RS in FW
  * @last_rate_n_flags: last rate reported by FW
+ * @max_agg_bufsize: the maximal size of the AGG buffer for this station
  * @sta_id: the id of the station
 #ifdef CPTCFG_MAC80211_DEBUGFS
  * @dbg_fixed_rate: for debug, use fixed rate if not 0
@@ -347,6 +348,8 @@ struct iwl_lq_sta {
 
 	/* last tx rate_n_flags */
 	u32 last_rate_n_flags;
+	u16 max_agg_bufsize;
+
 	/* packets destined for this STA are aggregated */
 	u8 is_agg;
 
@@ -387,6 +390,8 @@ struct iwl_lq_sta {
 
 /* Initialize station's rate scaling information after adding station */
 void iwl_mvm_rs_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
+			  struct ieee80211_bss_conf *link_conf,
+			  struct ieee80211_link_sta *link_sta,
 			  enum nl80211_band band, bool update);
 
 /* Notify RS about Tx status */
@@ -424,20 +429,27 @@ void iwl_mvm_reset_frame_stats(struct iwl_mvm *mvm);
 
 void iwl_mvm_rs_add_sta(struct iwl_mvm *mvm, struct iwl_mvm_sta *mvmsta);
 void rs_fw_rate_init(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
+		     struct ieee80211_bss_conf *link_conf,
+		     struct ieee80211_link_sta *link_sta,
 		     enum nl80211_band band, bool update);
 int rs_fw_tx_protection(struct iwl_mvm *mvm, struct iwl_mvm_sta *mvmsta,
 			bool enable);
 void iwl_mvm_tlc_update_notif(struct iwl_mvm *mvm,
 			      struct iwl_rx_cmd_buffer *rxb);
 
-u16 rs_fw_get_max_amsdu_len(struct ieee80211_sta *sta);
+u16 rs_fw_get_max_amsdu_len(struct ieee80211_sta *sta,
+			    struct ieee80211_bss_conf *link_conf,
+			    struct ieee80211_link_sta *link_sta);
 
 int iwl_rs_send_dhc(struct iwl_mvm *mvm, u8 sta_id, u32 type, u32 data);
 
 #if defined(CPTCFG_MAC80211_DEBUGFS) && defined(CPTCFG_IWLWIFI_DHC_PRIVATE)
-int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta, u32 ampdu_size);
+int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta,
+			      struct ieee80211_link_sta *link_sta,
+			      u32 ampdu_size);
 #else
 static inline int iwl_rs_dhc_set_ampdu_size(struct ieee80211_sta *sta,
+					    struct ieee80211_link_sta *link_sta,
 					    u32 ampdu_size)
 {
 	return -EINVAL;

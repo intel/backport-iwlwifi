@@ -110,4 +110,10 @@ static inline void iwl_mei_host_disassociated(void)
 static inline void iwl_mei_device_state(bool up)
 {}
 
+static inline int iwl_mei_pldr_req(void)
+{ return 0; }
+
+static inline void iwl_mei_alive_notif(bool success)
+{}
+
 #endif /* __iwl_mei_h__ */

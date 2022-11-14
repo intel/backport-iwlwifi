@@ -153,7 +153,7 @@ def _check_fixes(v, req):
         print('fixes= change-id doesn\'t exist (yet) (or did you mean "unknown"?)')
         return False
     if 'JENKINS_HOME' in os.environ:
-        subprocess.call(['ssh', 'git-amr-3.devtools.intel.com', 'gerrit','set-reviewers','-a', orig_owner, git.rev_parse('HEAD')])
+        subprocess.call(['ssh', os.environ['GERRIT_HOST'], 'gerrit','set-reviewers','-a', orig_owner, git.rev_parse('HEAD')])
     return True
 
 def _check_restriction(v, req):
@@ -173,11 +173,11 @@ def _check_origin(v, req):
 def check_internal_names():
     int_names = ['pulsar', 'windstorm', 'wsp', 'lnp' , 'lightning', 'snowfield', 'sfp', 'thunder',
 		 'thp', 'lincoln', 'lcp', 'cleaveland', 'cleveland', 'cvp', 'jefferson', 'jfp', 'sandy',
-		 'sdp', 'wilkins', 'wkp', 'stone', 'stp', 'lighthouse', 'lhp', 'oak', 'okp', r'(\b|_)sup(\b|_)',
-                 'sunny', 'solar', 'typhoon',
+		 'sdp', 'wilkins', 'wkp', 'stone', 'stp', 'lighthouse', 'lhp', 'oak', 'okp',
+                 'solar', 'typhoon',
 		 'cherrytrail', 'cht', 'broxton', 'bxt', 'sofia', 'brtns', 'brighton', 'btns', 'phoenix', 'gsd',
-		 'goldsand', 'google', 'fiber', 'asus', 'rockchip', 'quasar', 'qsr', 'icp', 'hrp', 'gfp', 'garfield',
-		 'blazar', 'fmp', 'magnetar', 'mrp', ]
+		 'goldsand', 'google', 'asus', 'rockchip', 'quasar', 'qsr', 'icp', 'hrp', 'gfp', 'garfield',
+		 'blazar', 'fmp', 'magnetar', 'mrp', 'msp', ]
 
     def remove_whitelist(line):
         whitelist = ['GFP_KERNEL', 'GFP_ATOMIC']
@@ -263,11 +263,18 @@ def check_metadata():
         if not subj.startswith('[BUGFIX]'):
             print('bug fixes require "[BUGFIX] subject"')
             r |= 2
+        else:
+            subj = subj[8:].lstrip()
     else:
         # bugfix might be reverted as part of a cleanup
         if 'BUGFIX' in subj and not subj.startswith('Revert "'):
             print('only bugfixes should have [BUGFIX] tag')
             r |= 2
+
+    if (not ('type' in found and found['type'] == 'maint') and
+        not re.search("^(\[.*\] )?wifi:", subj)):
+        print('most patches should have "wifi: " prefix')
+        r |= 1
 
     return r
 

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2021 Intel Corporation
+ * Copyright (C) 2021-2022 Intel Corporation
  */
 #ifndef __iwl_fw_platform_mockups__
 #define __iwl_fw_platform_mockups__
@@ -142,9 +142,17 @@ union acpi_object *_acpi_evaluate_dsm(acpi_handle handle,
 #undef acpi_evaluate_dsm
 #define acpi_evaluate_dsm _acpi_evaluate_dsm
 
-int _efivar_entry_get(struct efivar_entry *entry, u32 *attributes,
-		      unsigned long *size, void *data);
-#define efivar_entry_get _efivar_entry_get
+#ifdef EFI_RT_SUPPORTED_GET_VARIABLE
+bool _efi_rt_services_supported(unsigned int mask);
+#define efi_rt_services_supported _efi_rt_services_supported
+#else
+bool _efi_enabled(int feature);
+#define efi_enabled _efi_enabled
+#endif
+
+/* override the efi global access variable */
+extern struct efi _efi;
+#define efi _efi
 
 const char *_dmi_get_system_info(int field);
 #define dmi_get_system_info _dmi_get_system_info

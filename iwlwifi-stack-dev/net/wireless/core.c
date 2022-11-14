@@ -342,7 +342,7 @@ void cfg80211_destroy_ifaces(struct cfg80211_registered_device *rdev)
 
 			wiphy_lock(&rdev->wiphy);
 			cfg80211_leave(rdev, wdev);
-			rdev_del_virtual_intf(rdev, wdev);
+			cfg80211_remove_virtual_intf(rdev, wdev);
 			wiphy_unlock(&rdev->wiphy);
 		}
 	}
@@ -867,6 +867,9 @@ int wiphy_register(struct wiphy *wiphy)
 
 		for (i = 0; i < sband->n_iftype_data; i++) {
 			const struct ieee80211_sband_iftype_data *iftd;
+			bool has_ap, has_non_ap;
+			u32 ap_bits = BIT(NL80211_IFTYPE_AP) |
+				      BIT(NL80211_IFTYPE_P2P_GO);
 
 			iftd = &sband->iftype_data[i];
 
@@ -886,6 +889,19 @@ int wiphy_register(struct wiphy *wiphy)
 			else
 				have_he = have_he &&
 					  iftd->he_cap.has_he;
+
+			has_ap = iftd->types_mask & ap_bits;
+			has_non_ap = iftd->types_mask & ~ap_bits;
+
+			/*
+			 * For EHT 20 MHz STA, the capabilities format differs
+			 * but to simplify, don't check 20 MHz but rather check
+			 * only if AP and non-AP were mentioned at the same time,
+			 * reject if so.
+			 */
+			if (WARN_ON(iftd->eht_cap.has_eht &&
+				    has_ap && has_non_ap))
+				return -EINVAL;
 		}
 
 		if (WARN_ON(!have_he && band == NL80211_BAND_6GHZ))
@@ -919,6 +935,12 @@ int wiphy_register(struct wiphy *wiphy)
 				rdev->wiphy.wowlan->pattern_max_len)))
 		return -EINVAL;
 #endif
+
+	if (!wiphy->max_num_akm_suites)
+		wiphy->max_num_akm_suites = NL80211_MAX_NR_AKM_SUITES;
+	else if (wiphy->max_num_akm_suites < NL80211_MAX_NR_AKM_SUITES ||
+		 wiphy->max_num_akm_suites > CFG80211_MAX_NUM_AKM_SUITES)
+		return -EINVAL;
 
 	/* check and set up bitrates */
 	ieee80211_set_bitrate_flags(wiphy);
@@ -1314,6 +1336,10 @@ void cfg80211_init_wdev(struct wireless_dev *wdev)
 	INIT_WORK(&wdev->pmsr_free_wk, cfg80211_pmsr_free_wk);
 
 #ifdef CPTCFG_CFG80211_WEXT
+#ifdef CONFIG_WIRELESS_EXT
+	if (!wdev->netdev->wireless_handlers)
+		wdev->netdev->wireless_handlers = &cfg80211_wext_handler;
+#endif
 	wdev->wext.default_key = -1;
 	wdev->wext.default_mgmt_key = -1;
 	wdev->wext.connect.auth_type = NL80211_AUTHTYPE_AUTOMATIC;
@@ -1434,19 +1460,11 @@ static int cfg80211_netdev_notifier_call(struct notifier_block *nb,
 			_cfg80211_unregister_wdev(wdev, false);
 			wiphy_unlock(&rdev->wiphy);
 		}
-#if defined(CPTCFG_CFG80211_WEXT) && defined(CONFIG_WIRELESS_EXT)
-		if (!dev->wireless_handlers)
-			dev->wireless_handlers = &cfg80211_wext_handler;
-#else
-		printk_once(KERN_WARNING "cfg80211: wext will not work because "
-			    "kernel was compiled with CONFIG_WIRELESS_EXT=n. "
-			    "Tools using wext interface, like iwconfig will "
-			    "not work.\n");
-#endif
 		break;
 	case NETDEV_GOING_DOWN:
 		wiphy_lock(&rdev->wiphy);
 		cfg80211_leave(rdev, wdev);
+		cfg80211_remove_links(wdev);
 		wiphy_unlock(&rdev->wiphy);
 		break;
 	case NETDEV_DOWN:

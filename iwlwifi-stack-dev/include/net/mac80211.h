@@ -18,6 +18,7 @@
 #include <linux/if_ether.h>
 #include <linux/skbuff.h>
 #include <linux/ieee80211.h>
+#include <linux/lockdep.h>
 #include <net/cfg80211.h>
 #include <net/codel.h>
 #include <net/ieee80211_radiotap.h>
@@ -277,13 +278,13 @@ enum ieee80211_chanctx_switch_mode {
  * done.
  *
  * @vif: the vif that should be switched from old_ctx to new_ctx
- * @link_id: the link ID that's switching
+ * @link_conf: the link conf that's switching
  * @old_ctx: the old context to which the vif was assigned
  * @new_ctx: the new context to which the vif must be assigned
  */
 struct ieee80211_vif_chanctx_switch {
 	struct ieee80211_vif *vif;
-	unsigned int link_id;
+	struct ieee80211_bss_conf *link_conf;
 	struct ieee80211_chanctx_conf *old_ctx;
 	struct ieee80211_chanctx_conf *new_ctx;
 };
@@ -533,8 +534,9 @@ struct ieee80211_fils_discovery {
  * This structure keeps information about a BSS (and an association
  * to that BSS) that can change during the lifetime of the BSS.
  *
+ * @addr: (link) address used locally
+ * @link_id: link ID, or 0 for non-MLO
  * @htc_trig_based_pkt_ext: default PE in 4us units, if BSS supports HE
- * @multi_sta_back_32bit: supports BA bitmap of 32-bits in Multi-STA BACK
  * @uora_exists: is the UORA element advertised by AP
  * @ack_enabled: indicates support to receive a multi-TID that solicits either
  *	ACK, BACK or both
@@ -595,8 +597,6 @@ struct ieee80211_fils_discovery {
  * @cqm_rssi_high: Connection quality monitor RSSI upper threshold.
  * @cqm_rssi_hyst: Connection quality monitor RSSI hysteresis
  * @qos: This is a QoS-enabled BSS.
- * @ps: power-save mode (STA only). This flag is NOT affected by
- *	offchannel/dynamic_ps operations.
  * @hidden_ssid: The SSID of the current vif is hidden. Only valid in AP-mode.
  * @txpower: TX power in dBm.  INT_MIN means not configured.
  * @txpower_type: TX power adjustment used to control per packet Transmit
@@ -658,6 +658,8 @@ struct ieee80211_fils_discovery {
  */
 struct ieee80211_bss_conf {
 	const u8 *bssid;
+	unsigned int link_id;
+	u8 addr[ETH_ALEN] __aligned(2);
 	u8 htc_trig_based_pkt_ext;
 	bool uora_exists;
 	u8 uora_ocw_range;
@@ -689,7 +691,6 @@ struct ieee80211_bss_conf {
 	struct cfg80211_chan_def chandef;
 	struct ieee80211_mu_group_data mu_group;
 	bool qos;
-	bool ps;
 	bool hidden_ssid;
 	int txpower;
 	enum nl80211_tx_power_setting txpower_type;
@@ -886,6 +887,14 @@ enum mac80211_tx_info_flags {
  * @IEEE80211_TX_CTRL_DONT_REORDER: This frame should not be reordered
  *	relative to other frames that have this flag set, independent
  *	of their QoS TID or other priority field values.
+ * @IEEE80211_TX_CTRL_MCAST_MLO_FIRST_TX: first MLO TX, used mostly internally
+ *	for sequence number assignment
+ * @IEEE80211_TX_CTRL_MLO_LINK: If not @IEEE80211_LINK_UNSPECIFIED, this
+ *	frame should be transmitted on the specific link. This really is
+ *	only relevant for frames that do not have data present, and is
+ *	also not used for 802.3 format frames. Note that even if the frame
+ *	is on a specific link, address translation might still apply if
+ *	it's intended for an MLD.
  *
  * These flags are used in tx_info->control.flags.
  */
@@ -899,7 +908,14 @@ enum mac80211_tx_control_flags {
 	IEEE80211_TX_INTCFL_NEED_TXPROCESSING	= BIT(6),
 	IEEE80211_TX_CTRL_NO_SEQNO		= BIT(7),
 	IEEE80211_TX_CTRL_DONT_REORDER		= BIT(8),
+	IEEE80211_TX_CTRL_MCAST_MLO_FIRST_TX	= BIT(9),
+	IEEE80211_TX_CTRL_MLO_LINK		= 0xf0000000,
 };
+
+#define IEEE80211_LINK_UNSPECIFIED	0xf
+#define IEEE80211_TX_CTRL_MLO_LINK_UNSPEC	\
+	u32_encode_bits(IEEE80211_LINK_UNSPECIFIED, \
+			IEEE80211_TX_CTRL_MLO_LINK)
 
 /**
  * enum mac80211_tx_status_flags - flags to describe transmit status
@@ -1048,7 +1064,9 @@ ieee80211_rate_get_vht_nss(const struct ieee80211_tx_rate *rate)
  *  (3) TX status information - driver tells mac80211 what happened
  *
  * @flags: transmit info flags, defined above
- * @band: the band to transmit on (use for checking for races)
+ * @band: the band to transmit on (use e.g. for checking for races),
+ *	not valid if the interface is an MLD since we won't know which
+ *	link the frame will be transmitted on
  * @hw_queue: HW queue to put the frame on, skb_get_queue_mapping() gives the AC
  * @ack_frame_id: internal frame ID for TX status, used internally
  * @tx_time_est: TX time estimate in units of 4us, used internally
@@ -1160,25 +1178,49 @@ ieee80211_info_get_tx_time_est(struct ieee80211_tx_info *info)
 	return info->tx_time_est << 2;
 }
 
+/***
+ * struct ieee80211_rate_status - mrr stage for status path
+ *
+ * This struct is used in struct ieee80211_tx_status to provide drivers a
+ * dynamic way to report about used rates and power levels per packet.
+ *
+ * @rate_idx The actual used rate.
+ * @try_count How often the rate was tried.
+ * @tx_power_idx An idx into the ieee80211_hw->tx_power_levels list of the
+ * 	corresponding wifi hardware. The idx shall point to the power level
+ * 	that was used when sending the packet.
+ */
+struct ieee80211_rate_status {
+	struct rate_info rate_idx;
+	u8 try_count;
+	u8 tx_power_idx;
+};
+
 /**
  * struct ieee80211_tx_status - extended tx status info for rate control
  *
  * @sta: Station that the packet was transmitted for
  * @info: Basic tx status information
  * @skb: Packet skb (can be NULL if not provided by the driver)
- * @rate: The TX rate that was used when sending the packet
  * @ack_hwtstamp: Hardware timestamp of the received ack in nanoseconds
  *	Only needed for Timing measurement and Fine timing measurement action
  *	frames. Only reported by devices that have the
  *	%NL80211_EXT_FEATURE_HW_TIMESTAMP capability.
+ * @rates: Mrr stages that were used when sending the packet
+ * @n_rates: Number of mrr stages (count of instances for @rates)
  * @free_list: list where processed skbs are stored to be free'd by the driver
+ * @ack_hwtstamp: Hardware timestamp of the received ack in nanoseconds
+ *	Only needed for Timing measurement and Fine timing measurement action
+ *	frames. Only reported by devices that have timestamping enabled.
  */
 struct ieee80211_tx_status {
 	struct ieee80211_sta *sta;
 	struct ieee80211_tx_info *info;
 	struct sk_buff *skb;
-	struct rate_info *rate;
+	struct ieee80211_rate_status *rates;
 	ktime_t ack_hwtstamp;
+	u8 n_rates;
+
 #if LINUX_VERSION_IS_GEQ(4,19,0)
 	struct list_head *free_list;
 #else
@@ -1226,9 +1268,9 @@ static inline struct ieee80211_rx_status *IEEE80211_SKB_RXCB(struct sk_buff *skb
  * in the TX status but the rate control information (it does clear
  * the count since you need to fill that in anyway).
  *
- * NOTE: You can only use this function if you do NOT use
- *	 info->driver_data! Use info->rate_driver_data
- *	 instead if you need only the less space that allows.
+ * NOTE: While the rates array is kept intact, this will wipe all of the
+ *	 driver_data fields in info, so it's up to the driver to restore
+ *	 any fields it needs after calling this helper.
  */
 static inline void
 ieee80211_tx_info_clear_status(struct ieee80211_tx_info *info)
@@ -1458,6 +1500,10 @@ enum mac80211_rx_encoding {
  *	each A-MPDU but the same for each subframe within one A-MPDU
  * @ampdu_delimiter_crc: A-MPDU delimiter CRC
  * @zero_length_psdu_type: radiotap type of the 0-length PSDU
+ * @link_valid: if the link which is identified by @link_id is valid. This flag
+ *	is set only when connection is MLO.
+ * @link_id: id of the link used to receive the packet. This is used along with
+ *	@link_valid.
  */
 struct ieee80211_rx_status {
 	u64 mactime;
@@ -1492,6 +1538,7 @@ struct ieee80211_rx_status {
 	s8 chain_signal[IEEE80211_MAX_CHAINS];
 	u8 ampdu_delimiter_crc;
 	u8 zero_length_psdu_type;
+	u8 link_valid:1, link_id:4;
 };
 
 static inline u32
@@ -1701,6 +1748,8 @@ enum ieee80211_offload_flags {
  * @assoc: association status
  * @ibss_joined: indicates whether this station is part of an IBSS or not
  * @ibss_creator: indicates if a new IBSS network is being created
+ * @ps: power-save mode (STA only). This flag is NOT affected by
+ *	offchannel/dynamic_ps operations.
  * @aid: association ID number, valid only when @assoc is true
  * @arp_addr_list: List of IPv4 addresses for hardware ARP filtering. The
  *	may filter ARP queries targeted for other addresses than listed here.
@@ -1715,11 +1764,14 @@ enum ieee80211_offload_flags {
  * @idle: This interface is idle. There's also a global idle flag in the
  *	hardware config which may be more appropriate depending on what
  *	your driver/device needs to do.
+ * @ap_addr: AP MLD address, or BSSID for non-MLO connections
+ *	(station mode only)
  */
 struct ieee80211_vif_cfg {
 	/* association related data */
 	bool assoc, ibss_joined;
 	bool ibss_creator;
+	bool ps;
 	u16 aid;
 
 	__be32 arp_addr_list[IEEE80211_BSS_ARP_ADDR_LIST_LEN];
@@ -1728,6 +1780,7 @@ struct ieee80211_vif_cfg {
 	size_t ssid_len;
 	bool s1g;
 	bool idle;
+	u8 ap_addr[ETH_ALEN] __aligned(2);
 };
 
 /**
@@ -1742,6 +1795,10 @@ struct ieee80211_vif_cfg {
  *	or the BSS we're associated to
  * @link_conf: in case of MLD, the per-link BSS configuration,
  *	indexed by link ID
+ * @valid_links: bitmap of valid links, or 0 for non-MLO.
+ * @active_links: The bitmap of active links, or 0 for non-MLO.
+ *	The driver shouldn't change this directly, but use the
+ *	API calls meant for that purpose.
  * @addr: address of this interface
  * @p2p: indicates whether this AP or STA interface is a p2p
  *	interface, i.e. a GO or p2p-sta respectively
@@ -1749,7 +1806,7 @@ struct ieee80211_vif_cfg {
  *	these need to be set (or cleared) when the interface is added
  *	or, if supported by the driver, the interface type is changed
  *	at runtime, mac80211 will never touch this field
- * @offloaad_flags: hardware offload capabilities/flags for this interface.
+ * @offload_flags: hardware offload capabilities/flags for this interface.
  *	These are initialized by mac80211 before calling .add_interface,
  *	.change_interface or .update_vif_offload and updated by the driver
  *	within these ops, based on supported features or runtime change
@@ -1776,7 +1833,8 @@ struct ieee80211_vif {
 	enum nl80211_iftype type;
 	struct ieee80211_vif_cfg cfg;
 	struct ieee80211_bss_conf bss_conf;
-	struct ieee80211_bss_conf *link_conf[IEEE80211_MLD_MAX_NUM_LINKS];
+	struct ieee80211_bss_conf __rcu *link_conf[IEEE80211_MLD_MAX_NUM_LINKS];
+	u16 valid_links, active_links;
 	u8 addr[ETH_ALEN] __aligned(2);
 	bool p2p;
 
@@ -1802,6 +1860,12 @@ struct ieee80211_vif {
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));
 };
+
+#define for_each_vif_active_link(vif, link, link_id)				\
+	for (link_id = 0; link_id < ARRAY_SIZE((vif)->link_conf); link_id++)	\
+		if ((!(vif)->active_links ||					\
+		     (vif)->active_links & BIT(link_id)) &&			\
+		    (link = rcu_dereference((vif)->link_conf[link_id])))
 
 static inline bool ieee80211_vif_is_mesh(struct ieee80211_vif *vif)
 {
@@ -1833,6 +1897,19 @@ struct ieee80211_vif *wdev_to_ieee80211_vif(struct wireless_dev *wdev);
  * This can also be useful to get the netdev associated to a vif.
  */
 struct wireless_dev *ieee80211_vif_to_wdev(struct ieee80211_vif *vif);
+
+/**
+ * lockdep_vif_mutex_held - for lockdep checks on link poiners
+ * @vif: the interface to check
+ */
+static inline bool lockdep_vif_mutex_held(struct ieee80211_vif *vif)
+{
+	return lockdep_is_held(&ieee80211_vif_to_wdev(vif)->mtx);
+}
+
+#define link_conf_dereference_protected(vif, link_id)		\
+	rcu_dereference_protected((vif)->link_conf[link_id],	\
+				  lockdep_vif_mutex_held(vif))
 
 /**
  * enum ieee80211_key_flags - key flags
@@ -1915,6 +1992,7 @@ enum ieee80211_key_flags {
  * 	- Temporal Authenticator Rx MIC Key (64 bits)
  * @icv_len: The ICV length for this key type
  * @iv_len: The IV length for this key type
+ * @link_id: the link ID for MLO, or -1 for non-MLO or pairwise keys
  */
 struct ieee80211_key_conf {
 	atomic64_t tx_pn;
@@ -1924,6 +2002,7 @@ struct ieee80211_key_conf {
 	u8 hw_key_idx;
 	s8 keyidx;
 	u16 flags;
+	s8 link_id;
 	u8 keylen;
 	u8 key[];
 };
@@ -2061,6 +2140,34 @@ struct ieee80211_sta_txpwr {
 };
 
 /**
+ * struct ieee80211_sta_aggregates - info that is aggregated from active links
+ *
+ * Used for any per-link data that needs to be aggregated and updated in the
+ * main &struct ieee80211_sta when updated or the active links change.
+ *
+ * @max_amsdu_len: indicates the maximal length of an A-MSDU in bytes.
+ *	This field is always valid for packets with a VHT preamble.
+ *	For packets with a HT preamble, additional limits apply:
+ *
+ *	* If the skb is transmitted as part of a BA agreement, the
+ *	  A-MSDU maximal size is min(max_amsdu_len, 4065) bytes.
+ *	* If the skb is not part of a BA agreement, the A-MSDU maximal
+ *	  size is min(max_amsdu_len, 7935) bytes.
+ *
+ * Both additional HT limits must be enforced by the low level
+ * driver. This is defined by the spec (IEEE 802.11-2012 section
+ * 8.3.2.2 NOTE 2).
+ * @max_rc_amsdu_len: Maximum A-MSDU size in bytes recommended by rate control.
+ * @max_tid_amsdu_len: Maximum A-MSDU size in bytes for this TID
+ */
+struct ieee80211_sta_aggregates {
+	u16 max_amsdu_len;
+
+	u16 max_rc_amsdu_len;
+	u16 max_tid_amsdu_len[IEEE80211_NUM_TIDS];
+};
+
+/**
  * struct ieee80211_link_sta - station Link specific info
  * All link specific info for a STA link for a non MLD STA(single)
  * or a MLD STA(multiple entries) are stored here.
@@ -2068,6 +2175,8 @@ struct ieee80211_sta_txpwr {
  * @addr: MAC address of the Link STA. For non-MLO STA this is same as the addr
  *	in ieee80211_sta. For MLO Link STA this addr can be same or different
  *	from addr in ieee80211_sta (representing MLD STA addr)
+ * @link_id: the link ID for this link STA (0 for deflink)
+ * @smps_mode: current SMPS mode (off, static or dynamic)
  * @supp_rates: Bitmap of supported rates
  * @ht_cap: HT capabilities of this STA; restricted to our own capabilities
  * @vht_cap: VHT capabilities of this STA; restricted to our own capabilities
@@ -2084,6 +2193,8 @@ struct ieee80211_sta_txpwr {
  */
 struct ieee80211_link_sta {
 	u8 addr[ETH_ALEN];
+	u8 link_id;
+	enum ieee80211_smps_mode smps_mode;
 
 	u32 supp_rates[NUM_NL80211_BANDS];
 	struct ieee80211_sta_ht_cap ht_cap;
@@ -2091,6 +2202,8 @@ struct ieee80211_link_sta {
 	struct ieee80211_sta_he_cap he_cap;
 	struct ieee80211_he_6ghz_capa he_6ghz_capa;
 	struct ieee80211_sta_eht_cap eht_cap;
+
+	struct ieee80211_sta_aggregates agg;
 
 	u8 rx_nss;
 	enum ieee80211_sta_rx_bandwidth bandwidth;
@@ -2122,21 +2235,21 @@ struct ieee80211_link_sta {
  *	if wme is supported. The bits order is like in
  *	IEEE80211_WMM_IE_STA_QOSINFO_AC_*.
  * @max_sp: max Service Period. Only valid if wme is supported.
- * @smps_mode: current SMPS mode (off, static or dynamic)
  * @rates: rate control selection table
  * @tdls: indicates whether the STA is a TDLS peer
  * @tdls_initiator: indicates the STA is an initiator of the TDLS link. Only
  *	valid if the STA is a TDLS peer in the first place.
  * @mfp: indicates whether the STA uses management frame protection or not.
+ * @mlo: indicates whether the STA is MLO station.
  * @max_amsdu_subframes: indicates the maximal number of MSDUs in a single
  *	A-MSDU. Taken from the Extended Capabilities element. 0 means
  *	unlimited.
+ * @cur: currently valid data as aggregated from the active links
+ *	For non MLO STA it will point to the deflink data. For MLO STA
+ *	ieee80211_sta_recalc_aggregates() must be called to update it.
  * @support_p2p_ps: indicates whether the STA supports P2P PS mechanism or not.
- * @max_rc_amsdu_len: Maximum A-MSDU size in bytes recommended by rate control.
- * @max_tid_amsdu_len: Maximum A-MSDU size in bytes for this TID
  * @txq: per-TID data TX queues (if driver uses the TXQ abstraction); note that
  *	the last entry (%IEEE80211_NUM_TIDS) is used for non-data frames
- * @multi_link_sta: Identifies if this sta is a MLD STA
  * @deflink: This holds the default link STA information, for non MLO STA all link
  *	specific STA information is accessed through @deflink or through
  *	link[0] which points to address of @deflink. For MLO Link STA
@@ -2148,6 +2261,7 @@ struct ieee80211_link_sta {
  *	@deflink address and remaining would be allocated and the address
  *	would be assigned to link[link_id] where link_id is the id assigned
  *	by the AP.
+ * @valid_links: bitmap of valid links, or 0 for non-MLO
  */
 struct ieee80211_sta {
 	u8 addr[ETH_ALEN];
@@ -2156,42 +2270,45 @@ struct ieee80211_sta {
 	bool wme;
 	u8 uapsd_queues;
 	u8 max_sp;
-	enum ieee80211_smps_mode smps_mode;
 	struct ieee80211_sta_rates __rcu *rates;
 	bool tdls;
 	bool tdls_initiator;
 	bool mfp;
+	bool mlo;
 	u8 max_amsdu_subframes;
 
-	/**
-	 * @max_amsdu_len:
-	 * indicates the maximal length of an A-MSDU in bytes.
-	 * This field is always valid for packets with a VHT preamble.
-	 * For packets with a HT preamble, additional limits apply:
-	 *
-	 * * If the skb is transmitted as part of a BA agreement, the
-	 *   A-MSDU maximal size is min(max_amsdu_len, 4065) bytes.
-	 * * If the skb is not part of a BA agreement, the A-MSDU maximal
-	 *   size is min(max_amsdu_len, 7935) bytes.
-	 *
-	 * Both additional HT limits must be enforced by the low level
-	 * driver. This is defined by the spec (IEEE 802.11-2012 section
-	 * 8.3.2.2 NOTE 2).
-	 */
-	u16 max_amsdu_len;
+	struct ieee80211_sta_aggregates *cur;
+
 	bool support_p2p_ps;
-	u16 max_rc_amsdu_len;
-	u16 max_tid_amsdu_len[IEEE80211_NUM_TIDS];
 
 	struct ieee80211_txq *txq[IEEE80211_NUM_TIDS + 1];
 
-	bool multi_link_sta;
+	u16 valid_links;
 	struct ieee80211_link_sta deflink;
-	struct ieee80211_link_sta *link[IEEE80211_MLD_MAX_NUM_LINKS];
+	struct ieee80211_link_sta __rcu *link[IEEE80211_MLD_MAX_NUM_LINKS];
 
 	/* must be last */
 	u8 drv_priv[] __aligned(sizeof(void *));
 };
+
+#ifdef CONFIG_LOCKDEP
+bool lockdep_sta_mutex_held(struct ieee80211_sta *pubsta);
+#else
+static inline bool lockdep_sta_mutex_held(struct ieee80211_sta *pubsta)
+{
+	return true;
+}
+#endif
+
+#define link_sta_dereference_protected(sta, link_id)		\
+	rcu_dereference_protected((sta)->link[link_id],		\
+				  lockdep_sta_mutex_held(sta))
+
+#define for_each_sta_active_link(vif, sta, link_sta, link_id)			\
+	for (link_id = 0; link_id < ARRAY_SIZE((sta)->link); link_id++)		\
+		if ((!(vif)->active_links ||					\
+		     (vif)->active_links & BIT(link_id)) &&			\
+		    ((link_sta) = link_sta_dereference_protected(sta, link_id)))
 
 /**
  * enum sta_notify_cmd - sta notify command
@@ -2472,6 +2589,12 @@ struct ieee80211_txq {
  *	usage and 802.11 frames with %RX_FLAG_ONLY_MONITOR set for monitor to
  *	the stack.
  *
+ * @IEEE80211_HW_DETECTS_COLOR_COLLISION: HW/driver has support for BSS color
+ *	collision detection and doesn't need it in software.
+ *
+ * @IEEE80211_HW_MLO_MCAST_MULTI_LINK_TX: Hardware/driver handles transmitting
+ *	multicast frames on all links, mac80211 should not do that.
+ *
  * @NUM_IEEE80211_HW_FLAGS: number of hardware flags, used for sizing arrays
  */
 enum ieee80211_hw_flags {
@@ -2527,6 +2650,8 @@ enum ieee80211_hw_flags {
 	IEEE80211_HW_SUPPORTS_TX_ENCAP_OFFLOAD,
 	IEEE80211_HW_SUPPORTS_RX_DECAP_OFFLOAD,
 	IEEE80211_HW_SUPPORTS_CONC_MON_RX_DECAP,
+	IEEE80211_HW_DETECTS_COLOR_COLLISION,
+	IEEE80211_HW_MLO_MCAST_MULTI_LINK_TX,
 
 	/* keep last, obviously */
 	NUM_IEEE80211_HW_FLAGS
@@ -2653,6 +2778,12 @@ enum ieee80211_hw_flags {
  *	refilling deficit of each TXQ.
  *
  * @max_mtu: the max mtu could be set.
+ *
+ * @tx_power_levels: a list of power levels supported by the wifi hardware.
+ * 	The power levels can be specified either as integer or fractions.
+ * 	The power level at idx 0 shall be the maximum positive power level.
+ *
+ * @max_txpwr_levels_idx: the maximum valid idx of 'tx_power_levels' list.
  */
 struct ieee80211_hw {
 	struct ieee80211_conf conf;
@@ -2689,6 +2820,8 @@ struct ieee80211_hw {
 	u8 tx_sk_pacing_shift;
 	u8 weight_multiplier;
 	u32 max_mtu;
+	const s8 *tx_power_levels;
+	u8 max_txpwr_levels_idx;
 };
 
 static inline bool _ieee80211_hw_check(struct ieee80211_hw *hw,
@@ -4015,6 +4148,21 @@ struct ieee80211_prep_tx_info {
  *	disable background CAC/radar detection.
  * @net_fill_forward_path: Called from .ndo_fill_forward_path in order to
  *	resolve a path for hardware flow offloading
+ * @change_vif_links: Change the valid links on an interface, note that while
+ *	removing the old link information is still valid (link_conf pointer),
+ *	but may immediately disappear after the function returns. The old or
+ *	new links bitmaps may be 0 if going from/to a non-MLO situation.
+ *	The @old[] array contains pointers to the old bss_conf structures
+ *	that were already removed, in case they're needed.
+ *	This callback can sleep.
+ * @change_sta_links: Change the valid links of a station, similar to
+ *	@change_vif_links. This callback can sleep.
+ *	Note that a sta can also be inserted or removed with valid links,
+ *	i.e. passed to @sta_add/@sta_state with sta->valid_links not zero.
+ *	In fact, cannot change from having valid_links and not having them.
+ * @set_hw_timestamp: Enable/disable HW timestamping of TM/FTM frames. This is
+ *	not restored at HW reset by mac80211 so drivers need to take care of
+ *	that.
  */
 struct ieee80211_ops {
 	void (*tx)(struct ieee80211_hw *hw,
@@ -4044,10 +4192,13 @@ struct ieee80211_ops {
 				u64 changed);
 	void (*link_info_changed)(struct ieee80211_hw *hw,
 				  struct ieee80211_vif *vif,
-				  u64 link_id, u32 changed);
+				  struct ieee80211_bss_conf *info,
+				  u64 changed);
 
-	int (*start_ap)(struct ieee80211_hw *hw, struct ieee80211_vif *vif);
-	void (*stop_ap)(struct ieee80211_hw *hw, struct ieee80211_vif *vif);
+	int (*start_ap)(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			struct ieee80211_bss_conf *link_conf);
+	void (*stop_ap)(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			struct ieee80211_bss_conf *link_conf);
 
 	u64 (*prepare_multicast)(struct ieee80211_hw *hw,
 				 struct netdev_hw_addr_list *mc_list);
@@ -4130,7 +4281,8 @@ struct ieee80211_ops {
 			       struct ieee80211_sta *sta,
 			       struct station_info *sinfo);
 	int (*conf_tx)(struct ieee80211_hw *hw,
-		       struct ieee80211_vif *vif, u16 ac,
+		       struct ieee80211_vif *vif,
+		       unsigned int link_id, u16 ac,
 		       const struct ieee80211_tx_queue_params *params);
 	u64 (*get_tsf)(struct ieee80211_hw *hw, struct ieee80211_vif *vif);
 	void (*set_tsf)(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
@@ -4249,11 +4401,11 @@ struct ieee80211_ops {
 			       u32 changed);
 	int (*assign_vif_chanctx)(struct ieee80211_hw *hw,
 				  struct ieee80211_vif *vif,
-				  unsigned int link_id,
+				  struct ieee80211_bss_conf *link_conf,
 				  struct ieee80211_chanctx_conf *ctx);
 	void (*unassign_vif_chanctx)(struct ieee80211_hw *hw,
 				     struct ieee80211_vif *vif,
-				     unsigned int link_id,
+				     struct ieee80211_bss_conf *link_conf,
 				     struct ieee80211_chanctx_conf *ctx);
 	int (*switch_vif_chanctx)(struct ieee80211_hw *hw,
 				  struct ieee80211_vif_chanctx_switch *vifs,
@@ -4358,6 +4510,17 @@ struct ieee80211_ops {
 				     struct ieee80211_sta *sta,
 				     struct net_device_path_ctx *ctx,
 				     struct net_device_path *path);
+	int (*change_vif_links)(struct ieee80211_hw *hw,
+				struct ieee80211_vif *vif,
+				u16 old_links, u16 new_links,
+				struct ieee80211_bss_conf *old[IEEE80211_MLD_MAX_NUM_LINKS]);
+	int (*change_sta_links)(struct ieee80211_hw *hw,
+				struct ieee80211_vif *vif,
+				struct ieee80211_sta *sta,
+				u16 old_links, u16 new_links);
+	int (*set_hw_timestamp)(struct ieee80211_hw *hw,
+				struct ieee80211_vif *vif,
+				struct cfg80211_set_hw_timestamp *hwts);
 };
 
 /**
@@ -5025,6 +5188,7 @@ struct ieee80211_mutable_offsets {
  * @vif: &struct ieee80211_vif pointer from the add_interface callback.
  * @offs: &struct ieee80211_mutable_offsets pointer to struct that will
  *	receive the offsets that may be updated by the driver.
+ * @link_id: the link id to which the beacon belongs (or 0 for a non-MLD AP)
  *
  * If the driver implements beaconing modes, it must use this function to
  * obtain the beacon template.
@@ -5041,7 +5205,8 @@ struct ieee80211_mutable_offsets {
 struct sk_buff *
 ieee80211_beacon_get_template(struct ieee80211_hw *hw,
 			      struct ieee80211_vif *vif,
-			      struct ieee80211_mutable_offsets *offs);
+			      struct ieee80211_mutable_offsets *offs,
+			      unsigned int link_id);
 
 /**
  * ieee80211_beacon_get_tim - beacon generation function
@@ -5052,6 +5217,7 @@ ieee80211_beacon_get_template(struct ieee80211_hw *hw,
  * @tim_length: pointer to variable that will receive the TIM IE length,
  *	(including the ID and length bytes!).
  *	Set to 0 if invalid (in non-AP modes).
+ * @link_id: the link id to which the beacon belongs (or 0 for a non-MLD AP)
  *
  * If the driver implements beaconing modes, it must use this function to
  * obtain the beacon frame.
@@ -5067,21 +5233,24 @@ ieee80211_beacon_get_template(struct ieee80211_hw *hw,
  */
 struct sk_buff *ieee80211_beacon_get_tim(struct ieee80211_hw *hw,
 					 struct ieee80211_vif *vif,
-					 u16 *tim_offset, u16 *tim_length);
+					 u16 *tim_offset, u16 *tim_length,
+					 unsigned int link_id);
 
 /**
  * ieee80211_beacon_get - beacon generation function
  * @hw: pointer obtained from ieee80211_alloc_hw().
  * @vif: &struct ieee80211_vif pointer from the add_interface callback.
+ * @link_id: the link id to which the beacon belongs (or 0 for a non-MLD AP)
  *
  * See ieee80211_beacon_get_tim().
  *
  * Return: See ieee80211_beacon_get_tim().
  */
 static inline struct sk_buff *ieee80211_beacon_get(struct ieee80211_hw *hw,
-						   struct ieee80211_vif *vif)
+						   struct ieee80211_vif *vif,
+						   unsigned int link_id)
 {
-	return ieee80211_beacon_get_tim(hw, vif, NULL, NULL);
+	return ieee80211_beacon_get_tim(hw, vif, NULL, NULL, link_id);
 }
 
 /**
@@ -5175,6 +5344,9 @@ struct sk_buff *ieee80211_pspoll_get(struct ieee80211_hw *hw,
  * ieee80211_nullfunc_get - retrieve a nullfunc template
  * @hw: pointer obtained from ieee80211_alloc_hw().
  * @vif: &struct ieee80211_vif pointer from the add_interface callback.
+ * @link_id: If the vif is an MLD, get a frame with the link addresses
+ *	for the given link ID. For a link_id < 0 you get a frame with
+ *	MLD addresses, however useful that might be.
  * @qos_ok: QoS NDP is acceptable to the caller, this should be set
  *	if at all possible
  *
@@ -5192,7 +5364,7 @@ struct sk_buff *ieee80211_pspoll_get(struct ieee80211_hw *hw,
  */
 struct sk_buff *ieee80211_nullfunc_get(struct ieee80211_hw *hw,
 				       struct ieee80211_vif *vif,
-				       bool qos_ok);
+				       int link_id, bool qos_ok);
 
 /**
  * ieee80211_probereq_get - retrieve a Probe Request template
@@ -5864,6 +6036,22 @@ struct ieee80211_sta *ieee80211_find_sta_by_ifaddr(struct ieee80211_hw *hw,
 					       const u8 *localaddr);
 
 /**
+ * ieee80211_find_sta_by_link_addrs - find STA by link addresses
+ * @hw: pointer as obtained from ieee80211_alloc_hw()
+ * @addr: remote station's link address
+ * @localaddr: local link address, use %NULL for any (but avoid that)
+ * @link_id: pointer to obtain the link ID if the STA is found,
+ *	may be %NULL if the link ID is not needed
+ *
+ * Obtain the STA by link address, must use RCU protection.
+ */
+struct ieee80211_sta *
+ieee80211_find_sta_by_link_addrs(struct ieee80211_hw *hw,
+				 const u8 *addr,
+				 const u8 *localaddr,
+				 unsigned int *link_id);
+
+/**
  * ieee80211_sta_block_awake - block station from waking up
  * @hw: the hardware
  * @pubsta: the station
@@ -5937,6 +6125,19 @@ void ieee80211_sta_eosp(struct ieee80211_sta *pubsta);
  * ieee80211_sta_eosp when the NDP is sent.
  */
 void ieee80211_send_eosp_nullfunc(struct ieee80211_sta *pubsta, int tid);
+
+/**
+ * ieee80211_sta_recalc_aggregates - recalculate aggregate data after a change
+ * @pubsta: the station
+ *
+ * Call this function after changing a per-link aggregate data as referenced in
+ * &struct ieee80211_sta_aggregates by accessing the agg field of
+ * &struct ieee80211_link_sta.
+ *
+ * With non MLO the data in deflink will be referenced directly. In that case
+ * there is no need to call this function.
+ */
+void ieee80211_sta_recalc_aggregates(struct ieee80211_sta *pubsta);
 
 /**
  * ieee80211_sta_register_airtime - register airtime usage for a sta/tid
@@ -6188,7 +6389,7 @@ void ieee80211_chswitch_done(struct ieee80211_vif *vif, bool success);
 
 /**
  * ieee80211_channel_switch_disconnect - disconnect due to channel switch error
- * @vif &struct ieee80211_vif pointer from the add_interface callback.
+ * @vif: &struct ieee80211_vif pointer from the add_interface callback.
  * @block_tx: if %true, do not send deauth frame.
  *
  * Instruct mac80211 to disconnect due to a channel switch error. The channel
@@ -6782,6 +6983,9 @@ static inline void ieee80211_txq_schedule_end(struct ieee80211_hw *hw, u8 ac)
 {
 }
 
+void __ieee80211_schedule_txq(struct ieee80211_hw *hw,
+			      struct ieee80211_txq *txq, bool force);
+
 /**
  * ieee80211_schedule_txq - schedule a TXQ for transmission
  *
@@ -6794,7 +6998,11 @@ static inline void ieee80211_txq_schedule_end(struct ieee80211_hw *hw, u8 ac)
  * The driver may call this function if it has buffered packets for
  * this TXQ internally.
  */
-void ieee80211_schedule_txq(struct ieee80211_hw *hw, struct ieee80211_txq *txq);
+static inline void
+ieee80211_schedule_txq(struct ieee80211_hw *hw, struct ieee80211_txq *txq)
+{
+	__ieee80211_schedule_txq(hw, txq, true);
+}
 
 /**
  * ieee80211_return_txq - return a TXQ previously acquired by ieee80211_next_txq()
@@ -6806,8 +7014,12 @@ void ieee80211_schedule_txq(struct ieee80211_hw *hw, struct ieee80211_txq *txq);
  * The driver may set force=true if it has buffered packets for this TXQ
  * internally.
  */
-void ieee80211_return_txq(struct ieee80211_hw *hw, struct ieee80211_txq *txq,
-			  bool force);
+static inline void
+ieee80211_return_txq(struct ieee80211_hw *hw, struct ieee80211_txq *txq,
+		     bool force)
+{
+	__ieee80211_schedule_txq(hw, txq, force);
+}
 
 /**
  * ieee80211_txq_may_transmit - check whether TXQ is allowed to transmit
@@ -6955,10 +7167,11 @@ ieee80211_get_unsol_bcast_probe_resp_tmpl(struct ieee80211_hw *hw,
  * @vif: &struct ieee80211_vif pointer from the add_interface callback.
  * @color_bitmap: a 64 bit bitmap representing the colors that the local BSS is
  *	aware of.
+ * @gfp: allocation flags
  */
 void
 ieeee80211_obss_color_collision_notify(struct ieee80211_vif *vif,
-				       u64 color_bitmap);
+				       u64 color_bitmap, gfp_t gfp);
 
 /**
  * ieee80211_is_tx_data - check if frame is a data frame

@@ -19,6 +19,7 @@
 #define FW_ASSERT_UMAC_FATAL			0x71
 #define UMAC_RT_NMI_LMAC2_FATAL			0x72
 #define RT_NMI_INTERRUPT_OTHER_LMAC_FATAL	0x73
+#define FW_ASSERT_NMI_UNKNOWN			0x84
 
 /*
  * Note: This structure is read from the device with IO accesses,
@@ -104,7 +105,9 @@ struct iwl_umac_error_event_table {
 
 static bool iwl_fwrt_if_errorid_other_cpu(u32 err_id)
 {
-	if (err_id >= FW_ASSERT_LMAC_FATAL && err_id <= RT_NMI_INTERRUPT_OTHER_LMAC_FATAL)
+	if ((err_id >= FW_ASSERT_LMAC_FATAL && err_id <= RT_NMI_INTERRUPT_OTHER_LMAC_FATAL) ||
+	    err_id == FW_ASSERT_NMI_UNKNOWN)
+
 		return  true;
 	return false;
 }
@@ -126,7 +129,8 @@ static void iwl_fwrt_dump_umac_error_log(struct iwl_fw_runtime *fwrt)
 	if (table.valid)
 		fwrt->dump.umac_err_id = table.error_id;
 
-	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.umac_err_id)) {
+	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.umac_err_id) &&
+	    !fwrt->trans->dbg.dump_file_name_ext_valid) {
 		fwrt->trans->dbg.dump_file_name_ext_valid = true;
 		snprintf(fwrt->trans->dbg.dump_file_name_ext, IWL_FW_INI_MAX_NAME,
 			 "0x%x", fwrt->dump.umac_err_id);
@@ -208,7 +212,8 @@ static void iwl_fwrt_dump_lmac_error_log(struct iwl_fw_runtime *fwrt, u8 lmac_nu
 	if (table.valid)
 		fwrt->dump.lmac_err_id[lmac_num] = table.error_id;
 
-	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.lmac_err_id[lmac_num])) {
+	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.lmac_err_id[lmac_num]) &&
+	    !fwrt->trans->dbg.dump_file_name_ext_valid) {
 		fwrt->trans->dbg.dump_file_name_ext_valid = true;
 		snprintf(fwrt->trans->dbg.dump_file_name_ext, IWL_FW_INI_MAX_NAME,
 			 "0x%x", fwrt->dump.lmac_err_id[lmac_num]);
@@ -302,7 +307,8 @@ static void iwl_fwrt_dump_tcm_error_log(struct iwl_fw_runtime *fwrt, int idx)
 	if (table.valid)
 		fwrt->dump.tcm_err_id[idx] = table.error_id;
 
-	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.tcm_err_id[idx])) {
+	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.tcm_err_id[idx]) &&
+	    !fwrt->trans->dbg.dump_file_name_ext_valid) {
 		fwrt->trans->dbg.dump_file_name_ext_valid = true;
 		snprintf(fwrt->trans->dbg.dump_file_name_ext, IWL_FW_INI_MAX_NAME,
 			 "0x%x", fwrt->dump.tcm_err_id[idx]);
@@ -374,7 +380,8 @@ static void iwl_fwrt_dump_rcm_error_log(struct iwl_fw_runtime *fwrt, int idx)
 	if (table.valid)
 		fwrt->dump.rcm_err_id[idx] = table.error_id;
 
-	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.rcm_err_id[idx])) {
+	if (!iwl_fwrt_if_errorid_other_cpu(fwrt->dump.rcm_err_id[idx]) &&
+	    !fwrt->trans->dbg.dump_file_name_ext_valid) {
 		fwrt->trans->dbg.dump_file_name_ext_valid = true;
 		snprintf(fwrt->trans->dbg.dump_file_name_ext, IWL_FW_INI_MAX_NAME,
 			 "0x%x", fwrt->dump.rcm_err_id[idx]);
@@ -475,6 +482,9 @@ static void iwl_fwrt_dump_fseq_regs(struct iwl_fw_runtime *fwrt)
 
 void iwl_fwrt_dump_error_logs(struct iwl_fw_runtime *fwrt)
 {
+	struct iwl_pc_data *pc_data;
+	u8 count;
+
 	if (!test_bit(STATUS_DEVICE_ENABLED, &fwrt->trans->status)) {
 		IWL_ERR(fwrt,
 			"DEVICE_ENABLED bit is not set. Aborting dump.\n");
@@ -487,10 +497,19 @@ void iwl_fwrt_dump_error_logs(struct iwl_fw_runtime *fwrt)
 	iwl_fwrt_dump_umac_error_log(fwrt);
 	iwl_fwrt_dump_tcm_error_log(fwrt, 0);
 	iwl_fwrt_dump_rcm_error_log(fwrt, 0);
-	iwl_fwrt_dump_tcm_error_log(fwrt, 1);
-	iwl_fwrt_dump_rcm_error_log(fwrt, 1);
+	if (fwrt->trans->dbg.tcm_error_event_table[1])
+		iwl_fwrt_dump_tcm_error_log(fwrt, 1);
+	if (fwrt->trans->dbg.rcm_error_event_table[1])
+		iwl_fwrt_dump_rcm_error_log(fwrt, 1);
 	iwl_fwrt_dump_iml_error_log(fwrt);
 	iwl_fwrt_dump_fseq_regs(fwrt);
+	if (fwrt->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_22000) {
+		pc_data = fwrt->trans->dbg.pc_data;
+		for (count = 0; count < fwrt->trans->dbg.num_pc; count++, pc_data++)
+			IWL_ERR(fwrt, "%s: 0x%x\n",
+				pc_data->pc_name,
+				pc_data->pc_address);
+	}
 
 	if (fwrt->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_BZ) {
 		u32 scratch = iwl_read32(fwrt->trans, CSR_FUNC_SCRATCH);

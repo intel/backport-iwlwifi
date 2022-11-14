@@ -27,7 +27,7 @@ So what rules should you follow?
  * Keep the first line (subject line) short, to the point, and prefix with the
    right things.
 
-    * Prefix should be "iwlwifi: " or "iwlwifi: <component>: " etc.
+    * Prefix should be "wifi: iwlwifi: " or "wifi: iwlwifi: <component>: " etc.
       (obviously not for mac80211/cfg80211 changes)
       Right now we usually use the components "mvm", "dvm", "pcie" and "xvt".
     * gerrit complains after about 65 characters or so, that’s a good
@@ -86,7 +86,7 @@ go upstream or into ChromeOS etc.
 
 ::
 
-    <<[BUGFIX] >>iwlwifi: mvm: fix frozen yoghurt generation
+    <<[BUGFIX] >>wifi: iwlwifi: mvm: fix frozen yoghurt generation
 
     Due to a firmware bug, frozen yoghurt isn’t generated in frozen
     state before being passed to the host, so has to be frozen by the

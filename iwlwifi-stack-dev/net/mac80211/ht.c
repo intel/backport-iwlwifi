@@ -138,13 +138,16 @@ void ieee80211_apply_htcap_overrides(struct ieee80211_sub_if_data *sdata,
 bool ieee80211_ht_cap_ie_to_sta_ht_cap(struct ieee80211_sub_if_data *sdata,
 				       struct ieee80211_supported_band *sband,
 				       const struct ieee80211_ht_cap *ht_cap_ie,
-				       struct sta_info *sta, unsigned int link_id)
+				       struct link_sta_info *link_sta)
 {
+	struct ieee80211_bss_conf *link_conf;
+	struct sta_info *sta = link_sta->sta;
 	struct ieee80211_sta_ht_cap ht_cap, own_cap;
 	u8 ampdu_info, tx_mcs_set_cap;
 	int i, max_tx_streams;
 	bool changed;
 	enum ieee80211_sta_rx_bandwidth bw;
+	enum nl80211_chan_width width;
 
 	memset(&ht_cap, 0, sizeof(ht_cap));
 
@@ -238,17 +241,25 @@ bool ieee80211_ht_cap_ie_to_sta_ht_cap(struct ieee80211_sub_if_data *sdata,
 	ht_cap.mcs.rx_highest = ht_cap_ie->mcs.rx_highest;
 
 	if (ht_cap.cap & IEEE80211_HT_CAP_MAX_AMSDU)
-		sta->sta.max_amsdu_len = IEEE80211_MAX_MPDU_LEN_HT_7935;
+		link_sta->pub->agg.max_amsdu_len = IEEE80211_MAX_MPDU_LEN_HT_7935;
 	else
-		sta->sta.max_amsdu_len = IEEE80211_MAX_MPDU_LEN_HT_3839;
+		link_sta->pub->agg.max_amsdu_len = IEEE80211_MAX_MPDU_LEN_HT_3839;
+
+	ieee80211_sta_recalc_aggregates(&sta->sta);
 
  apply:
-	changed = memcmp(&sta->sta.link[link_id]->ht_cap,
-			 &ht_cap, sizeof(ht_cap));
+	changed = memcmp(&link_sta->pub->ht_cap, &ht_cap, sizeof(ht_cap));
 
-	memcpy(&sta->sta.link[link_id]->ht_cap, &ht_cap, sizeof(ht_cap));
+	memcpy(&link_sta->pub->ht_cap, &ht_cap, sizeof(ht_cap));
 
-	switch (sdata->vif.link_conf[link_id]->chandef.width) {
+	rcu_read_lock();
+	link_conf = rcu_dereference(sdata->vif.link_conf[link_sta->link_id]);
+	if (WARN_ON(!link_conf))
+		width = NL80211_CHAN_WIDTH_20_NOHT;
+	else
+		width = link_conf->chandef.width;
+
+	switch (width) {
 	default:
 		WARN_ON_ONCE(1);
 		fallthrough;
@@ -264,10 +275,11 @@ bool ieee80211_ht_cap_ie_to_sta_ht_cap(struct ieee80211_sub_if_data *sdata,
 				IEEE80211_STA_RX_BW_40 : IEEE80211_STA_RX_BW_20;
 		break;
 	}
+	rcu_read_unlock();
 
-	sta->sta.link[link_id]->bandwidth = bw;
+	link_sta->pub->bandwidth = bw;
 
-	sta->link[link_id]->cur_max_bandwidth =
+	link_sta->cur_max_bandwidth =
 		ht_cap.cap & IEEE80211_HT_CAP_SUP_WIDTH_20_40 ?
 				IEEE80211_STA_RX_BW_40 : IEEE80211_STA_RX_BW_20;
 
@@ -289,12 +301,13 @@ bool ieee80211_ht_cap_ie_to_sta_ht_cap(struct ieee80211_sub_if_data *sdata,
 			break;
 		}
 
-		if (smps_mode != sta->sta.smps_mode)
+		if (smps_mode != link_sta->pub->smps_mode)
 			changed = true;
-		sta->sta.smps_mode = smps_mode;
+		link_sta->pub->smps_mode = smps_mode;
 	} else {
-		sta->sta.smps_mode = IEEE80211_SMPS_OFF;
+		link_sta->pub->smps_mode = IEEE80211_SMPS_OFF;
 	}
+
 	return changed;
 }
 
@@ -539,35 +552,27 @@ int ieee80211_send_smps_action(struct ieee80211_sub_if_data *sdata,
 	return 0;
 }
 
-void ieee80211_request_smps_mgd_work(struct work_struct *work)
-{
-	struct ieee80211_link_data *link =
-		container_of(work, struct ieee80211_link_data,
-			     u.mgd.request_smps_work);
-
-	sdata_lock(link->sdata);
-	__ieee80211_request_smps_mgd(link->sdata, link->link_id,
-				     link->u.mgd.driver_smps_mode);
-	sdata_unlock(link->sdata);
-}
-
 void ieee80211_request_smps(struct ieee80211_vif *vif, unsigned int link_id,
 			    enum ieee80211_smps_mode smps_mode)
 {
 	struct ieee80211_sub_if_data *sdata = vif_to_sdata(vif);
-	struct ieee80211_link_data *link = sdata->link[link_id];
+	struct ieee80211_link_data *link;
 
 	if (WARN_ON_ONCE(vif->type != NL80211_IFTYPE_STATION))
 		return;
 
+	rcu_read_lock();
+	link = rcu_dereference(sdata->link[link_id]);
 	if (WARN_ON(!link))
-		return;
+		goto out;
 
 	if (link->u.mgd.driver_smps_mode == smps_mode)
-		return;
+		goto out;
 
 	link->u.mgd.driver_smps_mode = smps_mode;
 	ieee80211_queue_work(&sdata->local->hw, &link->u.mgd.request_smps_work);
+out:
+	rcu_read_unlock();
 }
 /* this might change ... don't want non-open drivers using it */
 EXPORT_SYMBOL_GPL(ieee80211_request_smps);

@@ -24,13 +24,21 @@ DECLARE_EVENT_CLASS(mac80211_msg_event,
 	TP_ARGS(vaf),
 
 	TP_STRUCT__entry(
+#if LINUX_VERSION_IS_GEQ(6,0,0)
+		__vstring(msg, vaf->fmt, vaf->va)
+#else
 		__dynamic_array(char, msg, MAX_MSG_LEN)
+#endif
 	),
 
 	TP_fast_assign(
+#if LINUX_VERSION_IS_GEQ(6,0,0)
+		__assign_vstr(msg, vaf->fmt, vaf->va);
+#else
 		WARN_ON_ONCE(vsnprintf(__get_dynamic_array(msg),
 				       MAX_MSG_LEN, vaf->fmt,
 				       *vaf->va) >= MAX_MSG_LEN);
+#endif
 	),
 
 	TP_printk("%s", __get_str(msg))

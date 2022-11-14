@@ -187,7 +187,7 @@ static u32 iwl_mvm_tx_csum(struct iwl_mvm *mvm, struct sk_buff *skb,
 	if (mvm->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_BZ ||
 	    (mvm->trans->trans_cfg->device_family == IWL_DEVICE_FAMILY_BZ &&
 	     CSR_HW_REV_TYPE(mvm->trans->hw_rev) == IWL_CFG_MAC_TYPE_GL &&
-	     mvm->trans->hw_rev_step == SILICON_A_STEP))
+	     mvm->trans->hw_rev_step <= SILICON_B_STEP))
 		return iwl_mvm_tx_csum_pre_bz(mvm, skb, info, amsdu);
 	return iwl_mvm_tx_csum_bz(mvm, skb, amsdu);
 }
@@ -332,26 +332,29 @@ static u32 iwl_mvm_get_tx_rate(struct iwl_mvm *mvm,
 			  sta ? iwl_mvm_sta_from_mac80211(sta)->sta_state : -1);
 
 		rate_idx = info->control.rates[0].idx;
+
+		/*
+		 * For non 2 GHZ band, remap mac80211 rate ndices into driver
+		 * indices.
+		 */
+		if (info->band != NL80211_BAND_2GHZ ||
+		    (info->flags & IEEE80211_TX_CTL_NO_CCK_RATE))
+			rate_idx += IWL_FIRST_OFDM_RATE;
+
+		/* For 2.4 GHZ band, check that there is no need to remap */
+		BUILD_BUG_ON(IWL_FIRST_CCK_RATE != 0);
+
+#ifdef CPTCFG_IWLWIFI_FORCE_OFDM_RATE
+		/* Force OFDM on each TX packet */
+		rate_idx = IWL_FIRST_OFDM_RATE;
+#endif
 	}
 
 	/* if the rate isn't a well known legacy rate, take the lowest one */
 	if (rate_idx < 0 || rate_idx >= IWL_RATE_COUNT_LEGACY)
-		rate_idx = rate_lowest_index(
-				&mvm->nvm_data->bands[info->band], sta);
-
-	/*
-	 * For non 2 GHZ band, remap mac80211 rate
-	 * indices into driver indices
-	 */
-	if (info->band != NL80211_BAND_2GHZ)
-		rate_idx += IWL_FIRST_OFDM_RATE;
-#ifdef CPTCFG_IWLWIFI_FORCE_OFDM_RATE
-	/* Force OFDM on each TX packet */
-	rate_idx = IWL_FIRST_OFDM_RATE;
-#endif
-
-	/* For 2.4 GHZ band, check that there is no need to remap */
-	BUILD_BUG_ON(IWL_FIRST_CCK_RATE != 0);
+		rate_idx = iwl_mvm_mac_ctxt_get_lowest_rate(mvm,
+							    info,
+							    info->control.vif);
 
 	/* Get PLCP rate for tx_cmd->rate_n_flags */
 	rate_plcp = iwl_mvm_mac80211_idx_to_hwrate(mvm->fw, rate_idx);
@@ -641,7 +644,7 @@ static int iwl_mvm_get_ctrl_vif_queue(struct iwl_mvm *mvm,
 
 		if (!ieee80211_has_order(fc) && !ieee80211_is_probe_req(fc) &&
 		    is_multicast_ether_addr(hdr->addr1))
-			return mvmvif->cab_queue;
+			return mvmvif->deflink.cab_queue;
 
 		WARN_ONCE(info->control.vif->type != NL80211_IFTYPE_ADHOC,
 			  "fc=0x%02x", le16_to_cpu(fc));
@@ -678,7 +681,7 @@ static void iwl_mvm_probe_resp_set_noa(struct iwl_mvm *mvm,
 
 	rcu_read_lock();
 
-	resp_data = rcu_dereference(mvmvif->probe_resp_data);
+	resp_data = rcu_dereference(mvmvif->deflink.probe_resp_data);
 	if (!resp_data)
 		goto out;
 
@@ -749,10 +752,23 @@ int iwl_mvm_tx_skb_non_sta(struct iwl_mvm *mvm, struct sk_buff *skb)
 		if (info.control.vif->type == NL80211_IFTYPE_P2P_DEVICE ||
 		    info.control.vif->type == NL80211_IFTYPE_AP ||
 		    info.control.vif->type == NL80211_IFTYPE_ADHOC) {
+			u32 link_id = u32_get_bits(info.control.flags,
+						   IEEE80211_TX_CTRL_MLO_LINK);
+			struct iwl_mvm_vif_link_info *link;
+
+			if (link_id == IEEE80211_LINK_UNSPECIFIED) {
+				if (info.control.vif->valid_links)
+					link_id = ffs(info.control.vif->valid_links) - 1;
+				else
+					link_id = 0;
+			}
+
+			link = mvmvif->link[link_id];
+
 			if (!ieee80211_is_data(hdr->frame_control))
-				sta_id = mvmvif->bcast_sta.sta_id;
+				sta_id = link->bcast_sta.sta_id;
 			else
-				sta_id = mvmvif->mcast_sta.sta_id;
+				sta_id = link->mcast_sta.sta_id;
 
 			queue = iwl_mvm_get_ctrl_vif_queue(mvm, &info, hdr);
 		} else if (info.control.vif->type == NL80211_IFTYPE_MONITOR) {
@@ -940,7 +956,7 @@ static int iwl_mvm_tx_tso(struct iwl_mvm *mvm, struct sk_buff *skb,
 	 * Take the min of ieee80211 station and mvm station
 	 */
 	max_amsdu_len =
-		min_t(unsigned int, sta->max_amsdu_len,
+		min_t(unsigned int, sta->cur->max_amsdu_len,
 		      iwl_mvm_max_amsdu_size(mvm, sta, tid));
 
 	/*
@@ -1094,7 +1110,7 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 	if (WARN_ON_ONCE(!mvmsta))
 		return -1;
 
-	if (WARN_ON_ONCE(mvmsta->sta_id == IWL_MVM_INVALID_STA))
+	if (WARN_ON_ONCE(mvmsta->deflink.sta_id == IWL_MVM_INVALID_STA))
 		return -1;
 
 	if (unlikely(ieee80211_is_any_nullfunc(fc)) && sta->deflink.he_cap.has_he)
@@ -1104,7 +1120,7 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 		iwl_mvm_probe_resp_set_noa(mvm, skb);
 
 	dev_cmd = iwl_mvm_set_tx_params(mvm, skb, info, hdrlen,
-					sta, mvmsta->sta_id);
+					sta, mvmsta->deflink.sta_id);
 	if (!dev_cmd)
 		goto drop;
 
@@ -1180,7 +1196,7 @@ static int iwl_mvm_tx_mpdu(struct iwl_mvm *mvm, struct sk_buff *skb,
 	}
 
 	IWL_DEBUG_TX(mvm, "TX to [%d|%d] Q:%d - seq: 0x%x len %d\n",
-		     mvmsta->sta_id, tid, txq_id,
+		     mvmsta->deflink.sta_id, tid, txq_id,
 		     IEEE80211_SEQ_TO_SN(seq_number), skb->len);
 
 	/* From now on, we cannot access info->control */
@@ -1215,7 +1231,8 @@ drop_unlock_sta:
 	iwl_trans_free_tx_cmd(mvm->trans, dev_cmd);
 	spin_unlock(&mvmsta->lock);
 drop:
-	IWL_DEBUG_TX(mvm, "TX to [%d|%d] dropped\n", mvmsta->sta_id, tid);
+	IWL_DEBUG_TX(mvm, "TX to [%d|%d] dropped\n", mvmsta->deflink.sta_id,
+		     tid);
 	return -1;
 }
 
@@ -1231,7 +1248,7 @@ int iwl_mvm_tx_skb_sta(struct iwl_mvm *mvm, struct sk_buff *skb,
 	if (WARN_ON_ONCE(!mvmsta))
 		return -1;
 
-	if (WARN_ON_ONCE(mvmsta->sta_id == IWL_MVM_INVALID_STA))
+	if (WARN_ON_ONCE(mvmsta->deflink.sta_id == IWL_MVM_INVALID_STA))
 		return -1;
 
 	memcpy(&info, skb->cb, sizeof(info));
@@ -1251,8 +1268,7 @@ int iwl_mvm_tx_skb_sta(struct iwl_mvm *mvm, struct sk_buff *skb,
 	if (ret)
 		return ret;
 
-	if (WARN_ON(skb_queue_empty(&mpdus_skbs)))
-		return ret;
+	WARN_ON(skb_queue_empty(&mpdus_skbs));
 
 	while (!skb_queue_empty(&mpdus_skbs)) {
 		skb = __skb_dequeue(&mpdus_skbs);
@@ -1989,9 +2005,11 @@ static void iwl_mvm_tx_reclaim(struct iwl_mvm *mvm, int sta_id, int tid,
 	 * possible (i.e. first MPDU in the aggregation wasn't acked)
 	 * Still it's important to update RS about sent vs. acked.
 	 */
-	if (!is_flush && skb_queue_empty(&reclaimed_skbs)) {
+	if (!is_flush && skb_queue_empty(&reclaimed_skbs) &&
+	    !iwl_mvm_has_tlc_offload(mvm)) {
 		struct ieee80211_chanctx_conf *chanctx_conf = NULL;
 
+		/* no TLC offload, so non-MLD mode */
 		if (mvmsta->vif)
 			chanctx_conf =
 				rcu_dereference(mvmsta->vif->bss_conf.chanctx_conf);
@@ -2002,11 +2020,8 @@ static void iwl_mvm_tx_reclaim(struct iwl_mvm *mvm, int sta_id, int tid,
 		tx_info->band = chanctx_conf->def.chan->band;
 		iwl_mvm_hwrate_to_tx_status(mvm->fw, rate, tx_info);
 
-		if (!iwl_mvm_has_tlc_offload(mvm)) {
-			IWL_DEBUG_TX_REPLY(mvm,
-					   "No reclaim. Update rs directly\n");
-			iwl_mvm_rs_tx_status(mvm, sta, tid, tx_info, false);
-		}
+		IWL_DEBUG_TX_REPLY(mvm, "No reclaim. Update rs directly\n");
+		iwl_mvm_rs_tx_status(mvm, sta, tid, tx_info, false);
 	}
 
 out:
@@ -2244,17 +2259,22 @@ free_rsp:
 
 int iwl_mvm_flush_sta(struct iwl_mvm *mvm, void *sta, bool internal)
 {
-	struct iwl_mvm_int_sta *int_sta = sta;
-	struct iwl_mvm_sta *mvm_sta = sta;
+	u32 sta_id, tfd_queue_msk;
 
-	BUILD_BUG_ON(offsetof(struct iwl_mvm_int_sta, sta_id) !=
-		     offsetof(struct iwl_mvm_sta, sta_id));
+	if (internal) {
+		struct iwl_mvm_int_sta *int_sta = sta;
+
+		sta_id = int_sta->sta_id;
+		tfd_queue_msk = int_sta->tfd_queue_msk;
+	} else {
+		struct iwl_mvm_sta *mvm_sta = sta;
+
+		sta_id = mvm_sta->deflink.sta_id;
+		tfd_queue_msk = mvm_sta->tfd_queue_msk;
+	}
 
 	if (iwl_mvm_has_new_tx_api(mvm))
-		return iwl_mvm_flush_sta_tids(mvm, mvm_sta->sta_id, 0xffff);
+		return iwl_mvm_flush_sta_tids(mvm, sta_id, 0xffff);
 
-	if (internal)
-		return iwl_mvm_flush_tx_path(mvm, int_sta->tfd_queue_msk);
-
-	return iwl_mvm_flush_tx_path(mvm, mvm_sta->tfd_queue_msk);
+	return iwl_mvm_flush_tx_path(mvm, tfd_queue_msk);
 }

@@ -6,11 +6,12 @@ let
   GCC_BASE = "${stdenv.cc.cc}/lib/gcc/${stdenv.hostPlatform.uname.processor}-unknown-linux-gnu/${stdenv.cc.cc.version}";
 in multiStdenv.mkDerivation rec {
   pname = "sparse";
-  version = "0.6.4";
+  version = "git+ce1a6720";
 
-  src = fetchurl {
-    url = "mirror://kernel/software/devel/sparse/dist/${pname}-${version}.tar.xz";
-    sha256 = "0z1qds52144nvsdnl82r3zs3vax618v920jmffyyssmwj54qpcka";
+  src = fetchGit {
+    name = "sparse-ce1a6720";
+    url = "https://git.kernel.org/pub/scm/devel/sparse/sparse.git";
+    rev = "ce1a6720f69e6233ec9abd4e9aae5945e05fda41";
   };
 
   enableParallelBuilding = true;

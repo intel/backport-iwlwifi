@@ -293,7 +293,7 @@ static void ieee80211_tdls_add_wmm_param_ie(struct ieee80211_sub_if_data *sdata,
 	 * doesn't support it, as mandated by 802.11-2012 section 10.22.4
 	 */
 	for (i = 0; i < IEEE80211_NUM_ACS; i++) {
-		txq = &sdata->tx_conf[ieee80211_ac_from_wmm(i)];
+		txq = &sdata->deflink.tx_conf[ieee80211_ac_from_wmm(i)];
 		wmm->ac[i].aci_aifsn = ieee80211_wmm_aci_aifsn(txq->aifs,
 							       txq->acm, i);
 		wmm->ac[i].cw = ieee80211_wmm_ecw(txq->cw_min, txq->cw_max);
@@ -308,7 +308,8 @@ ieee80211_tdls_chandef_vht_upgrade(struct ieee80211_sub_if_data *sdata,
 	/* IEEE802.11ac-2013 Table E-4 */
 	u16 centers_80mhz[] = { 5210, 5290, 5530, 5610, 5690, 5775 };
 	struct cfg80211_chan_def uc = sta->tdls_chandef;
-	enum nl80211_chan_width max_width = ieee80211_sta_cap_chan_bw(sta, 0);
+	enum nl80211_chan_width max_width =
+		ieee80211_sta_cap_chan_bw(&sta->deflink);
 	int i;
 
 	/* only support upgrading non-narrow channels up to 80Mhz */
@@ -1053,7 +1054,8 @@ ieee80211_tdls_prep_mgmt_packet(struct wiphy *wiphy, struct net_device *dev,
 
 	/* disable bottom halves when entering the Tx path */
 	local_bh_disable();
-	__ieee80211_subif_start_xmit(skb, dev, flags, 0, NULL);
+	__ieee80211_subif_start_xmit(skb, dev, flags,
+				     IEEE80211_TX_CTRL_MLO_LINK_UNSPEC, NULL);
 	local_bh_enable();
 
 	return ret;
@@ -1268,7 +1270,7 @@ static void iee80211_tdls_recalc_chanctx(struct ieee80211_sub_if_data *sdata,
 			enum ieee80211_sta_rx_bandwidth bw;
 
 			bw = ieee80211_chan_width_to_rx_bw(conf->def.width);
-			bw = min(bw, ieee80211_sta_cap_rx_bw(sta, 0));
+			bw = min(bw, ieee80211_sta_cap_rx_bw(&sta->deflink));
 			if (bw != sta->sta.deflink.bandwidth) {
 				sta->sta.deflink.bandwidth = bw;
 				rate_control_rate_update(local, sband, sta, 0,
@@ -1310,7 +1312,6 @@ static void
 iee80211_tdls_recalc_ht_protection(struct ieee80211_sub_if_data *sdata,
 				   struct sta_info *sta)
 {
-	struct ieee80211_if_managed *ifmgd = &sdata->u.mgd;
 	bool tdls_ht;
 	u16 protection = IEEE80211_HT_OP_MODE_PROTECTION_NONHT_MIXED |
 			 IEEE80211_HT_OP_MODE_NON_GF_STA_PRSNT |
@@ -1318,7 +1319,7 @@ iee80211_tdls_recalc_ht_protection(struct ieee80211_sub_if_data *sdata,
 	u16 opmode;
 
 	/* Nothing to do if the BSS connection uses HT */
-	if (!(ifmgd->flags & IEEE80211_STA_DISABLE_HT))
+	if (!(sdata->deflink.u.mgd.conn_flags & IEEE80211_CONN_DISABLE_HT))
 		return;
 
 	tdls_ht = (sta && sta->sta.deflink.ht_cap.ht_supported) ||
@@ -1335,7 +1336,8 @@ iee80211_tdls_recalc_ht_protection(struct ieee80211_sub_if_data *sdata,
 		return;
 
 	sdata->vif.bss_conf.ht_operation_mode = opmode;
-	ieee80211_link_info_change_notify(sdata, 0, BSS_CHANGED_HT);
+	ieee80211_link_info_change_notify(sdata, &sdata->deflink,
+					  BSS_CHANGED_HT);
 }
 
 int ieee80211_tdls_oper(struct wiphy *wiphy, struct net_device *dev,
@@ -1719,7 +1721,7 @@ ieee80211_process_tdls_channel_switch_resp(struct ieee80211_sub_if_data *sdata,
 	}
 
 	elems = ieee802_11_parse_elems(tf->u.chan_switch_resp.variable,
-				       skb->len - baselen, false, NULL, NULL);
+				       skb->len - baselen, false, NULL);
 	if (!elems) {
 		ret = -ENOMEM;
 		goto out;
@@ -1837,7 +1839,7 @@ ieee80211_process_tdls_channel_switch_req(struct ieee80211_sub_if_data *sdata,
 	}
 
 	elems = ieee802_11_parse_elems(tf->u.chan_switch_req.variable,
-				       skb->len - baselen, false, NULL, NULL);
+				       skb->len - baselen, false, NULL);
 	if (!elems)
 		return -ENOMEM;
 

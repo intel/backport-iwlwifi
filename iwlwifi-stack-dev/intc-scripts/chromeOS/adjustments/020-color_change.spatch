@@ -21,10 +21,10 @@ fn(...)
 +#endif
 
 @@
-expression sdata, resp, resp_len, csa, c;
+expression sdata, resp, resp_len, csa, c, link;
 @@
 +#if CFG80211_VERSION >= KERNEL_VERSION(5,15,0)
-ieee80211_set_probe_resp(sdata, resp, resp_len, csa, c);
+ieee80211_set_probe_resp(sdata, resp, resp_len, csa, c, link);
 +#else
 +ieee80211_set_probe_resp(sdata, resp, resp_len, csa);
 +#endif

@@ -44,6 +44,7 @@ struct mei_cl_device {
 	u32 rx_msg_end;
 	struct work_struct rx_work;
 	mei_cldev_cb_t rx_cb;
+	void *dma_addr;
 	void *priv_data;
 };
 

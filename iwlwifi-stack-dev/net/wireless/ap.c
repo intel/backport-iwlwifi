@@ -57,7 +57,7 @@ int __cfg80211_stop_ap(struct cfg80211_registered_device *rdev,
 		       bool notify)
 {
 	unsigned int link;
-	int ret;
+	int ret = 0;
 
 	if (link_id >= 0)
 		return ___cfg80211_stop_ap(rdev, dev, link_id, notify);

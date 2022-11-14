@@ -104,6 +104,7 @@ def _filter_message(msg):
     # - give it an appropriate prefix
     subj = subj.strip()
     subj = re.sub(r'\s*\[[^\]\[]*\]\s*', '', subj)
+    subj = re.sub(r'^wifi:\s*', '', subj)
     subj = re.sub(r'^iwlwifi:\s*', '', subj)
     subj = 'CHROMIUM: iwl7000: ' + subj
 

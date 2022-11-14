@@ -206,6 +206,7 @@ EXPORT_SYMBOL_GPL(_mei_cldev_register_rx_cb);
 
 int _mei_cldev_dma_unmap(struct mei_cl_device *cldev)
 {
+	kfree(cldev->dma_addr);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(_mei_cldev_dma_unmap);
@@ -213,7 +214,6 @@ EXPORT_SYMBOL_GPL(_mei_cldev_dma_unmap);
 void *_mei_cldev_dma_map(struct mei_cl_device *cldev,
 			 u8 buffer_id, size_t size)
 {
-	void *addr = NULL;
 	int fd;
 	struct {
 		u32 size;
@@ -221,14 +221,14 @@ void *_mei_cldev_dma_map(struct mei_cl_device *cldev,
 	} __packed fd_msg;
 	int ret;
 
-	addr = kmalloc(size, GFP_KERNEL);
-	if (!addr)
+	cldev->dma_addr = kmalloc(size, GFP_KERNEL);
+	if (!cldev->dma_addr)
 		return NULL;
 
-	fd = phys_mapping(to_phys(addr), &fd_msg.offset);
+	fd = phys_mapping(virt_to_phys(cldev->dma_addr), &fd_msg.offset);
 	if (fd < 0) {
 		pr_err("mei: failed to allocate DMA mem\n");
-		kfree(addr);
+		kfree(cldev->dma_addr);
 		return NULL;
 	}
 
@@ -236,11 +236,11 @@ void *_mei_cldev_dma_map(struct mei_cl_device *cldev,
 
 	ret = __mei_cldev_send(cldev, (void *)&fd_msg, sizeof(fd_msg), &fd, 1);
 	if (ret < (int)sizeof(fd_msg)) {
-		kfree(addr);
+		kfree(cldev->dma_addr);
 		return NULL;
 	}
 
-	return addr;
+	return cldev->dma_addr;
 }
 EXPORT_SYMBOL_GPL(_mei_cldev_dma_map);
 
@@ -351,6 +351,7 @@ static void __exit mei_sim_bus_exit(void)
 		cancel_work_sync(&mei_sim_dev->rx_work);
 		os_close_file(mei_sim_dev->sock_fd);
 		os_close_file(mei_sim_dev->event_fd);
+		device_unregister(&mei_sim_dev->dev);
 		kfree(mei_sim_dev);
 	}
 
@@ -364,6 +365,15 @@ static int mei_sim_probe(struct device *dev)
 	struct mei_cl_device *cldev = container_of(dev, struct mei_cl_device, dev);
 
 	return mei_sim_driver->probe(cldev, mei_sim_driver->id_table);
+}
+
+static int mei_sim_remove(struct device *dev)
+{
+	struct mei_cl_device *cldev = container_of(dev, struct mei_cl_device, dev);
+
+	if (mei_sim_driver)
+		mei_sim_driver->remove(cldev);
+	return 0;
 }
 
 int mei_sim_driver_register(struct mei_cl_driver *cldrv)
@@ -380,6 +390,7 @@ int mei_sim_driver_register(struct mei_cl_driver *cldrv)
 	cldrv->driver.name = cldrv->name;
 	cldrv->driver.bus = &mei_sim_bus;
 	cldrv->driver.probe = mei_sim_probe;
+	cldrv->driver.remove = mei_sim_remove;
 	err = driver_register(&cldrv->driver);
 	return err;
 }

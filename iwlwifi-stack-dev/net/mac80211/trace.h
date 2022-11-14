@@ -413,6 +413,7 @@ TRACE_EVENT(drv_vif_cfg_changed,
 		__dynamic_array(u8, ssid, sdata->vif.cfg.ssid_len)
 		__field(int, s1g)
 		__field(bool, idle)
+		__field(bool, ps)
 	),
 
 	TP_fast_assign(
@@ -423,6 +424,7 @@ TRACE_EVENT(drv_vif_cfg_changed,
 		__entry->assoc = sdata->vif.cfg.assoc;
 		__entry->ibss_joined = sdata->vif.cfg.ibss_joined;
 		__entry->ibss_creator = sdata->vif.cfg.ibss_creator;
+		__entry->ps = sdata->vif.cfg.ps;
 
 		__entry->arp_addr_cnt = sdata->vif.cfg.arp_addr_cnt;
 		memcpy(__get_dynamic_array(arp_addr_list),
@@ -446,9 +448,10 @@ TRACE_EVENT(drv_vif_cfg_changed,
 TRACE_EVENT(drv_link_info_changed,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
-		 int link_id, u64 changed),
+		 struct ieee80211_bss_conf *link_conf,
+		 u64 changed),
 
-	TP_ARGS(local, sdata, link_id, changed),
+	TP_ARGS(local, sdata, link_conf, changed),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
@@ -474,19 +477,16 @@ TRACE_EVENT(drv_link_info_changed,
 		__field(u32, channel_cfreq1)
 		__field(u32, channel_cfreq1_offset)
 		__field(bool, qos)
-		__field(bool, ps)
 		__field(bool, hidden_ssid)
 		__field(int, txpower)
 		__field(u8, p2p_oppps_ctwindow)
 	),
 
 	TP_fast_assign(
-		struct ieee80211_bss_conf *link_conf = sdata->vif.link_conf[link_id];
-
 		LOCAL_ASSIGN;
 		VIF_ASSIGN;
 		__entry->changed = changed;
-		__entry->link_id = link_id;
+		__entry->link_id = link_conf->link_id;
 		__entry->shortpre = link_conf->use_short_preamble;
 		__entry->cts = link_conf->use_cts_prot;
 		__entry->shortslot = link_conf->use_short_slot;
@@ -507,7 +507,6 @@ TRACE_EVENT(drv_link_info_changed,
 		__entry->channel_cfreq1 = link_conf->chandef.center_freq1;
 		__entry->channel_cfreq1_offset = link_conf->chandef.freq1_offset;
 		__entry->qos = link_conf->qos;
-		__entry->ps = link_conf->ps;
 		__entry->hidden_ssid = link_conf->hidden_ssid;
 		__entry->txpower = link_conf->txpower;
 		__entry->p2p_oppps_ctwindow = link_conf->p2p_noa_attr.oppps_ctwindow;
@@ -1004,13 +1003,15 @@ DEFINE_EVENT(sta_event, drv_sta_rate_tbl_update,
 TRACE_EVENT(drv_conf_tx,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
+		 unsigned int link_id,
 		 u16 ac, const struct ieee80211_tx_queue_params *params),
 
-	TP_ARGS(local, sdata, ac, params),
+	TP_ARGS(local, sdata, link_id, ac, params),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
 		VIF_ENTRY
+		__field(unsigned int, link_id)
 		__field(u16, ac)
 		__field(u16, txop)
 		__field(u16, cw_min)
@@ -1022,6 +1023,7 @@ TRACE_EVENT(drv_conf_tx,
 	TP_fast_assign(
 		LOCAL_ASSIGN;
 		VIF_ASSIGN;
+		__entry->link_id = link_id;
 		__entry->ac = ac;
 		__entry->txop = params->txop;
 		__entry->cw_max = params->cw_max;
@@ -1031,8 +1033,8 @@ TRACE_EVENT(drv_conf_tx,
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT  VIF_PR_FMT  " AC:%d",
-		LOCAL_PR_ARG, VIF_PR_ARG, __entry->ac
+		LOCAL_PR_FMT  VIF_PR_FMT  " link_id: %d, AC:%d",
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->link_id, __entry->ac
 	)
 );
 
@@ -1667,7 +1669,7 @@ TRACE_EVENT(drv_switch_vif_chanctx,
 
 				SWITCH_ENTRY_ASSIGN(vif.vif_type, vif->type);
 				SWITCH_ENTRY_ASSIGN(vif.p2p, vif->p2p);
-				SWITCH_ENTRY_ASSIGN(link_id, link_id);
+				SWITCH_ENTRY_ASSIGN(link_id, link_conf->link_id);
 				strncpy(local_vifs[i].vif.vif_name,
 					sdata->name,
 					sizeof(local_vifs[i].vif.vif_name));
@@ -1708,10 +1710,10 @@ TRACE_EVENT(drv_switch_vif_chanctx,
 DECLARE_EVENT_CLASS(local_sdata_chanctx,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
-		 unsigned int link_id,
+		 struct ieee80211_bss_conf *link_conf,
 		 struct ieee80211_chanctx *ctx),
 
-	TP_ARGS(local, sdata, link_id, ctx),
+	TP_ARGS(local, sdata, link_conf, ctx),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
@@ -1724,7 +1726,7 @@ DECLARE_EVENT_CLASS(local_sdata_chanctx,
 		LOCAL_ASSIGN;
 		VIF_ASSIGN;
 		CHANCTX_ASSIGN;
-		__entry->link_id = link_id;
+		__entry->link_id = link_conf->link_id;
 	),
 
 	TP_printk(
@@ -1736,29 +1738,30 @@ DECLARE_EVENT_CLASS(local_sdata_chanctx,
 DEFINE_EVENT(local_sdata_chanctx, drv_assign_vif_chanctx,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
-		 unsigned int link_id,
+		 struct ieee80211_bss_conf *link_conf,
 		 struct ieee80211_chanctx *ctx),
-	TP_ARGS(local, sdata, link_id, ctx)
+	TP_ARGS(local, sdata, link_conf, ctx)
 );
 
 DEFINE_EVENT(local_sdata_chanctx, drv_unassign_vif_chanctx,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
-		 unsigned int link_id,
+		 struct ieee80211_bss_conf *link_conf,
 		 struct ieee80211_chanctx *ctx),
-	TP_ARGS(local, sdata, link_id, ctx)
+	TP_ARGS(local, sdata, link_conf, ctx)
 );
 
 TRACE_EVENT(drv_start_ap,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
-		 struct ieee80211_bss_conf *info),
+		 struct ieee80211_bss_conf *link_conf),
 
-	TP_ARGS(local, sdata, info),
+	TP_ARGS(local, sdata, link_conf),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
 		VIF_ENTRY
+		__field(u32, link_id)
 		__field(u8, dtimper)
 		__field(u16, bcnint)
 		__dynamic_array(u8, ssid, sdata->vif.cfg.ssid_len)
@@ -1768,24 +1771,44 @@ TRACE_EVENT(drv_start_ap,
 	TP_fast_assign(
 		LOCAL_ASSIGN;
 		VIF_ASSIGN;
-		__entry->dtimper = info->dtim_period;
-		__entry->bcnint = info->beacon_int;
+		__entry->link_id = link_conf->link_id;
+		__entry->dtimper = link_conf->dtim_period;
+		__entry->bcnint = link_conf->beacon_int;
+		__entry->hidden_ssid = link_conf->hidden_ssid;
 		memcpy(__get_dynamic_array(ssid),
 		       sdata->vif.cfg.ssid,
 		       sdata->vif.cfg.ssid_len);
-		__entry->hidden_ssid = info->hidden_ssid;
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT  VIF_PR_FMT,
-		LOCAL_PR_ARG, VIF_PR_ARG
+		LOCAL_PR_FMT  VIF_PR_FMT " link id %u",
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->link_id
 	)
 );
 
-DEFINE_EVENT(local_sdata_evt, drv_stop_ap,
+TRACE_EVENT(drv_stop_ap,
 	TP_PROTO(struct ieee80211_local *local,
-		 struct ieee80211_sub_if_data *sdata),
-	TP_ARGS(local, sdata)
+		 struct ieee80211_sub_if_data *sdata,
+		 struct ieee80211_bss_conf *link_conf),
+
+	TP_ARGS(local, sdata, link_conf),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		__field(u32, link_id)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		__entry->link_id = link_conf->link_id;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT  VIF_PR_FMT " link id %u",
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->link_id
+	)
 );
 
 TRACE_EVENT(drv_reconfig_complete,
@@ -2453,6 +2476,64 @@ DEFINE_EVENT(sta_event, drv_net_fill_forward_path,
 		 struct ieee80211_sub_if_data *sdata,
 		 struct ieee80211_sta *sta),
 	TP_ARGS(local, sdata, sta)
+);
+
+TRACE_EVENT(drv_change_vif_links,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 u16 old_links, u16 new_links),
+
+	TP_ARGS(local, sdata, old_links, new_links),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		__field(u16, old_links)
+		__field(u16, new_links)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		__entry->old_links = old_links;
+		__entry->new_links = new_links;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT VIF_PR_FMT " old_links:0x%04x, new_links:0x%04x\n",
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->old_links, __entry->new_links
+	)
+);
+
+TRACE_EVENT(drv_change_sta_links,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 struct ieee80211_sta *sta,
+		 u16 old_links, u16 new_links),
+
+	TP_ARGS(local, sdata, sta, old_links, new_links),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		STA_ENTRY
+		__field(u16, old_links)
+		__field(u16, new_links)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		STA_ASSIGN;
+		__entry->old_links = old_links;
+		__entry->new_links = new_links;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT VIF_PR_FMT STA_PR_FMT " old_links:0x%04x, new_links:0x%04x\n",
+		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG,
+		__entry->old_links, __entry->new_links
+	)
 );
 
 /*

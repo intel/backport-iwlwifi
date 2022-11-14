@@ -175,7 +175,8 @@ int ieee80211_hw_config(struct ieee80211_local *local, u32 changed)
 		changed |= ieee80211_hw_conf_chan(local);
 	else
 		changed &= ~(IEEE80211_CONF_CHANGE_CHANNEL |
-			     IEEE80211_CONF_CHANGE_POWER);
+			     IEEE80211_CONF_CHANGE_POWER |
+			     IEEE80211_CONF_CHANGE_SMPS);
 
 	if (changed && local->open_count) {
 		ret = drv_config(local, changed);
@@ -201,6 +202,7 @@ int ieee80211_hw_config(struct ieee80211_local *local, u32 changed)
 
 #define BSS_CHANGED_VIF_CFG_FLAGS (BSS_CHANGED_ASSOC |\
 				   BSS_CHANGED_IDLE |\
+				   BSS_CHANGED_PS |\
 				   BSS_CHANGED_IBSS |\
 				   BSS_CHANGED_ARP_FILTER |\
 				   BSS_CHANGED_SSID)
@@ -234,17 +236,22 @@ void ieee80211_bss_info_change_notify(struct ieee80211_sub_if_data *sdata,
 		return;
 
 	if (changed & BSS_CHANGED_VIF_CFG_FLAGS) {
+		u64 ch = changed & BSS_CHANGED_VIF_CFG_FLAGS;
+
 		trace_drv_vif_cfg_changed(local, sdata, changed);
 		if (local->ops->vif_cfg_changed)
-			local->ops->vif_cfg_changed(&local->hw, &sdata->vif, changed);
+			local->ops->vif_cfg_changed(&local->hw, &sdata->vif, ch);
 	}
 
 	if (changed & ~BSS_CHANGED_VIF_CFG_FLAGS) {
+		u64 ch = changed & ~BSS_CHANGED_VIF_CFG_FLAGS;
+
 		/* FIXME: should be for each link */
-		trace_drv_link_info_changed(local, sdata, 0, changed);
+		trace_drv_link_info_changed(local, sdata, &sdata->vif.bss_conf,
+					    changed);
 		if (local->ops->link_info_changed)
 			local->ops->link_info_changed(&local->hw, &sdata->vif,
-						      0, changed);
+						      &sdata->vif.bss_conf, ch);
 	}
 
 	if (local->ops->bss_info_changed)
@@ -267,7 +274,8 @@ void ieee80211_vif_cfg_change_notify(struct ieee80211_sub_if_data *sdata,
 }
 
 void ieee80211_link_info_change_notify(struct ieee80211_sub_if_data *sdata,
-				       int link_id, u64 changed)
+				       struct ieee80211_link_data *link,
+				       u64 changed)
 {
 	struct ieee80211_local *local = sdata->local;
 
@@ -276,7 +284,10 @@ void ieee80211_link_info_change_notify(struct ieee80211_sub_if_data *sdata,
 	if (!changed || sdata->vif.type == NL80211_IFTYPE_AP_VLAN)
 		return;
 
-	drv_link_info_changed(local, sdata, link_id, changed);
+	if (!check_sdata_in_driver(sdata))
+		return;
+
+	drv_link_info_changed(local, sdata, link->conf, link->link_id, changed);
 }
 
 u32 ieee80211_reset_erp_info(struct ieee80211_sub_if_data *sdata)
@@ -779,14 +790,12 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 	spin_lock_init(&local->queue_stop_reason_lock);
 
 	for (i = 0; i < IEEE80211_NUM_ACS; i++) {
-		struct airtime_sched_info *air_sched = &local->airtime[i];
-
-		air_sched->active_txqs = RB_ROOT_CACHED;
-		INIT_LIST_HEAD(&air_sched->active_list);
-		spin_lock_init(&air_sched->lock);
-		air_sched->aql_txq_limit_low = IEEE80211_DEFAULT_AQL_TXQ_LIMIT_L;
-		air_sched->aql_txq_limit_high =
+		INIT_LIST_HEAD(&local->active_txqs[i]);
+		spin_lock_init(&local->active_txq_lock[i]);
+		local->aql_txq_limit_low[i] = IEEE80211_DEFAULT_AQL_TXQ_LIMIT_L;
+		local->aql_txq_limit_high[i] =
 			IEEE80211_DEFAULT_AQL_TXQ_LIMIT_H;
+		atomic_set(&local->aql_ac_pending_airtime[i], 0);
 	}
 
 	local->airtime_flags = AIRTIME_USE_TX | AIRTIME_USE_RX;
@@ -979,7 +988,8 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 			return -EINVAL;
 
 		if (WARN_ON(ieee80211_hw_check(hw, SUPPORTS_PS) &&
-			    !ieee80211_hw_check(hw, SUPPORTS_DYNAMIC_PS)))
+			    (!ieee80211_hw_check(hw, SUPPORTS_DYNAMIC_PS) ||
+			     ieee80211_hw_check(hw, PS_NULLFUNC_STACK))))
 			return -EINVAL;
 
 		if (WARN_ON(!ieee80211_hw_check(hw, MFP_CAPABLE)))
@@ -995,6 +1005,9 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 			return -EINVAL;
 
 		if (WARN_ON(!ieee80211_hw_check(hw, AP_LINK_PS)))
+			return -EINVAL;
+
+		if (WARN_ON(ieee80211_hw_check(hw, DEAUTH_NEED_MGD_TX_PREP)))
 			return -EINVAL;
 	}
 
