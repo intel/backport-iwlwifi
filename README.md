@@ -1,4 +1,4 @@
 # backport-iwlwifi
-intel wifi driver backport
+intel wifi driver backported
 
 
