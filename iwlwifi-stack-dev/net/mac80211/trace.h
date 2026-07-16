@@ -2,7 +2,7 @@
 /*
  * Portions of this file
  * Copyright(c) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018 - 2022 Intel Corporation
+ * Copyright (C) 2018-2024, 2026 Intel Corporation
  */
 
 #if !defined(__MAC80211_DRIVER_TRACE) || defined(TRACE_HEADER_MULTI_READ)
@@ -15,9 +15,15 @@
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM mac80211
 
+#if LINUX_VERSION_IS_GEQ(6,10,0)
+#define ASSIGN_VIF_STR	__assign_str(vif_name)
+#else
+#define ASSIGN_VIF_STR	__assign_str(vif_name, sdata->name)
+#endif
+
 #define MAXNAME		32
 #define LOCAL_ENTRY	__array(char, wiphy_name, 32)
-#define LOCAL_ASSIGN	strlcpy(__entry->wiphy_name, wiphy_name(local->hw.wiphy), MAXNAME)
+#define LOCAL_ASSIGN	strscpy(__entry->wiphy_name, wiphy_name(local->hw.wiphy), MAXNAME)
 #define LOCAL_PR_FMT	"%s"
 #define LOCAL_PR_ARG	__entry->wiphy_name
 
@@ -33,58 +39,69 @@
 			__string(vif_name, sdata->name)
 #define VIF_ASSIGN	__entry->vif_type = sdata->vif.type; __entry->sdata = sdata;	\
 			__entry->p2p = sdata->vif.p2p;					\
-			__assign_str(vif_name, sdata->name)
+			ASSIGN_VIF_STR
 #define VIF_PR_FMT	" vif:%s(%d%s)"
 #define VIF_PR_ARG	__get_str(vif_name), __entry->vif_type, __entry->p2p ? "/p2p" : ""
 
-#define CHANDEF_ENTRY	__field(u32, control_freq)					\
-			__field(u32, freq_offset)					\
-			__field(u32, chan_width)					\
-			__field(u32, center_freq1)					\
-			__field(u32, freq1_offset)					\
-			__field(u32, center_freq2)
-#define CHANDEF_ASSIGN(c)							\
-			__entry->control_freq = (c) ? ((c)->chan ? (c)->chan->center_freq : 0) : 0;	\
-			__entry->freq_offset = (c) ? ((c)->chan ? (c)->chan->freq_offset : 0) : 0;	\
-			__entry->chan_width = (c) ? (c)->width : 0;			\
-			__entry->center_freq1 = (c) ? (c)->center_freq1 : 0;		\
-			__entry->freq1_offset = (c) ? (c)->freq1_offset : 0;		\
-			__entry->center_freq2 = (c) ? (c)->center_freq2 : 0;
-#define CHANDEF_PR_FMT	" control:%d.%03d MHz width:%d center: %d.%03d/%d MHz"
-#define CHANDEF_PR_ARG	__entry->control_freq, __entry->freq_offset, __entry->chan_width, \
-			__entry->center_freq1, __entry->freq1_offset, __entry->center_freq2
+#define __CHANDEF_ENTRY(n)								\
+			__field(u32, n##control_freq)					\
+			__field(u32, n##freq_offset)					\
+			__field(u32, n##chan_width)					\
+			__field(u32, n##center_freq1)					\
+			__field(u32, n##freq1_offset)					\
+			__field(u32, n##center_freq2)					\
+			__field(u16, n##punctured)					\
+			__field(u32, n##npca_pri_freq)					\
+			__field(u16, n##npca_punctured)
+#define __CHANDEF_ASSIGN(n, c)								\
+			__entry->n##control_freq = (c) && (c)->chan ?			\
+				(c)->chan->center_freq : 0;				\
+			__entry->n##freq_offset = (c) && (c)->chan ?			\
+				(c)->chan->freq_offset : 0;				\
+			__entry->n##chan_width = (c) ? (c)->width : 0;			\
+			__entry->n##center_freq1 = (c) ? (c)->center_freq1 : 0;		\
+			__entry->n##freq1_offset = (c) ? (c)->freq1_offset : 0;		\
+			__entry->n##center_freq2 = (c) ? (c)->center_freq2 : 0;		\
+			__entry->n##punctured = (c) ? (c)->punctured : 0;		\
+			__entry->n##npca_pri_freq = (c) && (c)->npca_chan ?		\
+				(c)->npca_chan->center_freq : 0;			\
+			__entry->n##npca_punctured = (c) ? (c)->npca_punctured : 0;
+#define __CHANDEF_PR_FMT(n)								\
+	" " #n "(%d.%03d MHz,width:%d,center: %d.%03d/%d MHz, punct:0x%x, npca:%u, npca_punct:0x%x)"
+#define __CHANDEF_PR_ARG(n)								\
+			__entry->n##control_freq, __entry->n##freq_offset,		\
+			__entry->n##chan_width, __entry->n##center_freq1,		\
+			__entry->n##freq1_offset, __entry->n##center_freq2,		\
+			__entry->n##punctured, __entry->n##npca_pri_freq,		\
+			__entry->n##npca_punctured
 
-#define MIN_CHANDEF_ENTRY								\
-			__field(u32, min_control_freq)					\
-			__field(u32, min_freq_offset)					\
-			__field(u32, min_chan_width)					\
-			__field(u32, min_center_freq1)					\
-			__field(u32, min_freq1_offset)					\
-			__field(u32, min_center_freq2)
+#define CHANDEF_ENTRY		__CHANDEF_ENTRY()
+#define CHANDEF_ASSIGN(c)	__CHANDEF_ASSIGN(, c)
+#define CHANDEF_PR_FMT		__CHANDEF_PR_FMT(chandef)
+#define CHANDEF_PR_ARG		__CHANDEF_PR_ARG()
 
-#define MIN_CHANDEF_ASSIGN(c)								\
-			__entry->min_control_freq = (c)->chan ? (c)->chan->center_freq : 0;	\
-			__entry->min_freq_offset = (c)->chan ? (c)->chan->freq_offset : 0;	\
-			__entry->min_chan_width = (c)->width;				\
-			__entry->min_center_freq1 = (c)->center_freq1;			\
-			__entry->freq1_offset = (c)->freq1_offset;			\
-			__entry->min_center_freq2 = (c)->center_freq2;
-#define MIN_CHANDEF_PR_FMT	" min_control:%d.%03d MHz min_width:%d min_center: %d.%03d/%d MHz"
-#define MIN_CHANDEF_PR_ARG	__entry->min_control_freq, __entry->min_freq_offset,	\
-			__entry->min_chan_width,					\
-			__entry->min_center_freq1, __entry->min_freq1_offset,		\
-			__entry->min_center_freq2
+#define MIN_CHANDEF_ENTRY	__CHANDEF_ENTRY(min)
+#define MIN_CHANDEF_ASSIGN(c)	__CHANDEF_ASSIGN(min, c)
+#define MIN_CHANDEF_PR_FMT	__CHANDEF_PR_FMT(mindef)
+#define MIN_CHANDEF_PR_ARG	__CHANDEF_PR_ARG(min)
+
+#define AP_CHANDEF_ENTRY	__CHANDEF_ENTRY(ap)
+#define AP_CHANDEF_ASSIGN(c)	__CHANDEF_ASSIGN(ap, c)
+#define AP_CHANDEF_PR_FMT	__CHANDEF_PR_FMT(ap)
+#define AP_CHANDEF_PR_ARG	__CHANDEF_PR_ARG(ap)
 
 #define CHANCTX_ENTRY	CHANDEF_ENTRY							\
 			MIN_CHANDEF_ENTRY						\
+			AP_CHANDEF_ENTRY						\
 			__field(u8, rx_chains_static)					\
 			__field(u8, rx_chains_dynamic)
 #define CHANCTX_ASSIGN	CHANDEF_ASSIGN(&ctx->conf.def)					\
 			MIN_CHANDEF_ASSIGN(&ctx->conf.min_def)				\
+			AP_CHANDEF_ASSIGN(&ctx->conf.ap)				\
 			__entry->rx_chains_static = ctx->conf.rx_chains_static;		\
 			__entry->rx_chains_dynamic = ctx->conf.rx_chains_dynamic
-#define CHANCTX_PR_FMT	CHANDEF_PR_FMT MIN_CHANDEF_PR_FMT " chains:%d/%d"
-#define CHANCTX_PR_ARG	CHANDEF_PR_ARG,	MIN_CHANDEF_PR_ARG,				\
+#define CHANCTX_PR_FMT	CHANDEF_PR_FMT MIN_CHANDEF_PR_FMT AP_CHANDEF_PR_FMT " chains:%d/%d"
+#define CHANCTX_PR_ARG	CHANDEF_PR_ARG,	MIN_CHANDEF_PR_ARG, AP_CHANDEF_PR_ARG,		\
 			__entry->rx_chains_static, __entry->rx_chains_dynamic
 
 #define KEY_ENTRY	__field(u32, cipher)						\
@@ -261,6 +278,32 @@ TRACE_EVENT(drv_return_u64,
 	TP_printk(LOCAL_PR_FMT " - %llu", LOCAL_PR_ARG, __entry->ret)
 );
 
+#if LINUX_VERSION_IS_LESS(6,4,0)
+void kfree_skb_reason_mac80211(struct sk_buff *skb, ieee80211_rx_result res);
+const char *drop_reason_string(ieee80211_rx_result reason);
+
+TRACE_EVENT(skb_drop,
+	TP_PROTO(struct sk_buff *skb, ieee80211_rx_result reason),
+	TP_ARGS(skb, reason),
+	TP_STRUCT__entry(
+		__field(void *, skb)
+		__field(u32, reason)
+		__array(char, reason_str, 35)
+	),
+	TP_fast_assign(
+		const char *r = drop_reason_string(reason);
+
+		__entry->skb = skb;
+		__entry->reason = reason;
+		strscpy(__entry->reason_str, r ?: "",
+			sizeof(__entry->reason_str));
+	),
+	TP_printk("skb:%p, reason=0x%x (%s)",
+		  __entry->skb, __entry->reason,
+		  __entry->reason_str)
+);
+#endif
+
 DEFINE_EVENT(local_only_evt, drv_start,
 	TP_PROTO(struct ieee80211_local *local),
 	TP_ARGS(local)
@@ -305,9 +348,18 @@ TRACE_EVENT(drv_set_wakeup,
 	TP_printk(LOCAL_PR_FMT " enabled:%d", LOCAL_PR_ARG, __entry->enabled)
 );
 
-DEFINE_EVENT(local_only_evt, drv_stop,
-	TP_PROTO(struct ieee80211_local *local),
-	TP_ARGS(local)
+TRACE_EVENT(drv_stop,
+	TP_PROTO(struct ieee80211_local *local, bool suspend),
+	TP_ARGS(local, suspend),
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		__field(bool, suspend)
+	),
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		__entry->suspend = suspend;
+	),
+	TP_printk(LOCAL_PR_FMT " suspend:%d", LOCAL_PR_ARG, __entry->suspend)
 );
 
 DEFINE_EVENT(local_sdata_addr_evt, drv_add_interface,
@@ -352,12 +404,14 @@ DEFINE_EVENT(local_sdata_addr_evt, drv_remove_interface,
 
 TRACE_EVENT(drv_config,
 	TP_PROTO(struct ieee80211_local *local,
+		 int radio_idx,
 		 u32 changed),
 
-	TP_ARGS(local, changed),
+	TP_ARGS(local, radio_idx, changed),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
+		__field(int, radio_idx)
 		__field(u32, changed)
 		__field(u32, flags)
 		__field(int, power_level)
@@ -371,6 +425,7 @@ TRACE_EVENT(drv_config,
 
 	TP_fast_assign(
 		LOCAL_ASSIGN;
+		__entry->radio_idx = radio_idx;
 		__entry->changed = changed;
 		__entry->flags = local->hw.conf.flags;
 		__entry->power_level = local->hw.conf.power_level;
@@ -385,8 +440,8 @@ TRACE_EVENT(drv_config,
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT " ch:%#x" CHANDEF_PR_FMT,
-		LOCAL_PR_ARG, __entry->changed, CHANDEF_PR_ARG
+		LOCAL_PR_FMT " radio_idx:%d ch:%#x" CHANDEF_PR_FMT,
+		LOCAL_PR_ARG, __entry->radio_idx, __entry->changed, CHANDEF_PR_ARG
 	)
 );
 
@@ -441,7 +496,7 @@ TRACE_EVENT(drv_vif_cfg_changed,
 
 	TP_printk(
 		LOCAL_PR_FMT  VIF_PR_FMT " changed:%#llx",
-		LOCAL_PR_ARG, VIF_PR_ARG, (unsigned long long)__entry->changed
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->changed
 	)
 );
 
@@ -503,9 +558,9 @@ TRACE_EVENT(drv_link_info_changed,
 		__entry->ht_operation_mode = link_conf->ht_operation_mode;
 		__entry->cqm_rssi_thold = link_conf->cqm_rssi_thold;
 		__entry->cqm_rssi_hyst = link_conf->cqm_rssi_hyst;
-		__entry->channel_width = link_conf->chandef.width;
-		__entry->channel_cfreq1 = link_conf->chandef.center_freq1;
-		__entry->channel_cfreq1_offset = link_conf->chandef.freq1_offset;
+		__entry->channel_width = link_conf->chanreq.oper.width;
+		__entry->channel_cfreq1 = link_conf->chanreq.oper.center_freq1;
+		__entry->channel_cfreq1_offset = link_conf->chanreq.oper.freq1_offset;
 		__entry->qos = link_conf->qos;
 		__entry->hidden_ssid = link_conf->hidden_ssid;
 		__entry->txpower = link_conf->txpower;
@@ -515,7 +570,7 @@ TRACE_EVENT(drv_link_info_changed,
 	TP_printk(
 		LOCAL_PR_FMT  VIF_PR_FMT " link_id:%d, changed:%#llx",
 		LOCAL_PR_ARG, VIF_PR_ARG, __entry->link_id,
-		(unsigned long long)__entry->changed
+		__entry->changed
 	)
 );
 
@@ -634,6 +689,7 @@ TRACE_EVENT(drv_set_key,
 		LOCAL_ENTRY
 		VIF_ENTRY
 		STA_ENTRY
+		__field(u32, cmd)
 		KEY_ENTRY
 	),
 
@@ -641,12 +697,13 @@ TRACE_EVENT(drv_set_key,
 		LOCAL_ASSIGN;
 		VIF_ASSIGN;
 		STA_ASSIGN;
+		__entry->cmd = cmd;
 		KEY_ASSIGN(key);
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT  VIF_PR_FMT  STA_PR_FMT KEY_PR_FMT,
-		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG, KEY_PR_ARG
+		LOCAL_PR_FMT  VIF_PR_FMT  STA_PR_FMT " cmd: %d" KEY_PR_FMT,
+		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG, __entry->cmd, KEY_PR_ARG
 	)
 );
 
@@ -784,34 +841,71 @@ TRACE_EVENT(drv_get_key_seq,
 	)
 );
 
-DEFINE_EVENT(local_u32_evt, drv_set_frag_threshold,
-	TP_PROTO(struct ieee80211_local *local, u32 value),
-	TP_ARGS(local, value)
-);
+TRACE_EVENT(drv_set_frag_threshold,
+	TP_PROTO(struct ieee80211_local *local, int radio_idx, u32 value),
 
-DEFINE_EVENT(local_u32_evt, drv_set_rts_threshold,
-	TP_PROTO(struct ieee80211_local *local, u32 value),
-	TP_ARGS(local, value)
-);
-
-TRACE_EVENT(drv_set_coverage_class,
-	TP_PROTO(struct ieee80211_local *local, s16 value),
-
-	TP_ARGS(local, value),
+	TP_ARGS(local, radio_idx, value),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
+		__field(int, radio_idx)
+		__field(u32, value)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		__entry->radio_idx = radio_idx;
+		__entry->value = value;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT " radio_id:%d value:%u",
+		LOCAL_PR_ARG, __entry->radio_idx, __entry->value
+	)
+);
+
+TRACE_EVENT(drv_set_rts_threshold,
+	TP_PROTO(struct ieee80211_local *local, int radio_idx, u32 value),
+
+	TP_ARGS(local, radio_idx, value),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		__field(int, radio_idx)
+		__field(u32, value)
+	),
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		__entry->radio_idx = radio_idx;
+		__entry->value = value;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT " radio_id:%d value:%u",
+		LOCAL_PR_ARG, __entry->radio_idx, __entry->value
+	)
+);
+
+TRACE_EVENT(drv_set_coverage_class,
+	TP_PROTO(struct ieee80211_local *local, int radio_idx, s16 value),
+
+	TP_ARGS(local, radio_idx, value),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		__field(int, radio_idx)
 		__field(s16, value)
 	),
 
 	TP_fast_assign(
 		LOCAL_ASSIGN;
+		__entry->radio_idx = radio_idx;
 		__entry->value = value;
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT " value:%d",
-		LOCAL_PR_ARG, __entry->value
+		LOCAL_PR_FMT " radio_id:%d value:%d",
+		LOCAL_PR_ARG, __entry->radio_idx, __entry->value
 	)
 );
 
@@ -905,31 +999,34 @@ TRACE_EVENT(drv_sta_set_txpwr,
 	)
 );
 
-TRACE_EVENT(drv_sta_rc_update,
+TRACE_EVENT(drv_link_sta_rc_update,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
-		 struct ieee80211_sta *sta,
+		 struct ieee80211_link_sta *link_sta,
 		 u32 changed),
 
-	TP_ARGS(local, sdata, sta, changed),
+	TP_ARGS(local, sdata, link_sta, changed),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
 		VIF_ENTRY
 		STA_ENTRY
 		__field(u32, changed)
+		__field(u32, link_id)
 	),
 
 	TP_fast_assign(
 		LOCAL_ASSIGN;
 		VIF_ASSIGN;
-		STA_ASSIGN;
+		STA_NAMED_ASSIGN(link_sta->sta);
 		__entry->changed = changed;
+		__entry->link_id = link_sta->link_id;
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT  VIF_PR_FMT  STA_PR_FMT " changed: 0x%x",
-		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG, __entry->changed
+		LOCAL_PR_FMT  VIF_PR_FMT  STA_PR_FMT " (link %d) changed: 0x%x",
+		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG, __entry->link_id,
+		__entry->changed
 	)
 );
 
@@ -963,6 +1060,33 @@ DEFINE_EVENT(sta_event, drv_sta_statistics,
 		 struct ieee80211_sub_if_data *sdata,
 		 struct ieee80211_sta *sta),
 	TP_ARGS(local, sdata, sta)
+);
+
+TRACE_EVENT(drv_link_sta_statistics,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 struct ieee80211_link_sta *link_sta),
+
+	TP_ARGS(local, sdata, link_sta),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		STA_ENTRY
+		__field(u32, link_id)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		STA_NAMED_ASSIGN(link_sta->sta);
+		__entry->link_id = link_sta->link_id;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT  VIF_PR_FMT  STA_PR_FMT " (link %d)",
+		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG, __entry->link_id
+	)
 );
 
 DEFINE_EVENT(sta_event, drv_sta_add,
@@ -1177,7 +1301,14 @@ TRACE_EVENT(drv_flush,
 	)
 );
 
-TRACE_EVENT(drv_channel_switch,
+DEFINE_EVENT(sta_event, drv_flush_sta,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 struct ieee80211_sta *sta),
+	TP_ARGS(local, sdata, sta)
+);
+
+DECLARE_EVENT_CLASS(chanswitch_evt,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
 		 struct ieee80211_channel_switch *ch_switch),
@@ -1192,6 +1323,7 @@ TRACE_EVENT(drv_channel_switch,
 		__field(u32, device_timestamp)
 		__field(bool, block_tx)
 		__field(u8, count)
+		__field(u8, link_id)
 	),
 
 	TP_fast_assign(
@@ -1202,12 +1334,22 @@ TRACE_EVENT(drv_channel_switch,
 		__entry->device_timestamp = ch_switch->device_timestamp;
 		__entry->block_tx = ch_switch->block_tx;
 		__entry->count = ch_switch->count;
+		__entry->link_id = ch_switch->link_id;
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT VIF_PR_FMT " new " CHANDEF_PR_FMT " count:%d",
-		LOCAL_PR_ARG, VIF_PR_ARG, CHANDEF_PR_ARG, __entry->count
+		LOCAL_PR_FMT VIF_PR_FMT CHANDEF_PR_FMT  " count:%d block_tx:%d timestamp:%llu device_ts:%u link_id:%d",
+		LOCAL_PR_ARG, VIF_PR_ARG, CHANDEF_PR_ARG, __entry->count,
+		__entry->block_tx, __entry->timestamp,
+		__entry->device_timestamp, __entry->link_id
 	)
+);
+
+DEFINE_EVENT(chanswitch_evt, drv_channel_switch,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 struct ieee80211_channel_switch *ch_switch),
+	TP_ARGS(local, sdata, ch_switch)
 );
 
 TRACE_EVENT(drv_set_antenna,
@@ -1236,12 +1378,14 @@ TRACE_EVENT(drv_set_antenna,
 );
 
 TRACE_EVENT(drv_get_antenna,
-	TP_PROTO(struct ieee80211_local *local, u32 tx_ant, u32 rx_ant, int ret),
+	TP_PROTO(struct ieee80211_local *local, int radio_idx, u32 tx_ant,
+		 u32 rx_ant, int ret),
 
-	TP_ARGS(local, tx_ant, rx_ant, ret),
+	TP_ARGS(local, radio_idx, tx_ant, rx_ant, ret),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
+		__field(int, radio_idx)
 		__field(u32, tx_ant)
 		__field(u32, rx_ant)
 		__field(int, ret)
@@ -1249,14 +1393,16 @@ TRACE_EVENT(drv_get_antenna,
 
 	TP_fast_assign(
 		LOCAL_ASSIGN;
+		__entry->radio_idx = radio_idx;
 		__entry->tx_ant = tx_ant;
 		__entry->rx_ant = rx_ant;
 		__entry->ret = ret;
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT " tx_ant:%d rx_ant:%d ret:%d",
-		LOCAL_PR_ARG, __entry->tx_ant, __entry->rx_ant, __entry->ret
+		LOCAL_PR_FMT " radio_idx:%d tx_ant:%d rx_ant:%d ret:%d",
+		LOCAL_PR_ARG, __entry->radio_idx, __entry->tx_ant,
+		__entry->rx_ant, __entry->ret
 	)
 );
 
@@ -2089,39 +2235,11 @@ TRACE_EVENT(drv_channel_switch_beacon,
 	)
 );
 
-TRACE_EVENT(drv_pre_channel_switch,
+DEFINE_EVENT(chanswitch_evt, drv_pre_channel_switch,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
 		 struct ieee80211_channel_switch *ch_switch),
-
-	TP_ARGS(local, sdata, ch_switch),
-
-	TP_STRUCT__entry(
-		LOCAL_ENTRY
-		VIF_ENTRY
-		CHANDEF_ENTRY
-		__field(u64, timestamp)
-		__field(u32, device_timestamp)
-		__field(bool, block_tx)
-		__field(u8, count)
-	),
-
-	TP_fast_assign(
-		LOCAL_ASSIGN;
-		VIF_ASSIGN;
-		CHANDEF_ASSIGN(&ch_switch->chandef)
-		__entry->timestamp = ch_switch->timestamp;
-		__entry->device_timestamp = ch_switch->device_timestamp;
-		__entry->block_tx = ch_switch->block_tx;
-		__entry->count = ch_switch->count;
-	),
-
-	TP_printk(
-		LOCAL_PR_FMT VIF_PR_FMT " prepare channel switch to "
-		CHANDEF_PR_FMT  " count:%d block_tx:%d timestamp:%llu",
-		LOCAL_PR_ARG, VIF_PR_ARG, CHANDEF_PR_ARG, __entry->count,
-		__entry->block_tx, __entry->timestamp
-	)
+	TP_ARGS(local, sdata, ch_switch)
 );
 
 DEFINE_EVENT(local_sdata_evt, drv_post_channel_switch,
@@ -2136,52 +2254,24 @@ DEFINE_EVENT(local_sdata_evt, drv_abort_channel_switch,
 	     TP_ARGS(local, sdata)
 );
 
-TRACE_EVENT(drv_channel_switch_rx_beacon,
+DEFINE_EVENT(chanswitch_evt, drv_channel_switch_rx_beacon,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
 		 struct ieee80211_channel_switch *ch_switch),
-
-	TP_ARGS(local, sdata, ch_switch),
-
-	TP_STRUCT__entry(
-		LOCAL_ENTRY
-		VIF_ENTRY
-		CHANDEF_ENTRY
-		__field(u64, timestamp)
-		__field(u32, device_timestamp)
-		__field(bool, block_tx)
-		__field(u8, count)
-	),
-
-	TP_fast_assign(
-		LOCAL_ASSIGN;
-		VIF_ASSIGN;
-		CHANDEF_ASSIGN(&ch_switch->chandef)
-		__entry->timestamp = ch_switch->timestamp;
-		__entry->device_timestamp = ch_switch->device_timestamp;
-		__entry->block_tx = ch_switch->block_tx;
-		__entry->count = ch_switch->count;
-	),
-
-	TP_printk(
-		LOCAL_PR_FMT VIF_PR_FMT
-		" received a channel switch beacon to "
-		CHANDEF_PR_FMT  " count:%d block_tx:%d timestamp:%llu",
-		LOCAL_PR_ARG, VIF_PR_ARG, CHANDEF_PR_ARG, __entry->count,
-		__entry->block_tx, __entry->timestamp
-	)
+	TP_ARGS(local, sdata, ch_switch)
 );
 
 TRACE_EVENT(drv_get_txpower,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
-		 int dbm, int ret),
+		 unsigned int link_id, int dbm, int ret),
 
-	TP_ARGS(local, sdata, dbm, ret),
+	TP_ARGS(local, sdata, link_id, dbm, ret),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
 		VIF_ENTRY
+		__field(unsigned int, link_id)
 		__field(int, dbm)
 		__field(int, ret)
 	),
@@ -2189,13 +2279,14 @@ TRACE_EVENT(drv_get_txpower,
 	TP_fast_assign(
 		LOCAL_ASSIGN;
 		VIF_ASSIGN;
+		__entry->link_id = link_id;
 		__entry->dbm = dbm;
 		__entry->ret = ret;
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT VIF_PR_FMT " dbm:%d ret:%d",
-		LOCAL_PR_ARG, VIF_PR_ARG, __entry->dbm, __entry->ret
+		LOCAL_PR_FMT VIF_PR_FMT " link_id:%d dbm:%d ret:%d",
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->link_id, __entry->dbm, __entry->ret
 	)
 );
 
@@ -2478,6 +2569,56 @@ DEFINE_EVENT(sta_event, drv_net_fill_forward_path,
 	TP_ARGS(local, sdata, sta)
 );
 
+TRACE_EVENT(drv_net_setup_tc,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 u8 type),
+
+	TP_ARGS(local, sdata, type),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		__field(u8, type)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		__entry->type = type;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT VIF_PR_FMT " type:%d\n",
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->type
+	)
+);
+
+TRACE_EVENT(drv_can_activate_links,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 u16 active_links),
+
+	TP_ARGS(local, sdata, active_links),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		__field(u16, active_links)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		__entry->active_links = active_links;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT VIF_PR_FMT " requested active_links:0x%04x\n",
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->active_links
+	)
+);
+
 TRACE_EVENT(drv_change_vif_links,
 	TP_PROTO(struct ieee80211_local *local,
 		 struct ieee80211_sub_if_data *sdata,
@@ -2539,6 +2680,45 @@ TRACE_EVENT(drv_change_sta_links,
 /*
  * Tracing for API calls that drivers call.
  */
+
+TRACE_EVENT(api_return_bool,
+	TP_PROTO(struct ieee80211_local *local, bool result),
+
+	TP_ARGS(local, result),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		__field(bool, result)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		__entry->result = result;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT " result=%d",
+		LOCAL_PR_ARG, __entry->result
+	)
+);
+
+TRACE_EVENT(api_return_void,
+	TP_PROTO(struct ieee80211_local *local),
+
+	TP_ARGS(local),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT, LOCAL_PR_ARG
+	)
+);
 
 TRACE_EVENT(api_start_tx_ba_session,
 	TP_PROTO(struct ieee80211_sta *sta, u16 tid),
@@ -2805,23 +2985,26 @@ TRACE_EVENT(api_sta_block_awake,
 );
 
 TRACE_EVENT(api_chswitch_done,
-	TP_PROTO(struct ieee80211_sub_if_data *sdata, bool success),
+	TP_PROTO(struct ieee80211_sub_if_data *sdata, bool success,
+		 unsigned int link_id),
 
-	TP_ARGS(sdata, success),
+	TP_ARGS(sdata, success, link_id),
 
 	TP_STRUCT__entry(
 		VIF_ENTRY
 		__field(bool, success)
+		__field(unsigned int, link_id)
 	),
 
 	TP_fast_assign(
 		VIF_ASSIGN;
 		__entry->success = success;
+		__entry->link_id = link_id;
 	),
 
 	TP_printk(
-		VIF_PR_FMT " success=%d",
-		VIF_PR_ARG, __entry->success
+		VIF_PR_FMT " success=%d link_id=%d",
+		VIF_PR_ARG, __entry->success, __entry->link_id
 	)
 );
 
@@ -2973,6 +3156,93 @@ TRACE_EVENT(api_radar_detected,
 	)
 );
 
+TRACE_EVENT(api_request_smps,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 struct ieee80211_link_data *link,
+		 enum ieee80211_smps_mode smps_mode),
+
+	TP_ARGS(local, sdata, link, smps_mode),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		__field(int, link_id)
+		__field(u32, smps_mode)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		__entry->link_id = link->link_id,
+		__entry->smps_mode = smps_mode;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT " " VIF_PR_FMT " link:%d, smps_mode:%d",
+		LOCAL_PR_ARG, VIF_PR_ARG, __entry->link_id, __entry->smps_mode
+	)
+);
+
+TRACE_EVENT(api_prepare_rx_omi_bw,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 struct link_sta_info *link_sta,
+		 enum ieee80211_sta_rx_bandwidth bw),
+
+	TP_ARGS(local, sdata, link_sta, bw),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		STA_ENTRY
+		__field(int, link_id)
+		__field(u32, bw)
+		__field(bool, result)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		STA_NAMED_ASSIGN(link_sta->sta);
+		__entry->link_id = link_sta->link_id;
+		__entry->bw = bw;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT " " VIF_PR_FMT " " STA_PR_FMT " link:%d, bw:%d",
+		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG,
+		__entry->link_id, __entry->bw
+	)
+);
+
+TRACE_EVENT(api_finalize_rx_omi_bw,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 struct link_sta_info *link_sta),
+
+	TP_ARGS(local, sdata, link_sta),
+
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		STA_ENTRY
+		__field(int, link_id)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		STA_NAMED_ASSIGN(link_sta->sta);
+		__entry->link_id = link_sta->link_id;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT " " VIF_PR_FMT " " STA_PR_FMT " link:%d",
+		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG, __entry->link_id
+	)
+);
+
 /*
  * Tracing for internal functions
  * (which may also be called in response to driver calls)
@@ -2980,49 +3250,189 @@ TRACE_EVENT(api_radar_detected,
 
 TRACE_EVENT(wake_queue,
 	TP_PROTO(struct ieee80211_local *local, u16 queue,
-		 enum queue_stop_reason reason),
+		 enum queue_stop_reason reason, int refcount),
 
-	TP_ARGS(local, queue, reason),
+	TP_ARGS(local, queue, reason, refcount),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
 		__field(u16, queue)
 		__field(u32, reason)
+		__field(int, refcount)
 	),
 
 	TP_fast_assign(
 		LOCAL_ASSIGN;
 		__entry->queue = queue;
 		__entry->reason = reason;
+		__entry->refcount = refcount;
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT " queue:%d, reason:%d",
-		LOCAL_PR_ARG, __entry->queue, __entry->reason
+		LOCAL_PR_FMT " queue:%d, reason:%d, refcount: %d",
+		LOCAL_PR_ARG, __entry->queue, __entry->reason,
+		__entry->refcount
 	)
 );
 
 TRACE_EVENT(stop_queue,
 	TP_PROTO(struct ieee80211_local *local, u16 queue,
-		 enum queue_stop_reason reason),
+		 enum queue_stop_reason reason, int refcount),
 
-	TP_ARGS(local, queue, reason),
+	TP_ARGS(local, queue, reason, refcount),
 
 	TP_STRUCT__entry(
 		LOCAL_ENTRY
 		__field(u16, queue)
 		__field(u32, reason)
+		__field(int, refcount)
 	),
 
 	TP_fast_assign(
 		LOCAL_ASSIGN;
 		__entry->queue = queue;
 		__entry->reason = reason;
+		__entry->refcount = refcount;
 	),
 
 	TP_printk(
-		LOCAL_PR_FMT " queue:%d, reason:%d",
-		LOCAL_PR_ARG, __entry->queue, __entry->reason
+		LOCAL_PR_FMT " queue:%d, reason:%d, refcount: %d",
+		LOCAL_PR_ARG, __entry->queue, __entry->reason,
+		__entry->refcount
+	)
+);
+
+TRACE_EVENT(drv_can_neg_ttlm,
+	    TP_PROTO(struct ieee80211_local *local,
+		     struct ieee80211_sub_if_data *sdata,
+		     struct ieee80211_neg_ttlm *neg_ttlm),
+
+	TP_ARGS(local, sdata, neg_ttlm),
+
+	TP_STRUCT__entry(LOCAL_ENTRY
+			 VIF_ENTRY
+			 __array(u16, downlink, sizeof(u16) * 8)
+			 __array(u16, uplink, sizeof(u16) * 8)
+	),
+
+	TP_fast_assign(LOCAL_ASSIGN;
+		       VIF_ASSIGN;
+		       memcpy(__entry->downlink, neg_ttlm->downlink,
+			      sizeof(neg_ttlm->downlink));
+		       memcpy(__entry->uplink, neg_ttlm->uplink,
+			      sizeof(neg_ttlm->uplink));
+	),
+
+	TP_printk(LOCAL_PR_FMT ", " VIF_PR_FMT, LOCAL_PR_ARG, VIF_PR_ARG)
+);
+
+TRACE_EVENT(drv_neg_ttlm_res,
+	    TP_PROTO(struct ieee80211_local *local,
+		     struct ieee80211_sub_if_data *sdata,
+		     enum ieee80211_neg_ttlm_res res,
+		     struct ieee80211_neg_ttlm *neg_ttlm),
+
+	TP_ARGS(local, sdata, res, neg_ttlm),
+
+	TP_STRUCT__entry(LOCAL_ENTRY
+			 VIF_ENTRY
+			 __field(u32, res)
+			 __array(u16, downlink, sizeof(u16) * 8)
+			 __array(u16, uplink, sizeof(u16) * 8)
+	),
+
+	TP_fast_assign(LOCAL_ASSIGN;
+		       VIF_ASSIGN;
+		       __entry->res = res;
+		       memcpy(__entry->downlink, neg_ttlm->downlink,
+			      sizeof(neg_ttlm->downlink));
+		       memcpy(__entry->uplink, neg_ttlm->uplink,
+			      sizeof(neg_ttlm->uplink));
+	),
+
+	TP_printk(LOCAL_PR_FMT  VIF_PR_FMT " response: %d\n ",
+		  LOCAL_PR_ARG, VIF_PR_ARG, __entry->res
+	)
+);
+
+TRACE_EVENT(drv_prep_add_interface,
+	    TP_PROTO(struct ieee80211_local *local,
+		     enum nl80211_iftype type),
+
+	TP_ARGS(local, type),
+	TP_STRUCT__entry(LOCAL_ENTRY
+			 __field(u32, type)
+	),
+
+	TP_fast_assign(LOCAL_ASSIGN;
+		       __entry->type = type;
+	),
+
+	TP_printk(LOCAL_PR_FMT  " type: %u\n ",
+		  LOCAL_PR_ARG, __entry->type
+	)
+);
+
+TRACE_EVENT(drv_set_eml_op_mode,
+	    TP_PROTO(struct ieee80211_local *local,
+		     struct ieee80211_sub_if_data *sdata,
+		     struct ieee80211_sta *sta,
+		     unsigned int link_id,
+		     u8 control, u16 link_bitmap),
+
+	TP_ARGS(local, sdata, sta, link_id, control, link_bitmap),
+
+	TP_STRUCT__entry(LOCAL_ENTRY
+			 VIF_ENTRY
+			 STA_ENTRY
+			 __field(u32, link_id)
+			 __field(u8, control)
+			 __field(u16, link_bitmap)),
+
+	TP_fast_assign(LOCAL_ASSIGN;
+		       VIF_ASSIGN;
+		       STA_NAMED_ASSIGN(sta);
+		       __entry->link_id = link_id;
+		       __entry->control = control;
+		       __entry->link_bitmap = link_bitmap;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT  VIF_PR_FMT  STA_PR_FMT
+		" (link:%d control:%02x link_bitmap:%04x)",
+		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG, __entry->link_id,
+		__entry->control, __entry->link_bitmap
+	)
+);
+
+TRACE_EVENT(drv_nan_peer_sched_changed,
+	TP_PROTO(struct ieee80211_local *local,
+		 struct ieee80211_sub_if_data *sdata,
+		 struct ieee80211_sta *sta),
+
+	TP_ARGS(local, sdata, sta),
+	TP_STRUCT__entry(
+		LOCAL_ENTRY
+		VIF_ENTRY
+		STA_ENTRY
+		__array(u8, map_ids, CFG80211_NAN_MAX_PEER_MAPS)
+	),
+
+	TP_fast_assign(
+		LOCAL_ASSIGN;
+		VIF_ASSIGN;
+		STA_ASSIGN;
+		for (int i = 0; i < CFG80211_NAN_MAX_PEER_MAPS; i++)
+			__entry->map_ids[i] = sta->nan_sched ?
+					      sta->nan_sched->maps[i].map_id :
+					      0xff;
+	),
+
+	TP_printk(
+		LOCAL_PR_FMT  VIF_PR_FMT  STA_PR_FMT
+		" map_ids=[%u, %u]",
+		LOCAL_PR_ARG, VIF_PR_ARG, STA_PR_ARG,
+		__entry->map_ids[0], __entry->map_ids[1]
 	)
 );
 

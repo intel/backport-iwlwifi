@@ -1,0 +1,14 @@
+@sar_specs@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.set_sar_specs = fn,
+...
+};
+
+@@
+identifier sar_specs.fn;
+@@
+-fn(...) {...}

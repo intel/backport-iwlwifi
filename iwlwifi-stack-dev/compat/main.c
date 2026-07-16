@@ -76,3 +76,13 @@ static void __exit backport_exit(void)
 {
 }
 module_exit(backport_exit);
+
+#ifdef CPTCFG_IWLWIFI_PRE_SILICON_SUPPORT
+/* Global timeout/delay factors, adjusted for pre-silicon platforms */
+unsigned int iwl_timeout_factor = 1;
+EXPORT_SYMBOL_GPL(iwl_timeout_factor);
+unsigned int iwl_delay_factor = 1;
+EXPORT_SYMBOL_GPL(iwl_delay_factor);
+unsigned int iwl_pre_si_fpga;
+EXPORT_SYMBOL_GPL(iwl_pre_si_fpga);
+#endif

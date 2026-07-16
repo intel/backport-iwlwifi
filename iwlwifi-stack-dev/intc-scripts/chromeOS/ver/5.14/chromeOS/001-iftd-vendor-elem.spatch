@@ -1,0 +1,31 @@
+@@
+@@
+-static const u8 iwl_vendor_caps[] = { ... };
+
+@@
+expression E, F, G;
+@@
+-if (E) {
+-iftype_data->vendor_elems.data = F;
+-iftype_data->vendor_elems.len = G;
+-}
+
+@@
+struct ieee80211_sband_iftype_data *iftd;
+@@
+-        if (iftd && iftd->vendor_elems.data && iftd->vendor_elems.len)
+-               skb_put_data(skb, iftd->vendor_elems.data, iftd->vendor_elems.len);
++	/* iftd assigned means HE is supported, so we want this */
++	if (iftd) {
++		static const u8 iwl_vendor_elem[] = {
++			0xdd, 0x06, 0x00, 0x17, 0x35, 0x08, 0x01, 0x00,
++		};
++
++		skb_put_data(skb, iwl_vendor_elem, sizeof(iwl_vendor_elem));
++	}
+
+@@
+struct ieee80211_sband_iftype_data *iftd;
+@@
+-iftd->vendor_elems.len
++8 /* special Intel vendor element */

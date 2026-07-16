@@ -1,0 +1,57 @@
+@@
+identifier func =~ "sta_set_link_sinfo";
+@@
+- static void func(...) {...}
+
+@@
+expression E;
+identifier sinfo;
+@@
+-sinfo->valid_links = E;
+
+@@
+@@
+-sinfo->valid_links
++0
+
+@@
+@@
+-sta_set_link_sinfo(...);
+
+@@
+identifier link_id, sta, tidstats, sinfo;
+expression E;
+iterator for_each_valid_link;
+@@
+void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo,
+		   bool tidstats)
+{
+...
+if (E) {
+        ...
+-for_each_valid_link(sinfo, link_id) {...}
+...
+}
+}
+
+@@
+identifier sta;
+@@
+void sta_set_sinfo(...)
+{
+...
+-if (sta->sta.valid_links) {...}
+}
+
+@@
+@@
+struct ieee80211_ops {
+...
+-void (*link_sta_statistics)(...);
+...
+};
+
+@@
+identifier func =~ "drv_link_sta_statistics";
+@@
+-static inline void func(...) {...}

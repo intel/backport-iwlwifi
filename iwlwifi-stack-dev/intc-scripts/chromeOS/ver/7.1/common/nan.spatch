@@ -1,0 +1,23 @@
+@@
+identifier func =~ "iwl_mld_handle_nan_ulw_attr_notif";
+@@
+void func(...)
+{
+-...
+}
+
+@@
+expression E1, E2, E3;
+@@
+-cfg80211_nan_sched_update_done(E1, E2, E3);
+
+@@
+expression E;
+@@
+-ieee80211_nan_sched_update_done(E);
+
+@@
+expression E1, E2;
+@@
+-ieee80211_nan_try_evacuate(E1, E2)
++false

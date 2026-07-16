@@ -4,14 +4,6 @@
 
 #include <linux/time64.h>
 
-#if LINUX_VERSION_IS_LESS(4,8,0)
-static inline void time64_to_tm(time64_t totalsecs, int offset,
-				struct tm *result)
-{
-	time_to_tm((time_t)totalsecs, 0, result);
-}
-#endif
-
 #ifndef time_after32
 /**
  * time_after32 - compare two 32-bit relative times

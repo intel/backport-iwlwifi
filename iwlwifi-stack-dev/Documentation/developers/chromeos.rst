@@ -16,7 +16,7 @@ how it works - see "Upstreaming process" below.
 
 Note that we support a number of different kernels for ChromeOS that
 tend to change, see the VERSIONS variable in intc-scripts/chromeos.py
-for the trees and their WIFIVERSION.
+for the trees.
 
 In ChromeOS, our driver works against an *existing* cfg80211 version,
 unlike with the usual backports where it works against a backported
@@ -92,7 +92,7 @@ When the plain patches fail to apply, rediff them in the following way:
 
      ::
 
-         #if CFG80211_VERSION >= KERNEL_VERSION(3,9,0)
+         #if LINUX_VERSION_IS_GEQ(3,9,0)
 
      to make change the code in ways that it'll work with the cfg80211
      from the kernel version before the new feature was introduced, see
@@ -159,16 +159,6 @@ branches (usually master unless you're working on a specific Core):
 
   git checkout chromeos-3.18__master
 
-NOTE: Depending on the kernel version, you might have to set WIFIVERSION=-3.8
-in the environment. If you're on a version requiring this (see the VERSIONS
-variable in intc-scripts/chromeos.py) then now do:
-
-::
-
-  export WIFIVERSION=-3.8
-
-(but the example here of 3.18 does *not* require it!)
-
 Next, create any .config file that has CONFIG_IWL7000 set as a module or
 built-in, for example by using
 
@@ -182,7 +172,7 @@ Build it to see that this works OK on your system:
 
 ::
 
-  make -j8 drivers/net/wireless$WIFIVERSION/iwl7000/
+  make -j8 drivers/net/wireless/iwl7000/
 
 Now you can start copying your own code. To do that, have a local branch
 with your changes ready, and do
@@ -194,8 +184,7 @@ with your changes ready, and do
 
 replacing "master" by the branch that you're using, or a specific commit
 ID if you prefer. Note that with the "." this script must be run in the
-root of the ChromeOS kernel tree, and also requires WIFIVERSION= if the
-kernel version requires it.
+root of the ChromeOS kernel tree.
 
 Now you can see your changes:
 
@@ -207,7 +196,7 @@ and try to compile again:
 
 ::
 
-  make -j8 drivers/net/wireless$WIFIVERSION/iwl7000/
+  make -j8 drivers/net/wireless/iwl7000/
 
 To fix things, I recommend to commit these changes:
 

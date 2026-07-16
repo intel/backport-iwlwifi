@@ -1,0 +1,95 @@
+@@
+@@
+-static enum nl80211_band
++static int
+iwl_nl80211_band_from_channel_idx(...)
+{
+<...
+-return NL80211_BAND_6GHZ;
++return -1;
+...>
+}
+
+@@
+identifier band;
+identifier fn =~ "iwl_init_channel_map|iwl_parse_nvm_mcc_info";
+@@
+fn (...) {
+<...
+-enum nl80211_band band
++int band
+=iwl_nl80211_band_from_channel_idx(...);
++if (band == -1)
++continue;
+...>
+}
+
+@@
+@@
+iwl_reinit_cab(...)
+{
+...
+-sband = &data->bands[NL80211_BAND_6GHZ];
+-if (...) iwl_init_he_hw_capab(...);
+...
+}
+
+@@
+expression E;
+statement S;
+@@
+iwl_init_sbands(...)
+{
+...
+-sband = &data->bands[NL80211_BAND_6GHZ];
+-sband->band = NL80211_BAND_6GHZ;
+-sband->bitrates = &iwl_cfg80211_rates[RATES_52_OFFS];
+-sband->n_bitrates = N_RATES_52;
+-n_used += iwl_init_sband_channels(...);
+-if (E) S else sband->n_channels = 0;
+...
+}
+
+@@
+statement S;
+@@
+iwl_mvm_mac_setup_register(...)
+{
+...
+-if (... && mvm->nvm_data->bands[NL80211_BAND_6GHZ].n_channels) S
+...
+}
+
+@@
+@@
+iwl_mvm_build_scan_probe(...)
+{
+...
+-        memcpy(pos, ies->ies[NL80211_BAND_6GHZ],
+-               ies->len[NL80211_BAND_6GHZ]);
+-        params->preq.band_data[2].offset = cpu_to_le16(pos - params->preq.buf);
+-        params->preq.band_data[2].len =
+-                cpu_to_le16(ies->len[NL80211_BAND_6GHZ]);
+-        pos += ies->len[NL80211_BAND_6GHZ];
+...
+}
+
+@@
+@@
+-iwl_mvm_scan_6ghz_passive_scan(...) {...}
+
+@@
+@@
+-iwl_mvm_scan_6ghz_passive_scan(...);
+
+@@
+struct iwl_mvm_scan_params *params;
+statement S;
+identifier fn =~ "iwl_mvm_scan_umac_flags_v2|iwl_mvm_scan_umac_fill_ch_p_v7";
+@@
+fn(...)
+{
+<...
+-if (params->enable_6ghz_passive) S
+...>
+}

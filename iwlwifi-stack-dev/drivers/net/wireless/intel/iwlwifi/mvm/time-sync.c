@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2022 Intel Corporation
+ * Copyright (C) 2022, 2026 Intel Corporation
  */
 
 #include "mvm.h"
@@ -18,9 +18,9 @@ static bool iwl_mvm_is_skb_match(struct sk_buff *skb, u8 *addr, u8 dialog_token)
 	u8 skb_dialog_token;
 
 	if (ieee80211_is_timing_measurement(skb))
-		skb_dialog_token = mgmt->u.action.u.wnm_timing_msr.dialog_token;
+		skb_dialog_token = mgmt->u.action.wnm_timing_msr.dialog_token;
 	else
-		skb_dialog_token = mgmt->u.action.u.ftm.dialog_token;
+		skb_dialog_token = mgmt->u.action.ftm.dialog_token;
 
 	if ((ether_addr_equal(mgmt->sa, addr) ||
 	     ether_addr_equal(mgmt->da, addr)) &&
@@ -35,8 +35,7 @@ static struct sk_buff *iwl_mvm_time_sync_find_skb(struct iwl_mvm *mvm, u8 *addr,
 {
 	struct sk_buff *skb;
 
-	/*
-	 * The queue is expected to have only one SKB. If there are other SKBs
+	/* The queue is expected to have only one SKB. If there are other SKBs
 	 * in the queue, they did not get a time sync notification and are
 	 * probably obsolete by now, so drop them.
 	 */
@@ -51,7 +50,7 @@ static struct sk_buff *iwl_mvm_time_sync_find_skb(struct iwl_mvm *mvm, u8 *addr,
 	return skb;
 }
 
-static inline u64 iwl_mvm_get_64_bit(__le32 high, __le32 low)
+static u64 iwl_mvm_get_64_bit(__le32 high, __le32 low)
 {
 	return ((u64)le32_to_cpu(high) << 32) | le32_to_cpu(low);
 }
@@ -137,8 +136,7 @@ int iwl_mvm_time_sync_config(struct iwl_mvm *mvm, const u8 *addr, u32 protocols)
 			 IWL_UCODE_TLV_CAPA_TIME_SYNC_BOTH_FTM_TM))
 		return -EINVAL;
 
-	/*
-	 * The fw only supports one peer. We do allow reconfiguration of the
+	/* The fw only supports one peer. We do allow reconfiguration of the
 	 * same peer for cases of fw reset etc.
 	 */
 	if (mvm->time_sync.active &&

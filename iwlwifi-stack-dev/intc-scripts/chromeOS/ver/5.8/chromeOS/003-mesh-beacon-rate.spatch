@@ -1,0 +1,9 @@
+@@
+@@
+copy_mesh_setup(...)
+{
+...
+-sdata->beacon_rate_set = false;
+-if (wiphy_ext_feature_isset(sdata->local->hw.wiphy, NL80211_EXT_FEATURE_BEACON_RATE_LEGACY)) { ... }
+...
+}

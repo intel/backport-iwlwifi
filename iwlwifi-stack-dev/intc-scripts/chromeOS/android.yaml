@@ -1,0 +1,20 @@
+#
+# Notes:
+#  - dirname cannot be "android" since that's the
+#    generic dir used for all
+#
+- internal_platform_team:
+  - manifest: https://af01p-sc.devtools.intel.com/artifactory/android-ci-local/build/eng-builds/alos/one-ci/weekly/2026_WW13/manifest_15078962.xml
+    kernel-version: 6.18
+    dirname: ipt
+    buildfile: BUILD_6.18.bazel
+- google:
+  - manifest: https://ubit-artifactory-il.intel.com/artifactory/wcd-binaries-local/DevOps/Aluminium_Android/frozen_manifest-2025-10-26_16-19-18.xml
+    kernel-version: 6.12
+    dirname: google
+    buildfile: BUILD.bazel
+- google618:
+  - manifest: https://ubit-artifactory-il.intel.com/artifactory/wcd-binaries-local/DevOps/Aluminium_Android/frozen_manifest-android17-6.18-desktop-intel-2025-12-21_09-47-51.xml
+    kernel-version: 6.18
+    dirname: google
+    buildfile: BUILD.bazel

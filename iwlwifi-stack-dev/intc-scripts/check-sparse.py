@@ -77,7 +77,7 @@ class Analyser(object):
             if not self._ignore(msg):
                 errors = True
                 # prefix everything with space to preserve formatting in gerrit
-                print '', msg[4],
+                print('', msg[4], end=' ')
 
         return not errors
 

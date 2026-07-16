@@ -1,0 +1,14 @@
+@@
+identifier beacon, mbssid_ies, cnt;
+identifier pos, len;
+expression e1, e2, e3;
+@@
+static struct cfg80211_beacon_data *
+cfg80211_beacon_dup(...)
+{
+...
+if (beacon->mbssid_ies)
+-	len += ieee80211_get_mbssid_beacon_len(e1, e2, e3);
++	len += ieee80211_get_mbssid_beacon_len(e1, e3);
+...
+}

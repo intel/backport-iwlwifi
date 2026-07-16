@@ -7,76 +7,6 @@
 #include <linux/pci-aspm.h>
 #endif
 
-#ifndef CONFIG_PCI
-struct msix_entry {
-	u32 vector;
-	u16 entry;
-};
-#endif
-
-#ifndef module_pci_driver
-/**
- * module_pci_driver() - Helper macro for registering a PCI driver
- * @__pci_driver: pci_driver struct
- *
- * Helper macro for PCI drivers which do not do anything special in module
- * init/exit. This eliminates a lot of boilerplate. Each module may only
- * use this macro once, and calling it replaces module_init() and module_exit()
- */
-#define module_pci_driver(__pci_driver) \
-	module_driver(__pci_driver, pci_register_driver, \
-		       pci_unregister_driver)
-#endif
-
-
-#if LINUX_VERSION_IS_LESS(4,8,0)
-#define pci_alloc_irq_vectors LINUX_BACKPORT(pci_alloc_irq_vectors)
-#ifdef CONFIG_PCI_MSI
-int pci_alloc_irq_vectors(struct pci_dev *dev, unsigned int min_vecs,
-		unsigned int max_vecs, unsigned int flags);
-#else
-static inline int pci_alloc_irq_vectors(struct pci_dev *dev, unsigned int min_vecs,
-		unsigned int max_vecs, unsigned int flags)
-{ return -ENOSYS; }
-#endif
-#endif
-
-#if LINUX_VERSION_IS_LESS(4,8,0)
-#define pci_free_irq_vectors LINUX_BACKPORT(pci_free_irq_vectors)
-static inline void pci_free_irq_vectors(struct pci_dev *dev)
-{
-}
-#endif
-
-
-#if LINUX_VERSION_IS_LESS(4,9,0) &&			\
-	!LINUX_VERSION_IN_RANGE(4,4,37, 4,5,0) &&	\
-	!LINUX_VERSION_IN_RANGE(4,8,13, 4,9,0)
-
-static inline struct pci_dev *pcie_find_root_port(struct pci_dev *dev)
-{
-	while (1) {
-		if (!pci_is_pcie(dev))
-			break;
-		if (pci_pcie_type(dev) == PCI_EXP_TYPE_ROOT_PORT)
-			return dev;
-		if (!dev->bus->self)
-			break;
-		dev = dev->bus->self;
-	}
-	return NULL;
-}
-
-#endif/* <4.9.0 but not >= 4.4.37, 4.8.13 */
-
-#ifndef PCI_IRQ_LEGACY
-#define PCI_IRQ_LEGACY		(1 << 0) /* Allow legacy interrupts */
-#define PCI_IRQ_MSI		(1 << 1) /* Allow MSI interrupts */
-#define PCI_IRQ_MSIX		(1 << 2) /* Allow MSI-X interrupts */
-#define PCI_IRQ_ALL_TYPES \
-	(PCI_IRQ_LEGACY | PCI_IRQ_MSI | PCI_IRQ_MSIX)
-#endif
-
 #if defined(CONFIG_PCI)
 #if LINUX_VERSION_IS_LESS(5,3,0)
 static inline int
@@ -101,5 +31,26 @@ backport_pci_disable_link_state(struct pci_dev *pdev, int state)
 
 #endif /* < 5.3 */
 #endif /* defined(CONFIG_PCI) */
+
+#if LINUX_VERSION_IS_LESS(6,13,0)
+
+#define pcim_request_all_regions LINUX_BACKPORT(pcim_request_all_regions)
+static inline int pcim_request_all_regions(struct pci_dev *pdev, const char *name)
+{
+	/* NOTE: this only works with pcim_enable_device() on older kernels */
+	int mask = 0;
+
+	for (int i = 0; i < PCI_STD_NUM_BARS; i++) {
+		if (!pci_resource_start(pdev, i))
+			continue;
+		if (!pci_resource_len(pdev, i))
+			continue;
+		mask |= BIT(i);
+	}
+
+	return pci_request_selected_regions(pdev, mask, name);
+}
+
+#endif /* LINUX_VERSION_IS_LESS(6,13,0) */
 
 #endif /* _BACKPORT_LINUX_PCI_H */

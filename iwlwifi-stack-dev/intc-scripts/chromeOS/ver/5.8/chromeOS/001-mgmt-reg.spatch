@@ -1,0 +1,15 @@
+@mgmt_frame_reg@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.update_mgmt_frame_registrations = fn,
++	.mgmt_frame_register = ieee80211_mgmt_frame_register,
+...
+};
+
+@@
+identifier mgmt_frame_reg.fn;
+@@
+-fn(...) {...}

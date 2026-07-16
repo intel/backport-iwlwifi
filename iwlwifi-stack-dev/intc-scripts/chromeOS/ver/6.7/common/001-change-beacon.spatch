@@ -1,0 +1,40 @@
+@@
+identifier err;
+@@
+ieee80211_change_beacon(...)
+{
+...
+-err = ieee80211_set_fils_discovery(...);
++err = 0;
+...
+}
+
+@@
+identifier err;
+@@
+ieee80211_change_beacon(...)
+{...
+-err = ieee80211_set_unsol_bcast_probe_resp(...);
++err = 0;
+...
+}
+
+@@
+statement S;
+identifier err;
+@@
+-err = 0;
+-if (err < 0) S
+
+@@
+identifier wiphy, dev, params, beacon;
+@@
+ieee80211_change_beacon(struct wiphy *wiphy, struct net_device *dev,
+-			struct cfg80211_ap_update *params)
++			struct cfg80211_beacon_data *params)
+{
+...
+-	struct cfg80211_beacon_data *beacon = &params->beacon;
++	struct cfg80211_beacon_data *beacon = params;
+...
+}

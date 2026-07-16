@@ -1,0 +1,164 @@
+@@
+identifier data;
+@@
+struct ieee80211_sband_iftype_data data[] = {
+...,
+	{
+-		.uhr_cap = { ... },
+	},
+...
+};
+
+@@
+expression obj, E;
+identifier F, G;
+assignment operator op;
+@@
+(
+-obj->uhr_cap.F op E;
+|
+-obj->uhr_cap.F.G op E;
+)
+@@
+expression obj, val;
+@@
+-obj->uhr_cap.has_uhr = val;
+
+@@
+expression obj;
+statement S;
+@@
+(
+-if (obj->uhr_cap.has_uhr) { ... }
+|
+-if (obj->uhr_cap.has_uhr && ...) { ... }
+|
+-if (obj->uhr_cap.has_uhr) { ... } else
+ S
+|
+-if (!obj->uhr_cap.has_uhr)
++/* no UHR support */
+ S
+|
+-obj->uhr_cap.has_uhr
++false /* no UHR */
+)
+
+@@
+expression obj;
+identifier f;
+@@
+(
+-&obj->uhr_cap.f
++NULL
+|
+-obj->uhr_cap.f
++NULL
+)
+
+@@
+identifier params;
+@@
+static int ieee80211_start_ap(...)
+{
+...
+-if (params->uhr_oper) { ... }
+...
+}
+
+@@
+{ struct link_station_parameters *, struct station_parameters *} params;
+@@
+-if (params->uhr_capa) { ... }
+
+@@
+{ struct link_station_parameters *, struct station_parameters *} params;
+@@
+-params->uhr_capa
++false /* no UHR */
+
+@@
+@@
+ieee80211_determine_ap_chan(...)
+{
+...
+-const struct ieee80211_uhr_operation *uhr_oper = elems->uhr_operation;
+...
+-if (conn->mode < IEEE80211_CONN_MODE_UHR || !uhr_oper)
+    return IEEE80211_CONN_MODE_EHT;
+-... { ... }
+-return IEEE80211_CONN_MODE_UHR;
+}
+
+@@
+@@
+-	if (stype != IEEE80211_STYPE_BEACON &&
+-	    chanreq.oper.npca_chan && elems->uhr_operation && ...) {
+-		...
+-	}
+
+@@
+@@
+-	if (chanreq.oper.npca_chan && chanctx_conf->def.npca_chan && ...) {
+-		link->conf->npca.enabled = true;
+-		*changed |= BSS_CHANGED_NPCA;
+-	}
+
+@@
+@@
+-       /* whatever we do, downgrading removes NPCA */
+-       c->npca_chan = NULL;
+-       c->npca_punctured = 0;
+
+@@
+identifier x = { _a, _b };
+@@
+-x.oper.npca_chan = NULL;
+-x.oper.npca_punctured = 0;
+
+@@
+expression E;
+@@
+-if (ctx->conf.def.npca_chan != chanreq->oper.npca_chan)
+-	changed |= E;
+
+@@
+expression E;
+@@
+-if (chanreq->oper.npca_chan && ...)
+-	changed |= E;
+
+@@
+@@
+-ieee80211_chanctx_update_npca_links(...) { ...}
+
+@@
+@@
+-ieee80211_chanctx_update_npca_links(...);
+
+@@
+@@
+-	if (chandef->npca_chan)
+-		cmd.secondary_ctrl_chnl_loc = ...;
+-	else
+{ ... }
+
+@@
+@@
+-if (link->uhr_support && link->npca.enabled) { ... }
+
+@@
+@@
+-iwl_mld_update_link_npca_puncturing(...)  { ... }
+
+@@
+@@
+-	if (changed & IEEE80211_CHANCTX_CHANGE_NPCA_PUNCT) {
+-		iwl_mld_update_link_npca_puncturing(hw, ctx);
+-		changed &= ~IEEE80211_CHANCTX_CHANGE_NPCA_PUNCT;
+-	}
+
+@@
+@@
+-	if (ctx->def.npca_chan)
+-		return &ctx->def;

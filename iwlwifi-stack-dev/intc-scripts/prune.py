@@ -172,36 +172,28 @@ def prune(defconfig, verify, basedir):
         pass
     en, dis = parse_defconfig(os.path.join(basedir, 'defconfigs', defconfig))
 
-    # get the symbols that can be found starting from iwlwifi's Kconfig
-    # (follows the files source'd into this one, which is Kconfig.noupstream)
-    ct = kconfig.ConfigTree('drivers/net/wireless/intel/iwlwifi/Kconfig',
-                            basedir=basedir)
-    syms = ct.symbols()
-    # verify the symbols are enabled or disabled or allowed to be unset
-    for sym in syms:
-        if not sym in en and not sym in dis and not sym in allowed_unset_syms:
-            if verify:
-                assert False, '%s state not known!' % sym
-            else:
-                print(('%s state not known, assuming allowed!' % sym))
+    dis_result = []
+    # get the symbols that can be found starting from the relevant Kconfig files
+    # (follows the files source'd into these, e.g. iwlwifi's Kconfig.noupstream)
+    for kconfig_file, validate in (('drivers/net/wireless/intel/iwlwifi/Kconfig', True),
+                                   ('net/mac80211/Kconfig', True),
+                                   ('net/wireless/Kconfig', False)):
+        ct = kconfig.ConfigTree(kconfig_file, basedir=basedir)
+        syms = ct.symbols()
+        if validate:
+            # verify the symbols are enabled or disabled or allowed to be unset
+            for sym in syms:
+                if not sym in en and not sym in dis and not sym in allowed_unset_syms:
+                    if verify:
+                        assert False, '%s state not known!' % sym
+                    else:
+                        print(('%s state not known, assuming allowed!' % sym))
 
-    drv_dis = [s for s in dis if s in syms]
-    ct.remove_symbols(drv_dis)
+        dis_this = [s for s in dis if s in syms]
+        dis_result += dis_this
+        ct.remove_symbols(dis_this)
 
-    # do the same thing over again for mac80211
-    ct = kconfig.ConfigTree('net/mac80211/Kconfig',
-                            basedir=basedir)
-    syms = ct.symbols()
-    for sym in syms:
-        if not sym in en and not sym in dis and not sym in allowed_unset_syms:
-            if verify:
-                assert False, '%s state not known!' % sym
-            else:
-                print(('%s state not known, assuming allowed!' % sym))
-    mac_dis = [s for s in dis if s in syms]
-    ct.remove_symbols(mac_dis)
-
-    dis = drv_dis + mac_dis
+    dis = dis_result
 
     run_extras(basedir, dis)
 
@@ -262,6 +254,7 @@ def prune(defconfig, verify, basedir):
     shutil.rmtree(os.path.join(basedir, 'nix'))
 
     shutil.rmtree(os.path.join(basedir, 'Documentation'))
+    shutil.rmtree(os.path.join(basedir, '.github'), ignore_errors=True)
 
     for root, dirs, files in os.walk(os.path.join(basedir, 'drivers/net/wireless/intel/iwlwifi')):
         for file in files:
@@ -428,6 +421,21 @@ def create_maccompat(basedir):
     f.write(data)
     f.close()
 
+def replace_cptcfg(basedir):
+    '''
+    replace the CPTCFG_ prefix with CONFIG_
+    '''
+    for root, dirs, files in os.walk(basedir):
+        if '.git' in dirs:
+            dirs.remove('.git')
+        for file in files:
+            file_path = os.path.join(root, file)
+            with open(file_path, 'rb') as f:
+                content = f.read()
+            updated_content = content.replace(b'CPTCFG_', b'CONFIG_')
+            with open(file_path, 'wb') as f:
+                f.write(updated_content)
+
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description='remove unnecessary code')
@@ -444,9 +452,14 @@ if __name__ == '__main__':
     parser.add_argument('--maccompat', dest='maccompat', action='store_const',
                         const=True, default=False,
                         help='create mac80211 compatibility')
+    parser.add_argument('--undo_cptcfg', dest='undo_cptcfg', action='store_const',
+                        const=True, default=False,
+                        help='replace CPTCFG_ with CONFIG_')
     args = parser.parse_args()
     prune(args.defconfig, not args.noverify, args.basedir)
     if args.modcompat:
         create_modcompat(args.basedir)
     if args.maccompat:
         create_maccompat(args.basedir)
+    if args.undo_cptcfg:
+        replace_cptcfg(args.basedir)

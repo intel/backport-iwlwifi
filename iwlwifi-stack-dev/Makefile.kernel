@@ -38,9 +38,14 @@ NOSTDINC_FLAGS += \
 endif
 
 subdir-ccflags-y := $(call cc-option, -fno-pie) $(call cc-option, -no-pie)
-ifeq ($(CPTCFG_KERNEL_4_3),y)
-subdir-ccflags-y += -Wno-pointer-sign
-endif
+
+subdir-ccflags-y += -std=gnu11
+
+# upstream moved, move the driver for a few constructions such as
+# variable declarations in for loops
+subdir-ccflags-y += -std=gnu11
+# and these are then also done in correspondence by upstream
+subdir-ccflags-y += $(call cc-option,-Wno-declaration-after-statement)
 
 subdir-ccflags-y += -D__CHECK_ENDIAN__ -Wunused-but-set-variable
 subdir-ccflags-$(CPTCFG_IWLWIFI_SIMULATION) += -Wshadow
@@ -55,8 +60,6 @@ obj-$(CPTCFG_MAC80211) += net/mac80211/
 #obj-$(CPTCFG_QCOM_QMI_HELPERS) += drivers/soc/qcom/
 #obj-$(CPTCFG_MHI_BUS) += drivers/bus/mhi/
 obj-$(CPTCFG_WLAN) += drivers/net/wireless/
-#obj-$(CPTCFG_SSB) += drivers/ssb/
-#obj-$(CPTCFG_BCMA) += drivers/bcma/
 #obj-$(CPTCFG_USB_NET_RNDIS_WLAN) += drivers/net/usb/
 #
 #obj-$(CPTCFG_USB_WDM) += drivers/usb/class/

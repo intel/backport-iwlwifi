@@ -1,0 +1,99 @@
+@@
+@@
+-ieee80211_find_available_radio(...) { ... }
+
+@@
+@@
+-ieee80211_find_available_radio(...)
++true
+
+@@
+struct ieee80211_chanctx *ctx;
+@@
+-if (ctx->conf.radio_idx >= 0) { ... }
+
+@@
+identifier hw;
+statement S;
+@@
+int ieee80211_register_hw(...)
+{
+...
+-if (hw->wiphy->n_radio) S else {
+...
+-}
+...
+}
+
+@@
+identifier wiphy;
+@@
+-wiphy->n_radio
++0
+
+@@
+struct iface_combination_params *params;
+@@
+-params->radio_idx
++ -1
+
+@@
+identifier params;
+@@
+struct iface_combination_params params = {
+...,
+-	.radio_idx = radio_idx,
+...
+};
+
+@@
+identifier params;
+identifier data;
+@@
+struct iface_combination_params params = {
+...,
+-	.radio_idx = data->radio_idx,
+...
+};
+
+@get_radio_mask@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.get_radio_mask = fn,
+...
+};
+
+@@
+identifier get_radio_mask.fn;
+@@
+-fn(...) {...}
+
+@radio@
+identifier fn =~ "ieee80211_link_reserve_chanctx|ieee80211_find_or_create_chanctx";
+@@
+fn(...)
+{
+...
+}
+
+@@
+identifier radio.fn;
+identifier radio_idx;
+@@
+fn (...)
+{
+<...
+-int radio_idx;
++int radio_idx = -1;
+...>
+}
+
+@@
+constant C;
+expression E;
+@@
+-max(E,C)
++max(E, (typeof(E))C)

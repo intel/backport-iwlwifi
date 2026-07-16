@@ -1,6 +1,7 @@
 #ifndef __BACKPORT_LINUX_RCUPDATE_H
 #define __BACKPORT_LINUX_RCUPDATE_H
 #include_next <linux/rcupdate.h>
+#include <linux/cleanup.h>
 
 /*
  * This adds a nested function everywhere kfree_rcu() was called. This
@@ -95,6 +96,25 @@ rcu_head_after_call_rcu(struct rcu_head *rhp, rcu_callback_t f)
 	rcu_assign_pointer((rcu_ptr), (ptr));				\
 	__tmp;								\
 })
+#endif
+
+/* Originally in 6.5, backported to 6.1.79, 6.2-6.4 no longer maintained */
+/* also backported to 5.15 series */
+#if LINUX_VERSION_IS_LESS(6,1,79) &&	\
+	!LINUX_VERSION_IN_RANGE(5,15,195, 5,16,0)
+DEFINE_LOCK_GUARD_0(rcu,
+	do {
+		rcu_read_lock();
+		/*
+		 * sparse doesn't call the cleanup function,
+		 * so just release immediately and don't track
+		 * the context. We don't need to anyway, since
+		 * the whole point of the guard is to not need
+		 * the explicit unlock.
+		 */
+		__release(RCU);
+	} while (0),
+	rcu_read_unlock())
 #endif
 
 #endif /* __BACKPORT_LINUX_RCUPDATE_H */

@@ -1,0 +1,11 @@
+@@
+struct ieee80211_txq_params *params;
+@@
+-params->link_id
++0
+
+@@
+struct bss_parameters *params;
+@@
+-params->link_id
++ -1

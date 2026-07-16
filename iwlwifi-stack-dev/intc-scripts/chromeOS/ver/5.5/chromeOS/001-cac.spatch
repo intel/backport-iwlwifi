@@ -1,0 +1,14 @@
+@end_cac@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.end_cac = fn,
+...
+};
+
+@@
+identifier end_cac.fn;
+@@
+-fn(...) {...}

@@ -1,0 +1,78 @@
+@@
+type T;
+@@
+T iwl_mld_nan_supported(...)
+{
+-...
++return false;
+}
+
+
+@@
+identifier func =~ "iwl_mld_handle_nan_(cluster|dw_end)_notif";
+@@
+void func(...)
+{
+-...
+}
+
+@@
+identifier func =~ "iwl_mld_(start|stop)_nan|iwl_mld_nan_change_config|iwl_mld_nan_get_mgmt_queue";
+@@
+int func(...)
+{
+-...
++return 0;
+}
+
+@@
+type T;
+identifier func =~ "iwl_mld_nan_(send_config_cmd|config|add_stations|use_nan_stations|get_mgmt_sta|remove_stations|flush)";
+@@
+-static T func(...)
+-{
+-...
+-}
+
+@@
+identifier mld;
+@@
+static void iwl_mac_hw_set_wiphy(...)
+{
+...
+-if (iwl_mld_nan_supported(mld)) {
+-...
+-} else {
+...
+-}
+...
+}
+
+@@
+@@
+-static const struct ieee80211_iface_combination
+-iwl_mld_iface_combinations_nan[] = {
+-...
+-};
+
+@@
+type T;
+@@
+T ieee80211_nan_conf_free(...)
+{
+-...
+}
+
+@@
+expression E;
+identifier dst;
+identifier src;
+@@
+int ieee80211_nan_conf_copy(...)
+{
+...
+	if (E)
+		dst->bands = src->bands;
+-...
++return 0;
+}

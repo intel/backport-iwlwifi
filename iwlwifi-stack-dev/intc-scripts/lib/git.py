@@ -161,9 +161,8 @@ def remote_update(gitdir=None, remote=None, env=None):
 def shortlog(from_commit, to_commit, tree=None):
     process = subprocess.Popen(['git', 'shortlog', from_commit + '..' + to_commit],
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               universal_newlines=True,
                                cwd=tree)
-    stdout = process.communicate()[0]
+    stdout = process.communicate()[0].decode('utf-8')
     process.wait()
     _check(process)
     return stdout
@@ -171,9 +170,10 @@ def shortlog(from_commit, to_commit, tree=None):
 def log(options=[], tree=None):
     process = subprocess.Popen(['git', 'log'] + options,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               universal_newlines=True,
                                cwd=tree)
     stdout, stderr = process.communicate()
+    stdout = stdout.decode('utf-8')
+    stderr = stderr.decode('utf-8')
     process.wait()
     _check(process, stderr)
     return stdout
@@ -183,9 +183,8 @@ def commit_env_vars(commitid, tree=None):
                                 '--format=format:GIT_AUTHOR_NAME=%an%nGIT_AUTHOR_EMAIL=%ae%nGIT_AUTHOR_DATE=%aD%x00',
                                 commitid],
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               universal_newlines=True,
                                cwd=tree)
-    stdout = process.communicate()[0]
+    stdout = process.communicate()[0].decode('utf-8')
     process.wait()
     _check(process)
     data = stdout.split('\x00')[0]
@@ -203,12 +202,11 @@ def commit_message(commitid, tree=None, raw=False):
     process = subprocess.Popen(['git', 'show', '--name-only',
                                 '--format=format:%s' % fmt, commitid],
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               universal_newlines=True,
                                cwd=tree)
     stdout = process.communicate()[0]
     process.wait()
     _check(process)
-    return stdout.split('\x00')[0]
+    return stdout.split(b'\x00')[0].decode('utf-8')
 
 def remove_config(cfg, tree=None):
     process = subprocess.Popen(['git', 'config', '--unset-all', cfg],
@@ -408,11 +406,16 @@ def commit_tree(tree_id, parents, message, tree=None, env=None):
     _parents = []
     for parent in parents:
         _parents.extend(['-p', parent])
+    if env:
+        _env = {}
+        for n, v in env.items():
+            _env[n] = v.encode('utf-8')
+        env = _env
     process = subprocess.Popen(['git', 'commit-tree', tree_id] + _parents,
-                               universal_newlines=True, cwd=tree, env=env,
+                               cwd=tree, env=env,
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
-    stdout = process.communicate(message)[0]
+    stdout = process.communicate(message.encode('utf-8'))[0].decode('utf-8')
     process.wait()
     _check(process)
 
@@ -429,7 +432,7 @@ def get_note(notes_ref, commit, tree=None):
     process.wait()
     if process.returncode != 0:
         return None
-    return stdout
+    return stdout.decode('utf-8')
 
 def set_note(notes_ref, commit, note, tree=None, env=None):
     process = subprocess.Popen(['git', 'notes', '--ref', notes_ref, 'add', '-f', '-F', '-', commit],
@@ -448,6 +451,5 @@ def get_file(commit, file_name, tree=None):
 
     process = subprocess.Popen(['git', 'show', '--name-only', sha],
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               universal_newlines=True, cwd=tree)
-    stdout = process.communicate()[0]
-    return stdout
+                               cwd=tree)
+    return process.communicate()[0].decode('utf-8')

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
+
 config CFG80211
 	tristate "cfg80211 - wireless configuration API"
 	depends on m
@@ -76,7 +77,7 @@ config CFG80211_CERTIFICATION_ONUS
 config CFG80211_REQUIRE_SIGNED_REGDB
 	bool "require regdb signature" if CFG80211_CERTIFICATION_ONUS
 	default y
-	select BPAUTO_SYSTEM_DATA_VERIFICATION
+	depends on SYSTEM_DATA_VERIFICATION
 	help
 	  Require that in addition to the "regulatory.db" file a
 	  "regulatory.db.p7s" can be loaded with a valid PKCS#7
@@ -172,54 +173,21 @@ config CFG80211_CRDA_SUPPORT
 	  If unsure, say Y.
 
 config CFG80211_WEXT
-	bool "cfg80211 wireless extensions compatibility" if !CFG80211_WEXT_EXPORT
+	bool "cfg80211 wireless extensions compatibility"
 	depends on WEXT_CORE
-	default y if CFG80211_WEXT_EXPORT
 	help
 	  Enable this option if you need old userspace for wireless
 	  extensions with cfg80211-based drivers.
 
-config CFG80211_WEXT_EXPORT
-	bool
+config CFG80211_KUNIT_TEST
+	tristate "KUnit tests for cfg80211" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	depends on CFG80211
+	default KUNIT_ALL_TESTS || IWLWIFI_SIMULATION
+	depends on !KERNEL_6_3
 	help
-	  Drivers should select this option if they require cfg80211's
-	  wext compatibility symbols to be exported.
-
-endif # CFG80211
-
-config LIB80211
-	tristate
-	depends on m
-	default n
-	help
-	  This options enables a library of common routines used
-	  by IEEE802.11 wireless LAN drivers.
-
-	  Drivers should select this themselves if needed.
-
-config LIB80211_CRYPT_WEP
-	tristate
-	depends on m
-	select BPAUTO_CRYPTO_LIB_ARC4
-
-config LIB80211_CRYPT_CCMP
-	tristate
-	depends on m
-	depends on CRYPTO
-	depends on CRYPTO_AES
-	depends on CRYPTO_CCM
-
-config LIB80211_CRYPT_TKIP
-	tristate
-	depends on m
-	select BPAUTO_CRYPTO_LIB_ARC4
-
-config LIB80211_DEBUG
-	bool "lib80211 debugging messages"
-	depends on LIB80211
-	default n
-	help
-	  You can enable this if you want verbose debugging messages
-	  from lib80211.
+	  Enable this option to test cfg80211 functions with kunit.
 
 	  If unsure, say N.
+
+endif # CFG80211

@@ -25,7 +25,7 @@ class Copyright(object):
         self.years = set()
         self.owner = None
 
-def check_copyright(file_types, missing_fn=None):
+def check_copyright(file_types, missing_fn=None, filter_out_fn=None):
     file_types = [ft.encode('ascii') for ft in file_types]
     err = 0
     curyear = time.gmtime().tm_year
@@ -52,6 +52,8 @@ def check_copyright(file_types, missing_fn=None):
             continue
         filename = lines[0][2:]
         if not filename.split(b'.')[-1] in file_types:
+            continue
+        if filter_out_fn and filter_out_fn(filename):
             continue
         lines = [x for x in lines if len(x) and x[0] in b' +-']
         done = False

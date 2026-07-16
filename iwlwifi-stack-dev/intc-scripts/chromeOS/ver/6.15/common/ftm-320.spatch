@@ -1,0 +1,13 @@
+@@
+identifier capa;
+expression BW;
+@@
+struct cfg80211_pmsr_capabilities capa = {
+	.ftm = {
+		.bandwidths = BW
+-			| BIT(NL80211_CHAN_WIDTH_320)
+		,
+...
+	},
+...
+};

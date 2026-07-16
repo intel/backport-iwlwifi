@@ -5,7 +5,7 @@
  * Copied from cfg.c - originally
  * Copyright 2006-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2014	Intel Corporation (Author: Johannes Berg)
- * Copyright (C) 2018, 2022 Intel Corporation
+ * Copyright (C) 2018, 2022-2023 Intel Corporation
  */
 #include <linux/types.h>
 #include <net/cfg80211.h>
@@ -16,16 +16,18 @@
 static int ieee80211_set_ringparam(struct net_device *dev,
 				   struct ethtool_ringparam *rp
 #if LINUX_VERSION_IS_GEQ(5,17,0)
-,
+				   ,
 				   struct kernel_ethtool_ringparam *kernel_rp,
 				   struct netlink_ext_ack *extack
 #endif
-)
+				   )
 {
 	struct ieee80211_local *local = wiphy_priv(dev->ieee80211_ptr->wiphy);
 
 	if (rp->rx_mini_pending != 0 || rp->rx_jumbo_pending != 0)
 		return -EINVAL;
+
+	guard(wiphy)(local->hw.wiphy);
 
 	return drv_set_ringparam(local, rp->tx_pending, rp->rx_pending);
 }
@@ -33,15 +35,17 @@ static int ieee80211_set_ringparam(struct net_device *dev,
 static void ieee80211_get_ringparam(struct net_device *dev,
 				    struct ethtool_ringparam *rp
 #if LINUX_VERSION_IS_GEQ(5,17,0)
-,
+				    ,
 				    struct kernel_ethtool_ringparam *kernel_rp,
 				    struct netlink_ext_ack *extack
 #endif
-)
+				    )
 {
 	struct ieee80211_local *local = wiphy_priv(dev->ieee80211_ptr->wiphy);
 
 	memset(rp, 0, sizeof(*rp));
+
+	guard(wiphy)(local->hw.wiphy);
 
 	drv_get_ringparam(local, &rp->tx_pending, &rp->tx_max_pending,
 			  &rp->rx_pending, &rp->rx_max_pending);
@@ -52,8 +56,8 @@ static const char ieee80211_gstrings_sta_stats[][ETH_GSTRING_LEN] = {
 	"rx_duplicates", "rx_fragments", "rx_dropped",
 	"tx_packets", "tx_bytes",
 	"tx_filtered", "tx_retry_failed", "tx_retries",
-	"sta_state", "txrate", "rxrate", "signal",
-	"channel", "noise", "ch_time", "ch_time_busy",
+	"tx_handlers_drop", "sta_state", "txrate", "rxrate",
+	"signal", "channel", "noise", "ch_time", "ch_time_busy",
 	"ch_time_ext_busy", "ch_time_rx", "ch_time_tx"
 };
 #define STA_STATS_LEN	ARRAY_SIZE(ieee80211_gstrings_sta_stats)
@@ -91,17 +95,17 @@ static void ieee80211_get_stats(struct net_device *dev,
 
 #define ADD_STA_STATS(sta)					\
 	do {							\
-		data[i++] += (sta)->rx_stats.packets;		\
-		data[i++] += (sta)->rx_stats.bytes;		\
+		data[i++] += sinfo.rx_packets;			\
+		data[i++] += sinfo.rx_bytes;			\
 		data[i++] += (sta)->rx_stats.num_duplicates;	\
 		data[i++] += (sta)->rx_stats.fragments;		\
-		data[i++] += (sta)->rx_stats.dropped;		\
+		data[i++] += sinfo.rx_dropped_misc;		\
 								\
 		data[i++] += sinfo.tx_packets;			\
 		data[i++] += sinfo.tx_bytes;			\
 		data[i++] += (sta)->status_stats.filtered;	\
-		data[i++] += (sta)->status_stats.retry_failed;	\
-		data[i++] += (sta)->status_stats.retry_count;	\
+		data[i++] += sinfo.tx_failed;			\
+		data[i++] += sinfo.tx_retries;			\
 	} while (0)
 
 	/* For Managed stations, find the single station based on BSSID
@@ -110,7 +114,7 @@ static void ieee80211_get_stats(struct net_device *dev,
 	 * network device.
 	 */
 
-	mutex_lock(&local->sta_mtx);
+	guard(wiphy)(local->hw.wiphy);
 
 	if (sdata->vif.type == NL80211_IFTYPE_STATION) {
 		sta = sta_info_get_bss(sdata, sdata->deflink.u.mgd.bssid);
@@ -124,6 +128,7 @@ static void ieee80211_get_stats(struct net_device *dev,
 		i = 0;
 		ADD_STA_STATS(&sta->deflink);
 
+		data[i++] = sdata->tx_handlers_drop;
 		data[i++] = sta->sta_state;
 
 
@@ -149,6 +154,7 @@ static void ieee80211_get_stats(struct net_device *dev,
 			sta_set_sinfo(sta, &sinfo, false);
 			i = 0;
 			ADD_STA_STATS(&sta->deflink);
+			data[i++] = sdata->tx_handlers_drop;
 		}
 	}
 
@@ -161,6 +167,10 @@ do_survey:
 	chanctx_conf = rcu_dereference(sdata->vif.bss_conf.chanctx_conf);
 	if (chanctx_conf)
 		channel = chanctx_conf->def.chan;
+	else if (local->open_count > 0 &&
+		 local->open_count == local->virt_monitors &&
+		 sdata->vif.type == NL80211_IFTYPE_MONITOR)
+		channel = local->monitor_chanreq.oper.chan;
 	else
 		channel = NULL;
 	rcu_read_unlock();
@@ -205,8 +215,6 @@ do_survey:
 		data[i++] = survey.time_tx;
 	else
 		data[i++] = -1LL;
-
-	mutex_unlock(&local->sta_mtx);
 
 	if (WARN_ON(i != STA_STATS_LEN))
 		return;

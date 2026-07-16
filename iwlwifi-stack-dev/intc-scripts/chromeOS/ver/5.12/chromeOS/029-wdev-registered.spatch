@@ -1,0 +1,11 @@
+@@
+struct wireless_dev *wdev;
+@@
+-wdev->registered
++true
+
+@@
+struct net_device *dev;
+@@
+-dev->ieee80211_ptr->registered
++true

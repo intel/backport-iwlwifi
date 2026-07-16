@@ -1,0 +1,9 @@
+@@
+identifier err;
+identifier fn =~ "__ieee80211_channel_switch|ieee80211_color_change";
+@@
+static int fn(...)
+{...
+-err = ieee80211_set_unsol_bcast_probe_resp(...);
++err = 0;
+...}

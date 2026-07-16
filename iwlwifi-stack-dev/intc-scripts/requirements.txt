@@ -1,0 +1,7 @@
+# Usage: python -m pip install -r requirements.txt
+
+click
+python-dateutil
+PyYAML
+requests
+openpyxl

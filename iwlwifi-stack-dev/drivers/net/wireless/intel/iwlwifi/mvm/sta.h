@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2025 Intel Corporation
  * Copyright (C) 2013-2014 Intel Mobile Communications GmbH
  * Copyright (C) 2015-2016 Intel Deutschland GmbH
  */
@@ -12,7 +12,7 @@
 #include <linux/wait.h>
 
 #include "iwl-trans.h" /* for IWL_MAX_TID_COUNT */
-#include "fw-api.h" /* IWL_MVM_STATION_COUNT_MAX */
+#include "fw-api.h" /* IWL_STATION_COUNT_MAX */
 #include "rs.h"
 
 struct iwl_mvm;
@@ -133,7 +133,7 @@ struct iwl_mvm_vif;
  * and no TID data as this is also not needed.
  * One thing to note, is that these stations have an ID in the fw, but not
  * in mac80211. In order to "reserve" them a sta_id in %fw_id_to_mac_id
- * we fill ERR_PTR(EINVAL) in this mapping and all other dereferencing of
+ * we fill ERR_PTR(-EINVAL) in this mapping and all other dereferencing of
  * pointers from this mapping need to check that the value is not error
  * or NULL.
  *
@@ -214,7 +214,7 @@ struct iwl_mvm_vif;
  */
 
 /**
- * enum iwl_mvm_agg_state
+ * enum iwl_mvm_agg_state - aggregation session state
  *
  * The state machine of the BA agreement establishment / tear down.
  * These states relate to a specific RA / TID.
@@ -225,8 +225,6 @@ struct iwl_mvm_vif;
  * @IWL_AGG_ON: aggregation session is up
  * @IWL_EMPTYING_HW_QUEUE_ADDBA: establishing a BA session - waiting for the
  *	HW queue to be empty from packets for this RA /TID.
- * @IWL_EMPTYING_HW_QUEUE_DELBA: tearing down a BA session - waiting for the
- *	HW queue to be empty from packets for this RA /TID.
  */
 enum iwl_mvm_agg_state {
 	IWL_AGG_OFF = 0,
@@ -234,7 +232,6 @@ enum iwl_mvm_agg_state {
 	IWL_AGG_STARTING,
 	IWL_AGG_ON,
 	IWL_EMPTYING_HW_QUEUE_ADDBA,
-	IWL_EMPTYING_HW_QUEUE_DELBA,
 };
 
 /**
@@ -262,7 +259,7 @@ struct iwl_mvm_tid_data {
 	u16 seq_number;
 	u16 next_reclaimed;
 	/* The rest is Tx AGG related */
-	u32 rate_n_flags;
+	__le32 rate_n_flags;
 	u8 lq_color;
 	bool amsdu_in_ampdu_allowed;
 	enum iwl_mvm_agg_state state;
@@ -286,12 +283,10 @@ struct iwl_mvm_key_pn {
  *
  * @IWL_MVM_RXQ_EMPTY: empty sync notification
  * @IWL_MVM_RXQ_NOTIF_DEL_BA: notify RSS queues of delBA
- * @IWL_MVM_RXQ_NSSN_SYNC: notify all the RSS queues with the new NSSN
  */
 enum iwl_mvm_rxq_notif_type {
 	IWL_MVM_RXQ_EMPTY,
 	IWL_MVM_RXQ_NOTIF_DEL_BA,
-	IWL_MVM_RXQ_NSSN_SYNC,
 };
 
 /**
@@ -315,11 +310,6 @@ struct iwl_mvm_delba_data {
 	u32 baid;
 } __packed;
 
-struct iwl_mvm_nssn_sync_data {
-	u32 baid;
-	u32 nssn;
-} __packed;
-
 /**
  * struct iwl_mvm_rxq_dup_data - per station per rx queue data
  * @last_seq: last sequence per tid for duplicate packet detection
@@ -336,6 +326,9 @@ struct iwl_mvm_rxq_dup_data {
  * @sta_id: the index of the station in the fw
  * @lq_sta: holds rate scaling data, either for the case when RS is done in
  *	the driver - %rs_drv or in the FW - %rs_fw.
+ * @orig_amsdu_len: used to save the original amsdu_len when it is changed via
+ *      debugfs.  If it's set to 0, it means that it is it's not set via
+ *      debugfs.
  * @avg_energy: energy as reported by FW statistics notification
  */
 struct iwl_mvm_link_sta {
@@ -346,16 +339,20 @@ struct iwl_mvm_link_sta {
 		struct iwl_lq_sta rs_drv;
 	} lq_sta;
 
+	u16 orig_amsdu_len;
+
 	u8 avg_energy;
 };
 
 /**
  * struct iwl_mvm_sta - representation of a station in the driver
+ * @vif: the interface the station belongs to
  * @tfd_queue_msk: the tfd queues used by the station
  * @mac_id_n_color: the MAC context this station is linked to
  * @tid_disable_agg: bitmap: if bit(tid) is set, the fw won't send ampdus for
  *	tid.
  * @sta_type: station type
+ * @authorized: indicates station is authorized
  * @sta_state: station state according to enum %ieee80211_sta_state
  * @bt_reduced_txpower: is reduced tx power enabled for this station
  * @next_status_eosp: the next reclaimed packet is a PS-Poll response and
@@ -364,6 +361,7 @@ struct iwl_mvm_link_sta {
  * and from Tx response flow, it needs a spinlock.
  * @tid_data: per tid data + mgmt. Look at %iwl_mvm_tid_data.
  * @tid_to_baid: a simple map of TID to baid
+ * @vif: a vif pointer
  * @reserved_queue: the queue reserved for this STA for DQA purposes
  *	Every STA has is given one reserved queue to allow it to operate. If no
  *	such queue can be guaranteed, the STA addition will fail.
@@ -373,9 +371,7 @@ struct iwl_mvm_link_sta {
  * @amsdu_enabled: bitmap of TX AMSDU allowed TIDs.
  *	In case TLC offload is not active it is either 0xFFFF or 0.
  * @max_amsdu_len: max AMSDU length
- * @orig_amsdu_len: used to save the original amsdu_len when it is changed via
- *      debugfs.  If it's set to 0, it means that it is it's not set via
- *      debugfs.
+ * @sleeping: indicates the station is sleeping (when not offloaded to FW)
  * @agg_tids: bitmap of tids whose status is operational aggregated (IWL_AGG_ON)
  * @sleep_tx_count: the number of frames that we told the firmware to let out
  *	even when that station is asleep. This is useful in case the queue
@@ -384,7 +380,6 @@ struct iwl_mvm_link_sta {
  *	the BA window. To be used for UAPSD only.
  * @ptk_pn: per-queue PTK PN data structures
  * @dup_data: per queue duplicate packet detection data
- * @deferred_traffic_tid_map: indication bitmap of deferred traffic per-TID
  * @tx_ant: the index of the antenna to use for data tx to this station. Only
  *	used during connection establishment (e.g. for the 4 way handshake
  *	exchange).
@@ -409,6 +404,7 @@ struct iwl_mvm_sta {
 	enum ieee80211_sta_state sta_state;
 	bool bt_reduced_txpower;
 	bool next_status_eosp;
+	bool authorized;
 	spinlock_t lock;
 	struct iwl_mvm_tid_data tid_data[IWL_MAX_TID_COUNT + 1];
 	u8 tid_to_baid[IWL_MAX_TID_COUNT];
@@ -425,7 +421,6 @@ struct iwl_mvm_sta {
 	bool disable_tx;
 	u16 amsdu_enabled;
 	u16 max_amsdu_len;
-	u16 orig_amsdu_len;
 	bool sleeping;
 	u8 agg_tids;
 	u8 sleep_tx_count;
@@ -458,7 +453,7 @@ struct iwl_mvm_int_sta {
 };
 
 /**
- * Send the STA info to the FW.
+ * iwl_mvm_sta_send_to_fw - Send the STA info to the FW.
  *
  * @mvm: the iwl_mvm* to use
  * @sta: the STA
@@ -466,6 +461,7 @@ struct iwl_mvm_int_sta {
  *	about. Otherwise (if this is a new STA), this should be false.
  * @flags: if update==true, this marks what is being changed via ORs of values
  *	from enum iwl_sta_modify_flag. Otherwise, this is ignored.
+ * Return: negative error code or 0 on success
  */
 int iwl_mvm_sta_send_to_fw(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 			   bool update, unsigned int flags);
@@ -487,9 +483,9 @@ void iwl_mvm_realloc_queues_after_restart(struct iwl_mvm *mvm,
 					  struct ieee80211_sta *sta);
 int iwl_mvm_wait_sta_queues_empty(struct iwl_mvm *mvm,
 				  struct iwl_mvm_sta *mvm_sta);
-bool iwl_mvm_sta_del(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
+void iwl_mvm_sta_del(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		     struct ieee80211_sta *sta,
-		     struct iwl_mvm_link_sta *mvm_link_sta, int *ret);
+		     struct ieee80211_link_sta *link_sta);
 int iwl_mvm_rm_sta(struct iwl_mvm *mvm,
 		   struct ieee80211_vif *vif,
 		   struct ieee80211_sta *sta);
@@ -572,13 +568,15 @@ void iwl_mvm_modify_all_sta_disable_tx(struct iwl_mvm *mvm,
 				       bool disable);
 
 void iwl_mvm_csa_client_absent(struct iwl_mvm *mvm, struct ieee80211_vif *vif);
+int iwl_mvm_sta_ensure_queue(struct iwl_mvm *mvm, struct ieee80211_txq *txq);
 void iwl_mvm_add_new_dqa_stream_wk(struct work_struct *wk);
 int iwl_mvm_add_pasn_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 			 struct iwl_mvm_int_sta *sta, u8 *addr, u32 cipher,
-			 u8 *key, u32 key_len);
+			 u8 *key, u32 key_len,
+			 struct ieee80211_key_conf *key_conf_out);
 void iwl_mvm_cancel_channel_switch(struct iwl_mvm *mvm,
 				   struct ieee80211_vif *vif,
-				   u32 mac_id);
+				   u32 id);
 /* Queues */
 int iwl_mvm_tvqm_enable_txq(struct iwl_mvm *mvm,
 			    struct ieee80211_sta *sta,
@@ -596,7 +594,7 @@ int iwl_mvm_tvqm_enable_txq(struct iwl_mvm *mvm,
  * @add_sta: pointer to the function that adds a new sta
  * @update_sta: pointer to the function that updates a sta
  * @rm_sta: pointer to the functions that removes a sta
- * @mac_ctxt_change: pointer to the function that handles a change in mac ctxt
+ * @mac_ctxt_changed: pointer to the function that handles a change in mac ctxt
  */
 struct iwl_mvm_sta_state_ops {
 	int (*add_sta)(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
@@ -614,7 +612,7 @@ int iwl_mvm_mac_sta_state_common(struct ieee80211_hw *hw,
 				 struct ieee80211_sta *sta,
 				 enum ieee80211_sta_state old_state,
 				 enum ieee80211_sta_state new_state,
-				 struct iwl_mvm_sta_state_ops *callbacks);
+				 const struct iwl_mvm_sta_state_ops *callbacks);
 
 /* New MLD STA related APIs */
 /* STA */
@@ -637,14 +635,18 @@ int iwl_mvm_mld_update_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 			   struct ieee80211_sta *sta);
 int iwl_mvm_mld_rm_sta(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
 		       struct ieee80211_sta *sta);
-int iwl_mvm_mld_rm_sta_id(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
-			  u8 sta_id);
-int iwl_mvm_mld_update_sta_links(struct iwl_mvm *mvm,
-				 struct ieee80211_vif *vif,
-				 struct ieee80211_sta *sta,
-				 u16 old_links, u16 new_links);
+void iwl_mvm_mld_free_sta_link(struct iwl_mvm *mvm,
+			       struct iwl_mvm_sta *mvm_sta,
+			       struct iwl_mvm_link_sta *mvm_sta_link,
+			       unsigned int link_id);
+int iwl_mvm_mld_rm_sta_id(struct iwl_mvm *mvm, u8 sta_id);
 u32 iwl_mvm_sta_fw_id_mask(struct iwl_mvm *mvm, struct ieee80211_sta *sta,
 			   int filter_link_id);
+int iwl_mvm_mld_add_int_sta_with_queue(struct iwl_mvm *mvm,
+				       struct iwl_mvm_int_sta *sta,
+				       const u8 *addr, int link_id,
+				       u16 *queue, u8 tid,
+				       unsigned int *_wdg_timeout);
 
 /* Queues */
 void iwl_mvm_mld_modify_all_sta_disable_tx(struct iwl_mvm *mvm,

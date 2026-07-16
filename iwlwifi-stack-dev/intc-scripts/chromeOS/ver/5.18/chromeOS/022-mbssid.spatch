@@ -1,0 +1,114 @@
+@@
+identifier elems;
+identifier rnr_elems;
+identifier i;
+@@
+-static inline int
+-ieee80211_get_mbssid_beacon_len(struct cfg80211_mbssid_elems *elems,
+-				u8 i)
+-{...}
+
+@@
+identifier old, params;
+identifier mbssid_ies;
+struct cfg80211_mbssid_elems *m;
+@@
+static int ieee80211_assign_beacon(...)
+{
+<+...
+(
+-struct cfg80211_mbssid_elems *mbssid = NULL;
+|
+-        if (params->mbssid_ies) {...}
+|
+-        if (m) {...}
+)
+...+>
+}
+
+@@
+@@
+
+-static int ieee80211_copy_mbssid_beacon(...) {...}
+
+@@
+@@
+-kfree(link->u.ap.next_beacon->mbssid_ies);
+
+@@
+@@
+-static void ieee80211_beacon_add_mbssid(...) {...}
+
+@@
+identifier  mbssid_len;
+@@
+static struct sk_buff *
+__ieee80211_beacon_get_ap(...)
+{
+...
+if (...) {
+...
+-	if (mbssid_len) {...}
+...
+}
+...
+}
+
+@@
+@@
+-static struct ieee80211_ema_beacons *
+-ieee80211_beacon_get_ap_ema_list(...)
+-{...}
+
+@@
+@@
+-ieee80211_beacon_get_ap_ema_list(...)
++NULL
+
+@@
+identifier beacon;
+@@
+static struct sk_buff *
+__ieee80211_beacon_get(...)
+{
+...
+if (...) {
+...
+if (...) {
+...
+} else {
+-if (beacon->mbssid_ies && beacon->mbssid_ies->cnt) {...} else {
+...
+-}
+...
+}
+...
+} else if (...) {
+...
+} else if (...) {
+...
+} else {
+...
+}	
+...
+}
+
+@@
+identifier beacon, mbssid_ies, cnt;
+identifier pos, len;
+@@
+static struct cfg80211_beacon_data *
+cfg80211_beacon_dup(...)
+{
+...
+-if (beacon->mbssid_ies)
+-	len += ieee80211_get_mbssid_beacon_len(...);
+<+...
+-if (beacon->mbssid_ies && beacon->mbssid_ies->cnt) { ... }
+...+>
+}
+
+@@
+@@
+-ieee80211_get_mbssid_beacon_len(...)
++0

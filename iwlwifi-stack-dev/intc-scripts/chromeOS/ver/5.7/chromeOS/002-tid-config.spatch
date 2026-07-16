@@ -1,0 +1,29 @@
+@set_tid_config@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.set_tid_config = fn,
+...
+};
+
+@@
+identifier set_tid_config.fn;
+@@
+-fn(...) {...}
+
+@reset_tid_config@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.reset_tid_config = fn,
+...
+};
+
+@@
+identifier reset_tid_config.fn;
+@@
+-fn(...) {...}

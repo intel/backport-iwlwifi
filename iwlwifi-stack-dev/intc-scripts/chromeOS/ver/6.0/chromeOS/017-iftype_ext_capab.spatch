@@ -1,0 +1,31 @@
+@@
+struct wiphy_iftype_ext_capab *ift_ext_capa;
+expression E;
+@@
+-ift_ext_capa->eml_capabilities = E;
+
+@@
+struct wiphy_iftype_ext_capab *ift_ext_capa;
+@@
+-ift_ext_capa->eml_capabilities
++0
+
+@@
+struct wiphy_iftype_ext_capab *ift_ext_capa;
+@@
+-ift_ext_capa->mld_capa_and_ops
++0
+
+@@
+identifier a, capa, mld_capa;
+@@
+struct wiphy_iftype_ext_capab a[] = {
+...,
+{
+...,
+-	.eml_capabilities = capa,
+-	.mld_capa_and_ops = mld_capa,
+...,
+},
+...,
+};

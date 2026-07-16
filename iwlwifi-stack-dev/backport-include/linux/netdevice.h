@@ -5,71 +5,6 @@
 #include <backport/magic.h>
 
 
-#if LINUX_VERSION_IS_LESS(4,10,0)
-static inline bool backport_napi_complete_done(struct napi_struct *n, int work_done)
-{
-	if (unlikely(test_bit(NAPI_STATE_NPSVC, &n->state)))
-		return false;
-
-	napi_complete_done(n, work_done);
-	return true;
-}
-
-static inline bool backport_napi_complete(struct napi_struct *n)
-{
-	return backport_napi_complete_done(n, 0);
-}
-#define napi_complete_done LINUX_BACKPORT(napi_complete_done)
-#define napi_complete LINUX_BACKPORT(napi_complete)
-#endif /* < 4.10 */
-
-#if LINUX_VERSION_IS_LESS(4,5,0)
-#define netif_tx_napi_add LINUX_BACKPORT(netif_tx_napi_add)
-/**
- *	netif_tx_napi_add - initialize a napi context
- *	@dev:  network device
- *	@napi: napi context
- *	@poll: polling function
- *	@weight: default weight
- *
- * This variant of netif_napi_add() should be used from drivers using NAPI
- * to exclusively poll a TX queue.
- * This will avoid we add it into napi_hash[], thus polluting this hash table.
- */
-static inline void netif_tx_napi_add(struct net_device *dev,
-				     struct napi_struct *napi,
-				     int (*poll)(struct napi_struct *, int),
-				     int weight)
-{
-	netif_napi_add(dev, napi, poll, weight);
-}
-#endif /* < 4.5 */
-
-#ifndef NETIF_F_CSUM_MASK
-#define NETIF_F_CSUM_MASK NETIF_F_ALL_CSUM
-#endif
-
-#if LINUX_VERSION_IS_LESS(4,7,0)
-#define netif_trans_update LINUX_BACKPORT(netif_trans_update)
-static inline void netif_trans_update(struct net_device *dev)
-{
-	dev->trans_start = jiffies;
-}
-#endif
-
-#if LINUX_VERSION_IS_LESS(4,11,9)
-#define netdev_set_priv_destructor(_dev, _destructor) \
-	(_dev)->destructor = __ ## _destructor
-#define netdev_set_def_destructor(_dev) \
-	(_dev)->destructor = free_netdev
-#else
-#define netdev_set_priv_destructor(_dev, _destructor) \
-	(_dev)->needs_free_netdev = true; \
-	(_dev)->priv_destructor = (_destructor);
-#define netdev_set_def_destructor(_dev) \
-	(_dev)->needs_free_netdev = true;
-#endif
-
 #if LINUX_VERSION_IS_LESS(4,15,0)
 static inline int _bp_netdev_upper_dev_link(struct net_device *dev,
 					    struct net_device *upper_dev)
@@ -171,12 +106,7 @@ static inline void dev_sw_netstats_tx_add(struct net_device *dev,
 void dev_get_tstats64(struct net_device *dev, struct rtnl_link_stats64 *s);
 #endif /* < 5.11 */
 
-#if LINUX_VERSION_IS_LESS(4,11,0)
-struct rtnl_link_stats64 *
-bp_dev_get_tstats64(struct net_device *dev, struct rtnl_link_stats64 *s);
-#endif /* < 4.11 */
-
-#if LINUX_VERSION_IN_RANGE(4,6,0, 5,15,0)
+#if LINUX_VERSION_IS_LESS(5,15,0)
 #define get_user_ifreq LINUX_BACKPORT(get_user_ifreq)
 int get_user_ifreq(struct ifreq *ifr, void __user **ifrdata, void __user *arg);
 #define put_user_ifreq LINUX_BACKPORT(put_user_ifreq)
@@ -254,6 +184,17 @@ struct net_device_path_ctx {
 };
 #endif /* NET_DEVICE_PATH_STACK_MAX */
 
+#if LINUX_VERSION_IS_LESS(5,17,0)
+static inline void backport_txq_trans_cond_update(struct netdev_queue *txq)
+{
+	unsigned long now = jiffies;
+
+	if (READ_ONCE(txq->trans_start) != now)
+		WRITE_ONCE(txq->trans_start, now);
+}
+#define txq_trans_cond_update LINUX_BACKPORT(txq_trans_cond_update)
+#endif /* < 5.17 */
+
 #if LINUX_VERSION_IS_LESS(5,18,0)
 static inline int LINUX_BACKPORT(netif_rx)(struct sk_buff *skb)
 {
@@ -270,5 +211,104 @@ static inline int LINUX_BACKPORT(netif_rx)(struct sk_buff *skb)
 }
 #define netif_rx LINUX_BACKPORT(netif_rx)
 #endif /* < 5.18.0 */
+
+#if LINUX_VERSION_IS_LESS(6,7,0)
+/**
+ *	napi_schedule - schedule NAPI poll
+ *	@n: NAPI context
+ *
+ * Schedule NAPI poll routine to be called if it is not already
+ * running.
+ * Return true if we schedule a NAPI or false if not.
+ * Refer to napi_schedule_prep() for additional reason on why
+ * a NAPI might not be scheduled.
+ */
+static inline bool LINUX_BACKPORT(napi_schedule)(struct napi_struct *n)
+{
+	if (napi_schedule_prep(n)) {
+		__napi_schedule(n);
+		return true;
+	}
+
+	return false;
+}
+#define napi_schedule LINUX_BACKPORT(napi_schedule)
+#endif /* < 6.7.0 */
+
+#if LINUX_VERSION_IS_LESS(6,10,0)
+static inline struct net_device *alloc_netdev_dummy(int sizeof_priv)
+{
+	struct net_device *dev;
+
+	dev = kzalloc(sizeof(*dev) +
+		      ALIGN(sizeof(struct net_device), NETDEV_ALIGN) +
+		      sizeof_priv,
+		      GFP_KERNEL);
+
+	if (!dev)
+		return NULL;
+
+	init_dummy_netdev(dev);
+	return dev;
+}
+
+static inline void LINUX_BACKPORT(free_netdev)(struct net_device *dev)
+{
+	if (dev->reg_state == NETREG_DUMMY) {
+		kfree(dev);
+		return;
+	}
+
+	free_netdev(dev);
+}
+#define free_netdev LINUX_BACKPORT(free_netdev)
+#endif /* 6.10.0 */
+#if LINUX_VERSION_IS_LESS(5,19,0)
+
+#define netif_napi_add_weight LINUX_BACKPORT(netif_napi_add_weight)
+static inline void netif_napi_add_weight(struct net_device *dev,
+				   struct napi_struct *napi,
+				   int (*poll)(struct napi_struct *, int),
+				   int weight)
+{
+	netif_napi_add(dev, napi, poll, weight);
+}
+#endif /* < 5.19.0 */
+
+#if LINUX_VERSION_IS_LESS(6,1,0)
+static inline void backport_netif_napi_add(struct net_device *dev,
+					   struct napi_struct *napi,
+					   int (*poll)(struct napi_struct *, int))
+{
+	netif_napi_add(dev, napi, poll, NAPI_POLL_WEIGHT);
+}
+#define netif_napi_add LINUX_BACKPORT(netif_napi_add)
+
+static inline void backport_netif_napi_add_tx(struct net_device *dev,
+					      struct napi_struct *napi,
+					      int (*poll)(struct napi_struct *, int))
+{
+	netif_tx_napi_add(dev, napi, poll, NAPI_POLL_WEIGHT);
+}
+#define netif_napi_add_tx LINUX_BACKPORT(netif_napi_add_tx)
+#endif /* < 6.1 */
+
+#if LINUX_VERSION_IS_LESS(5,15,0)
+#define dev_addr_mod LINUX_BACKPORT(dev_addr_mod)
+static inline void
+dev_addr_mod(struct net_device *dev, unsigned int offset,
+	const void *addr, size_t len)
+{
+	memcpy(&dev->dev_addr[offset], addr, len);
+}
+#endif /* < 5.15 */
+
+#if LINUX_VERSION_IS_LESS(5,13,0)
+#define dev_set_threaded LINUX_BACKPORT(dev_set_threaded)
+static inline int dev_set_threaded(struct net_device *dev, bool threaded)
+{
+	return -EOPNOTSUPP;
+}
+#endif /* < 5.13 */
 
 #endif /* __BACKPORT_NETDEVICE_H */

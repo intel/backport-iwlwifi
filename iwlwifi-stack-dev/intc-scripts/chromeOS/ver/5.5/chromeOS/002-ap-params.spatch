@@ -1,0 +1,13 @@
+@@
+expression E;
+@@
+ieee80211_start_ap(...)
+{
+<+...
+(
+-E = params->twt_responder;
+|
+-E = params->he_obss_pd;
+)
+...+>
+}

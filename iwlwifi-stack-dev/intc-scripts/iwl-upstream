@@ -1,0 +1,1301 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: proprietary
+"""
+tool to help upstreaming
+
+Copyright (C) 2024 Intel Corporation
+"""
+import os
+import sys
+import csv
+import sqlite3
+import subprocess
+from binascii import hexlify
+from html.parser import HTMLParser
+from datetime import datetime, timedelta
+from collections import OrderedDict
+
+try:
+    import yaml
+    import click
+    import requests
+    import dateutil.parser as parser
+    import openpyxl
+except ImportError as error:
+    requirements_path = os.path.join(os.path.dirname(__file__), 'requirements.txt')
+    print(f"Missing required module: {error.name}")
+    print("Please install the required modules using pip:")
+    print(f"\t{sys.executable} -m pip install -r {requirements_path}")
+    sys.exit(1)
+
+_requests_session = None
+def requests_session():
+    global _requests_session
+    if _requests_session is None:
+        _requests_session = requests.Session()
+        _requests_session.headers.update({
+            'User-Agent': 'iwlwifi upstream tracker (johannes.berg@intel.com)'
+        })
+    return _requests_session
+
+
+class Missing:
+    def __init__(self, help):
+        self.help = help
+
+class Config:
+    search_from = ['@sipsolutions.net', '@intel.com']
+    initial_search_age = '1.year.ago'
+    search_title = 'PATCH'
+    list_url = 'https://lore.kernel.org/linux-wireless/'
+    upstream_tree = Missing("must be configured to a git checkout of the upstream tree")
+    upstream_branches = Missing("must be configured to a list of 'remote: name', first one will be used as base (linus)")
+    patchwork_url = 'https://patchwork.kernel.org/api/1.2/'
+    patchwork_project = 'linux-wireless'
+    cutoff = None
+    display_format = '%h %s'
+    csv_format = '%s'
+    csv_format_header = 'subject'
+    width = 40
+    abbrev = 12 # should match git I guess
+    interesting_paths = [
+        'drivers/net/wireless/intel/iwlwifi/',
+        'drivers/net/wireless/virtual/',
+        'net/mac80211/',
+        'net/wireless/',
+        'include/net/mac80211.h',
+        'include/net/cfg80211.h',
+        'include/linux/ieee80211.h',
+        'include/net/ieee80211_radiotap.h',
+        'include/net/regulatory.h',
+        'include/uapi/linux/nl80211.h',
+    ]
+    noupstream_subj = '[NOUPSTREAM]'
+    noupstream_files = [
+        'intc-scripts/',
+        '.github/',
+        'shell.nix',
+        'kconf/',
+        'compat/',
+        'backport-include/',
+        'local-symbols',
+        'nix/',
+        'defconfigs/',
+        'jenkins/',
+        'drivers/net/wireless/intel/iwlwifi/prod/',
+        'drivers/net/wireless/intel/iwlwifi/xvt/',
+        'drivers/net/wireless/intel/iwlwifi/iwl-tm-infc.h',
+        'drivers/net/wireless/intel/iwlwifi/iwl-tm-gnl.c',
+        'drivers/net/wireless/intel/iwlwifi/iwl-dbg-cfg.', # c/h
+        'drivers/net/wireless/intel/iwlwifi/iwl-vendor-cmd.h',
+        'drivers/net/wireless/intel/iwlwifi/Kconfig.noupstream',
+        'drivers/net/wireless/intel/iwlwifi/simulation/',
+        'drivers/net/wireless/intel/iwlwifi/iwl-config-nj.h',
+        'drivers/net/wireless/intel/iwlwifi/mvm/vendor-cmd.c',
+        'drivers/net/wireless/intel/iwlwifi/pcie/devinfo-nj.h',
+        'drivers/net/wireless/intel/iwlwifi/pcie/pci-nj.h',
+        'drivers/net/wireless/intel/iwlwifi/fmac/',
+        'drivers/net/wireless/intel/iwlwifi/fw/api/fmac-version.h',
+        'drivers/net/wireless/intel/iwlwifi/fw/api/fmac.h',
+    ]
+    notes_remote = 'origin'
+    notes_branch = 'upstreaming'
+
+
+class DateProgressBar:
+    def __init__(self, start):
+        self.start = start
+        self.now = datetime.now()
+        def show_day(d):
+            if d is None:
+                return None
+            return d.strftime('>>> %Y-%m-%d')
+        self.length = (self.now - self.start).days or 1
+        self.bar = click.progressbar(length=self.length,
+                                     item_show_func=show_day)
+        self.pos = 0
+
+    def finish(self):
+        self.bar.update(self.length - self.pos)
+
+    def set_pos(self, dpos):
+        pos = (dpos - self.start).days
+        if pos > self.pos:
+            self.bar.update(pos - self.pos, current_item=dpos)
+            self.pos = pos
+
+    def __enter__(self):
+        self.bar.__enter__()
+        return self
+
+    def __exit__(self, type, value, tb):
+        self.bar.__exit__(type, value, tb)
+
+def _zero_iter(infile, sep=b'\x00'):
+   partial = b''
+   while True:
+       data = infile.read(8192)
+       if not data:
+           break
+       partial += data
+       lines = partial.split(sep)
+       partial = lines.pop()
+       for line in lines:
+           yield line
+   if partial:
+       yield partial
+
+def _accepted_state(state):
+    if not state:
+        return False
+    if state.startswith('applied:') or state.startswith('upstream:'):
+        return True
+    if state in ('upstream', 'patchwork:accepted', 'patchwork:mainlined'):
+        return True
+    return False
+
+
+def _check_config(config, *keys):
+    errors = []
+    for k in keys:
+        val = getattr(config, k)
+        if isinstance(val, Missing):
+            errors.append(f'{k}: {val.help}')
+    if errors:
+        raise click.UsageError('\n'.join(errors))
+
+class Context:
+    pass
+
+def _init_db(db):
+    db.execute('CREATE TABLE IF NOT EXISTS last_updated (key UNIQUE, value)')
+
+def _get_last_updated(db, k, default=None):
+    cur = db.cursor()
+    res = db.execute('SELECT value FROM last_updated WHERE key=?', (k, ))
+    fetch = res.fetchone()
+    if fetch is None:
+        return default
+    return fetch[0]
+
+# note: need to commit after this, with your changes
+def _set_last_updated(db, k, val):
+    cur = db.cursor()
+    cur.execute('INSERT OR REPLACE INTO last_updated (key, value) VALUES (?, ?)', (k, val))
+
+@click.group()
+@click.pass_context
+def iwl(ctx):
+    '''
+    Determine, show and manage upstreaming state of patches.
+    '''
+    ctx.obj = Context()
+    # put that into the context, maybe we'll support a
+    # --cache option later
+    cache_dir = os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache'))
+    iwl_cache = os.path.join(cache_dir, 'iwl-upstream')
+    os.makedirs(iwl_cache, exist_ok=True)
+    ctx.obj.db = sqlite3.connect(os.path.join(iwl_cache, 'cache.db'))
+    _init_db(ctx.obj.db)
+
+    config_dir = os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config'))
+    ctx.obj.config = Config()
+    try:
+        with open(os.path.join(config_dir, 'iwl-upstream.yaml'), 'r') as cfg_file:
+            loaded = yaml.safe_load(cfg_file)
+        if loaded is not None:
+            for k, v in loaded.items():
+                if hasattr(ctx.obj.config, k):
+                    setattr(ctx.obj.config, k, v)
+    except FileNotFoundError:
+        pass
+    if len(ctx.obj.config.csv_format.split(',')) != len(ctx.obj.config.csv_format_header.split(',')):
+        raise click.ClickException("Configuration items 'csv_format' and 'csv_format_header' mismatched!")
+
+class LoreSearchParser(HTMLParser):
+    def __init__(self, change_id_callback):
+        super().__init__()
+        self.next_url = None
+        self.change_id_callback = change_id_callback
+        self._a_info = None
+        self._is_rfc = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag != 'a':
+            return
+        self.in_a = True
+        href = None
+        is_next = False
+        for k, v in attrs:
+            if k == 'rel' and v == 'next':
+                if href is not None:
+                    self.next_url = href
+                    return
+                is_next = True
+            if k == 'href':
+                href = v
+                if is_next:
+                    self.next_url = href
+                    return
+            if k == 'href' and '@changeid' in v and '.' in v:
+                change_id = v.split('.')[-1]
+                change_id, _ = change_id.split('@')
+                if change_id[0] == 'I' and len(change_id) == 41:
+                    msgid = v
+                    if msgid.endswith('/'):
+                        msgid = v[:-1]
+                    self._a_info = (change_id, msgid)
+
+    def handle_data(self, data):
+        if self._a_info is None:
+            return
+        self._is_rfc = data.startswith('[RFC') or data.startswith('[PATCH RFC')
+
+    def handle_endtag(self, tag):
+        if tag != 'a' or self._a_info is None:
+            return
+        assert self._is_rfc is not None
+        self.change_id_callback(self._a_info[0], self._a_info[1], self._is_rfc)
+        self._a_info = None
+        self._is_rfc = None
+
+
+def _refresh_lore(ctx):
+    ctx.db.execute('CREATE TABLE IF NOT EXISTS lore (change_id, message_id UNIQUE, rfc)')
+    cur = ctx.db.cursor()
+
+    def found_change_id(change_id, message_id, rfc):
+        cur.execute('INSERT OR IGNORE INTO lore (change_id, message_id, rfc) VALUES (?, ?, ?)', (change_id, message_id, rfc))
+
+    from_str = ' OR '.join(f'f:{f}' for f in ctx.config.search_from)
+
+    search_date = _get_last_updated(ctx.db, 'lore', ctx.config.initial_search_age)
+    assert search_date is not None
+
+    if ctx.config.search_title:
+        search_title = f's:{ctx.config.search_title}'
+    else:
+        search_title = ''
+
+    url = f'{ctx.config.list_url}?q=({from_str})+{search_title}+rt:{search_date}..'
+    while url is not None:
+        r = requests_session().get(url)
+        p = LoreSearchParser(found_change_id)
+        p.feed(r.text)
+        url = p.next_url
+        if url is not None and url.startswith('?'):
+            url = f'{ctx.config.list_url}{url}'
+
+    # set to yesterday to account for timezones
+    yesterday = (datetime.now() - timedelta(10)).strftime('%Y-%m-%d')
+    _set_last_updated(ctx.db, 'lore', yesterday)
+
+    ctx.db.commit()
+
+@iwl.command()
+@click.pass_obj
+def refresh_lore(ctx):
+    '''
+    Refresh data from the lore mailing list archive.
+    '''
+    _refresh_lore(ctx)
+
+
+def _table_name(name):
+    if name[0].isalnum() and not name[0].isalpha():
+        name = '_' + name
+    return ''.join(c if c.isalnum() else '_' for c in name)
+
+def _find_message_ids(lines):
+    for line in lines:
+        for pfx in (b'Link: https://lore.kernel.org/',
+                    b'Link: https://msgid.link/',
+                    b'Link: https://patch.msgid.link/'):
+            if line.startswith(pfx):
+                msgid = line[len(pfx):]
+                if msgid.startswith(b'r/'):
+                    msgid = msgid[2:]
+                if msgid.endswith(b'/'):
+                    msgid = msgid[:-1]
+                yield msgid.decode('ascii', errors='ignore')
+
+def _find_change_id(lines):
+    change_id = None
+    change_id_link = None
+    for line in lines:
+        if line.startswith(b'Change-Id: I'):
+            change_id = line[len(b'Change-Id: '):].decode('ascii')
+    for msgid in _find_message_ids(lines):
+        if msgid.endswith('@changeid'):
+            possible = msgid.split('.')[-1]
+            change_id_link = possible.split('@')[0]
+            if not change_id_link.startswith('I') or len(change_id_link) != 41:
+                change_id_link = None
+
+    # prefer real one over Link tag
+    if change_id is not None:
+        return change_id
+    if change_id_link is not None:
+        return change_id_link
+    return None
+
+# handles both Change-Id: and List: format
+# will commit the transaction and last-update itself
+def _map_change_ids(db, table, git_dir, branch):
+    db.execute(f'CREATE TABLE IF NOT EXISTS {table} (sha1 UNIQUE, change_id UNIQUE)')
+
+    last_checked_key = f'change-ids-{table}'
+    last_checked = _get_last_updated(db, last_checked_key)
+    if last_checked is None:
+        rev_list = branch
+    else:
+        rev_list = f'{last_checked}..{branch}'
+    cur = db.cursor()
+    first_sha1 = None
+    with subprocess.Popen(['git', '-C', git_dir, 'log', '-z', '--format=%H%n%B', rev_list, '--'],
+                          stdout=subprocess.PIPE) as p:
+        for record in _zero_iter(p.stdout):
+            lines = record.splitlines()
+            sha1 = lines[0].decode('ascii')
+            if first_sha1 is None:
+                first_sha1 = sha1
+            change_id = _find_change_id(lines)
+            if change_id:
+                cur.execute(f'INSERT OR REPLACE INTO {table} (sha1, change_id) VALUES (?, ?)', (sha1, change_id))
+        p.wait()
+        assert p.returncode == 0, 'git failed'
+    if first_sha1 is not None:
+        _set_last_updated(db, last_checked_key, first_sha1)
+    db.commit()
+
+def _rev_parse(git_dir, ref):
+    with subprocess.Popen(['git', '-C', git_dir, 'rev-parse', ref],
+                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as p:
+        ret = p.stdout.read().strip().decode('ascii')
+        p.wait()
+        assert p.returncode == 0, 'git failed'
+    return ret
+
+def _map_patch_ids(ctx, table, git_dir, branch, stack_dev):
+    db = ctx.db
+    db.execute(f'CREATE TABLE IF NOT EXISTS {table} (sha1 UNIQUE, patch_id)')
+    db.execute(f'CREATE INDEX IF NOT EXISTS index_patch_id_{table} ON {table} (patch_id)')
+    cur = db.cursor()
+
+    branch_sha1 = _rev_parse(git_dir, branch)
+
+    last_checked_key = f'patch-ids-{table}'
+    last_checked = _get_last_updated(db, last_checked_key)
+    if last_checked is None:
+        earliest_commit = None
+        args = ['git', '-C', git_dir, 'log', '--reverse', '-z', '--format=%H']
+        if branch is not None:
+            args.append(branch)
+        args.append('--')
+        with subprocess.Popen(args, stdout=subprocess.PIPE) as p:
+            for record in _zero_iter(p.stdout):
+                sha1 = record.decode('ascii')
+                earliest_commit = sha1
+                break
+            p.kill()
+        assert earliest_commit
+        rev_list = f'{earliest_commit}..{branch_sha1}'
+    else:
+        rev_list = f'{last_checked}..{branch_sha1}'
+        if last_checked == branch_sha1:
+            return
+
+    logargs = ['git', '-C', git_dir, 'log', '-u']
+    if not stack_dev:
+        logargs.append('--full-diff')
+    logargs.extend([rev_list, '--'])
+    if stack_dev:
+        logargs.extend(['drivers', 'net', 'include'])
+    else:
+        logargs.extend(ctx.config.interesting_paths)
+    last_sha1 = None
+    with subprocess.Popen(logargs, stdout=subprocess.PIPE) as log:
+        if stack_dev:
+            filterargs = ['sed', 's/CPTCFG_/CONFIG_/g']
+        else:
+            filterargs = ['cat', '-']
+        with subprocess.Popen(filterargs, stdin=log.stdout,
+                              stdout=subprocess.PIPE) as pfilter:
+            with subprocess.Popen(['git', 'patch-id', '--stable'],
+                                  stdin=pfilter.stdout, stdout=subprocess.PIPE) as p:
+                for line in p.stdout:
+                    patch_id, sha1 = line.strip().decode('ascii').split()
+                    cur.execute(f'INSERT OR IGNORE INTO {table} (sha1, patch_id) VALUES (?, ?)',
+                                (sha1, patch_id))
+                    last_sha1 = sha1
+                p.wait()
+                assert p.returncode == 0, 'git failed'
+            pfilter.wait()
+            assert pfilter.returncode == 0, 'filter failed'
+        log.wait()
+        assert log.returncode == 0, 'git failed'
+    _set_last_updated(db, last_checked_key, branch_sha1)
+    db.commit()
+
+def _refresh_upstream(ctx):
+    _check_config(ctx.config, 'upstream_tree', 'upstream_branches')
+
+    for name, branch in ctx.config.upstream_branches.items():
+        _map_change_ids(ctx.db, f'upstream_{_table_name(name)}',
+                        ctx.config.upstream_tree, branch)
+        _map_patch_ids(ctx, f'upstream_patch_ids_{_table_name(name)}',
+                       ctx.config.upstream_tree, branch, False)
+
+@iwl.command()
+@click.pass_obj
+def refresh_upstream(ctx):
+    '''
+    Refresh upstream state of patches.
+
+    Note that you have to update the upstream tree yourself (using git).
+    '''
+    _refresh_upstream(ctx)
+
+
+def _refresh_notes(ctx):
+    notes_ref = f'refs/notes/{ctx.config.notes_branch}'
+    subprocess.run(['git', 'fetch', '--no-tags', '--no-write-fetch-head',
+                    ctx.config.notes_remote, f'{notes_ref}:{notes_ref}'],
+                   check=True)
+
+@iwl.command()
+@click.pass_obj
+def refresh_notes(ctx):
+    '''
+    Refresh the notes branch from the configured remote.
+    '''
+    _refresh_notes(ctx)
+
+
+def _refresh_patchwork(ctx):
+    ctx.db.execute('CREATE TABLE IF NOT EXISTS patchwork (message_id UNIQUE, state)')
+    cur = ctx.db.cursor()
+
+    patchwork = ctx.config.patchwork_url
+    if not patchwork.endswith('/'):
+        patchwork += '/'
+
+    url = f'{patchwork}events/?project={ctx.config.patchwork_project}&order=date'
+    pp = '&per_page=100'
+
+    last_date = _get_last_updated(ctx.db, 'patchwork')
+    if last_date is None:
+        r = requests_session().get(url + '&per_page=1')
+        if r.status_code != 200:
+            raise click.ClickException(f'Error {r.status_code} loading {url}&per_page=1=')
+        last_date = r.json()[0]['date']
+    since_str = f'&since={last_date}' # inclusive, so this is always OK
+
+    prior_id = None
+    with DateProgressBar(parser.parse(last_date)) as pgbar:
+        while True:
+            r = requests_session().get(url + since_str + pp)
+            if r.status_code != 200:
+                raise click.ClickException(f'Error {r.status_code} loading {url}{since_str}{pp}')
+
+            last_date = None
+            last_id = None
+
+            for event in r.json():
+                last_date = event['date']
+                last_id = event['id']
+
+                category = event['category']
+                try:
+                    msgid = event['payload']['patch']['msgid']
+                    if msgid[0] == '<':
+                        msgid = msgid[1:]
+                    if msgid[-1] == '>':
+                        msgid = msgid[:-1]
+                except KeyError:
+                    continue
+                if category == 'patch-created':
+                    cur.execute('INSERT OR REPLACE INTO patchwork (message_id, state) VALUES (?, ?)',
+                                (msgid, 'new'))
+                elif category == 'patch-state-changed':
+                    cur.execute('INSERT OR REPLACE INTO patchwork (message_id, state) VALUES (?, ?)',
+                                (msgid, event['payload']['current_state']))
+            if last_date is None or last_id is None:
+                break
+            _set_last_updated(ctx.db, 'patchwork', last_date)
+            ctx.db.commit()
+            if prior_id == last_id:
+                pgbar.finish()
+                break
+            prior_id = last_id
+            since_str = f'&since={last_date}'
+            pgbar.set_pos(parser.parse(last_date))
+
+
+@iwl.command()
+@click.pass_obj
+def refresh_patchwork(ctx):
+    '''
+    Refresh patchwork state of patches.
+    '''
+    _refresh_patchwork(ctx)
+
+
+@iwl.command()
+@click.pass_obj
+def refresh(ctx):
+    '''
+    Refresh all non-local data sources except for patchwork.
+    '''
+    click.echo("refreshing upstream ...")
+    _refresh_upstream(ctx)
+    click.echo("refreshing lore ...")
+    _refresh_lore(ctx)
+    click.echo("refreshing notes ...")
+    _refresh_notes(ctx)
+    click.echo("refreshing patchwork ...")
+    _refresh_patchwork(ctx)
+
+
+def _map_links(ctx):
+    ctx.db.execute(f'CREATE TABLE IF NOT EXISTS upstream_message_ids (sha1 UNIQUE, message_id)')
+    cur = ctx.db.cursor()
+
+    head = _rev_parse('.', 'HEAD')
+    message_id_mapped_last = _get_last_updated(ctx.db, 'upstream_message_ids',
+                                               ctx.config.cutoff)
+    if message_id_mapped_last:
+        rev_list = f'{message_id_mapped_last}..{head}'
+    else:
+        rev_list = f'{head}'
+
+    first_sha1 = None
+    with subprocess.Popen(['git', 'log', '-z', '--first-parent', '--no-merges',
+                           '--format=%H%n%B', '--grep=Link: https://', rev_list,
+                           '--'],
+                          stdout=subprocess.PIPE) as p:
+        for record in _zero_iter(p.stdout):
+            lines = record.splitlines()
+            sha1 = lines[0].decode('ascii')
+            if first_sha1 is None:
+                first_sha1 = sha1
+            for message_id in _find_message_ids(lines):
+                cur.execute(f'INSERT OR IGNORE INTO upstream_message_ids (sha1, message_id) VALUES (?, ?)',
+                            (sha1, message_id))
+        p.wait()
+        assert p.returncode == 0, 'git failed'
+    _set_last_updated(ctx.db, 'upstream_message_ids', head)
+    ctx.db.commit()
+
+
+def _find_fixes(lines):
+    fixes = []
+    for line in lines:
+        if line.startswith(b'fixes=I'):
+            tentative = line[6:]
+            if len(tentative) == 41:
+                fixes.append(tentative.decode('ascii'))
+    return fixes or None
+
+class Filters:
+    pass
+
+def _pad(s, width):
+    if len(s) < width:
+        return s + (' ' * (width - len(s)))
+    return s
+
+class PatchData:
+    def __init__(self):
+        self.squashes = []
+
+def _query_patchwork(ctx, msgid):
+    ctx.db.execute('CREATE TABLE IF NOT EXISTS patchwork (message_id UNIQUE, state)')
+    cur = ctx.db.cursor()
+
+    res = cur.execute('SELECT state FROM patchwork WHERE message_id=?', (msgid, ))
+    res = res.fetchone()
+    if res:
+        return res[0]
+    return None
+
+def _is_noupstream_patch(ctx, subj, files):
+    if ctx.config.noupstream_subj and ctx.config.noupstream_subj in subj:
+        return True
+    for f in files:
+        ignored = False
+        for pfx in ctx.config.noupstream_files:
+            if f.startswith(pfx):
+                ignored = True
+        if not ignored:
+            return False
+    return True
+
+def _determine_state(ctx, change_id_map, result, sha1, change_id, fixes,
+                     subj, files, note):
+    cur = ctx.db.cursor()
+
+    if note and 'state' in note:
+        if note['state'] in ('upstream', 'squashed', 'reverted', 'revert', 'reverted-upstream'):
+            if 'commit-id' in note:
+                return f'{note["state"]}:{note["commit-id"]}'
+            return note["state"]
+        if note['state'] == 'noupstream':
+            return 'noupstream'
+        assert False, f'Found unknown state "{note["state"]}" in note!'
+
+    # first check if it was applied somewhere
+    for name, branch in ctx.config.upstream_branches.items():
+        table = _table_name(name)
+        res = cur.execute(f'SELECT sha1 FROM upstream_{table} WHERE change_id=?',
+                          (change_id, )).fetchone()
+        if res is not None:
+            return f'applied:{name}:{res[0]}'
+
+    # check if found by patch-id upstream
+    res = cur.execute(f'SELECT patch_id FROM local_patch_ids WHERE sha1=?', (sha1, )).fetchone()
+    if res is not None:
+        patch_id = res[0]
+        for name, branch in ctx.config.upstream_branches.items():
+            table = _table_name(name)
+            res = cur.execute(f'SELECT sha1 FROM upstream_patch_ids_{table} WHERE patch_id=?',
+                              (patch_id, )).fetchone()
+            if res is not None:
+                return f'applied:{name}:{res[0]}'
+
+    # next check for sent to list, both lore by change-id and upstream message-id
+    # (maybe this should check for all potential message IDs, not just the last?)
+    res = cur.execute('SELECT message_id, rfc FROM lore WHERE change_id=? ORDER BY message_id DESC LIMIT 1',
+                      (change_id, )).fetchone()
+    if res is not None:
+        msgid, is_rfc = res
+
+        pw = _query_patchwork(ctx, msgid)
+        if pw is not None:
+            return f'patchwork:{pw}'
+        return 'sent-rfc' if is_rfc else 'sent'
+
+    res = cur.execute('SELECT message_id FROM upstream_message_ids WHERE sha1=?', (sha1, )).fetchone()
+    if res is not None:
+        msgid = res[0]
+        pw = _query_patchwork(ctx, msgid)
+        if pw is not None:
+            return f'patchwork:{pw}'
+        return 'from-upstream'
+
+    if _is_noupstream_patch(ctx, subj, files):
+        return 'noupstream'
+
+    # last check if it can/should be squashed
+    squash_into = []
+    for f in fixes or []:
+        fix_sha1 = change_id_map.get(f)
+        if not fix_sha1:
+            continue
+        data = result.get(fix_sha1)
+        if not data:
+            continue
+        if not _accepted_state(data.state):
+            squash_into.append(fix_sha1)
+    if squash_into:
+        return 'squash-into:' + ','.join(squash_into)
+
+    return None
+
+def _get_states(ctx, extra, rev_list, paths):
+    # refresh the local change-id table
+    _map_change_ids(ctx.db, 'local', '.', 'HEAD')
+    # and patch-ids
+    _map_patch_ids(ctx, 'local_patch_ids', '.', 'HEAD', True)
+    # and from-upstream links
+    _map_links(ctx)
+
+    # load it to a dict
+    cur = ctx.db.cursor()
+    cur.execute("SELECT change_id, sha1 FROM local")
+    change_id_map = {}
+    for change_id, sha1 in cur.fetchall():
+        change_id_map[change_id] = sha1
+
+    format = f'--format=%x00%H%n%s%n{extra}%n%B%x00notes:%N'
+    logargs = ['git', 'log', '--name-only', '--first-parent', '--no-merges', '-z', '--reverse', format,
+               f'--notes={ctx.config.notes_branch}']
+    if rev_list:
+        logargs.append(rev_list)
+    if paths:
+        logargs.append('--')
+        logargs.extend(paths)
+    result = OrderedDict()
+    with subprocess.Popen(logargs, stdout=subprocess.PIPE) as p:
+        for record in _zero_iter(p.stdout, sep=b'\x00\x00'):
+            # first record ...
+            if record[0] == 0:
+                record = record[1:]
+            record, note, *files = record.split(b'\x00')
+            note = note.decode('utf-8')
+            assert note.startswith('notes:')
+            note = yaml.safe_load(note[6:])
+            if files:
+                if files[0].startswith(b'\n'):
+                    files[0] = files[0][1:]
+                files = [f for f in files if f]
+            lines = record.splitlines()
+            sha1 = lines[0].decode('ascii')
+            subj = lines[1].decode('utf-8')
+            display = lines[2].decode('utf-8')
+            fixes = _find_fixes(lines)
+            data = PatchData()
+            data.state = _determine_state(ctx, change_id_map, result, sha1,
+                                          _find_change_id(lines), fixes,
+                                          subj, [f.decode('utf-8') for f in files],
+                                          note)
+            if data.state and data.state.startswith('squash-into:'):
+                squash_sha1s = data.state[len('squash-into:'):].split(',')
+                for squash_into in squash_sha1s:
+                    result[squash_into].squashes.append(sha1)
+            data.display = display
+            data.comment = note.get('comment') if note else None
+            # OrderedDict, so this goes to the end
+            result[sha1] = data
+    return result
+
+def _is_still_todo(state):
+    if not state:
+        return True
+    if _accepted_state(state):
+        return False
+    if state.startswith('squash-into:'):
+        return True
+    if state.startswith('patchwork:'):
+        # patchwork accepted states handled in _accepted_state()
+        return True
+    if state in ('sent', 'sent-rfc', 'from-upstream'):
+        return True
+    if state in ('noupstream', 'squashed', 'reverted', 'revert'):
+        return False
+    for tp in ('reverted', 'squashed', 'revert'):
+        if state.startswith(f'{tp}:'):
+            return False
+    if state.startswith('squash-with:'):
+        return True
+    if state.startswith('reverted-upstream'):
+        return True
+    assert False, f"bad state '{state}'"
+
+def _abbrev_state(abbrev, state):
+    if not state:
+        return state
+    if state.startswith('applied:'):
+        state, tree, sha1 = state.split(':')
+        return f'applied:{tree}:{sha1[:abbrev]}'
+    for tp in ('upstream', 'reverted', 'reverted-upstream', 'revert'):
+        if state.startswith(f'{tp}:'):
+            sha1 = state.split(':')[1]
+            return f'{tp}:{sha1[:abbrev]}'
+    if state.startswith('squash-into:') or state.startswith('squashed:'):
+        tp, sha1s = state.split(':')
+        sha1list = [s[:abbrev] for s in sha1s.split(',')]
+        return f'{tp}:{",".join(sha1list)}'
+    return state
+
+def _color(state):
+    if not state:
+        return None
+    if state in ('sent', 'sent-rfc', 'from-upstream',
+                 'patchwork:new', 'patchwork:under-review'):
+        return 'yellow'
+    if state in ('noupstream'):
+        return 'green'
+    if _accepted_state(state) or state.startswith('squashed'):
+        return 'green'
+    if state.startswith('reverted:') or state == 'reverted':
+        return 'green'
+    if state.startswith('revert:') or state == 'revert':
+        return 'green'
+    if state in ('patchwork:rejected', ):
+        return 'red'
+    return None
+
+def _xlsx_color(state):
+    map = {
+        None: None,
+        'red': 'FF0000',
+        'green': '00FF00',
+        'yellow': 'FFFF00',
+    }
+    return map[_color(state)]
+
+def _color_state(state, print_state):
+    color = _color(state)
+    if color is None:
+        return print_state
+    return click.style(print_state, fg=color)
+
+def _log_to_state(ctx, rev_list, paths, filters, mode, outfile, color):
+    if mode in ('csv', 'xlsx'):
+        extra = '%h,' + ctx.config.csv_format
+    else:
+        extra = ctx.config.display_format
+    result = _get_states(ctx, extra, rev_list, paths)
+    if mode in ('csv', 'xlsx'):
+        hdr = ['state', 'commit']
+        split_header = ctx.config.csv_format_header.split(',')
+        # we added the commit ID always, so no -1
+        num_header_items = len(split_header)
+        hdr.extend(split_header)
+        hdr.append('comment')
+        if mode == 'csv':
+            csv_writer = csv.writer(outfile)
+            csv_writer.writerow(hdr)
+        else:
+            outfile.append(hdr)
+            row = outfile.row_dimensions[1]
+            row.font = openpyxl.styles.Font(bold=True)
+    for sha1, data in reversed(result.items()):
+        if filters.no_applied and _accepted_state(data.state):
+            continue
+        if filters.no_sent and data.state == 'sent':
+            continue
+        if filters.todo and not _is_still_todo(data.state):
+            continue
+        if data.state == 'noupstream' and not filters.noupstream:
+            continue
+        print_state = _abbrev_state(ctx.config.abbrev, data.state) or ''
+        if _is_still_todo(data.state) and data.squashes:
+            squashes = [s[:ctx.config.abbrev] for s in data.squashes]
+            sep = "/" if print_state else ""
+            print_state = f'{print_state}{sep}squash-with:{",".join(squashes)}'
+        if mode in ('csv', 'xlsx'):
+            row = [print_state]
+            row.extend(data.display.split(',', num_header_items))
+            row.append(data.comment)
+            if mode == 'csv':
+                csv_writer.writerow(row)
+            else:
+                outfile.append(row)
+                rownum = outfile.max_row
+                color = _xlsx_color(data.state)
+                if color:
+                    fill = openpyxl.styles.PatternFill(start_color=color,
+                                                       fill_type='solid')
+                    outfile[f'A{rownum}'].fill = fill
+        else:
+            print_state = _pad(print_state, ctx.config.width)
+            print_state = _color_state(data.state, print_state)
+            click.echo(print_state + ' ' + data.display, color=color, file=outfile)
+            if data.comment:
+                click.echo(f'comment: {data.comment}', file=outfile)
+
+@iwl.command()
+@click.option('--no-sent', 'no_sent', flag_value=True, default=False)
+@click.option('--no-applied', 'no_applied', flag_value=True, default=False)
+@click.option('--noupstream', 'noupstream', flag_value=True, default=False)
+@click.option('--todo', 'todo', flag_value=True, default=False)
+@click.option('--mode',
+              type=click.Choice(['text', 'csv', 'xlsx'], case_sensitive=False),
+              default='text')
+@click.option('--outfile', type=click.Path(), default='-')
+@click.option('--color/--no-color', 'color', flag_value=True, default=None)
+@click.argument('rev-list', required=False)
+@click.argument('paths', nargs=-1)
+@click.pass_obj
+def state(ctx, no_sent, no_applied, noupstream, todo, mode, outfile, color, rev_list, paths):
+    '''
+    Display the state of patches.
+    '''
+    assert not '%n' in ctx.config.display_format, "Display format cannot have %n"
+    filters = Filters()
+    filters.no_sent = no_sent
+    filters.no_applied = no_applied
+    filters.noupstream = noupstream
+    filters.todo = todo
+
+    if mode == 'xlsx':
+        if openpyxl is None:
+            raise click.UsageError("XSLX output requires openpyxl")
+        filemode = 'wb'
+    else:
+        filemode = 'w'
+
+    if outfile == '-':
+        if mode == 'xlsx':
+            raise click.UsageError("Must write XLSX to file")
+        outfile_f = sys.stdout
+    elif mode == 'xlsx':
+        workbook = openpyxl.Workbook()
+        outfile_f = workbook.active
+        outfile_f.title = 'upstreaming'
+    else:
+        outfile_f = open(outfile, filemode)
+
+    if rev_list is None and ctx.config.cutoff:
+        rev_list = f'{ctx.config.cutoff}..'
+
+    _log_to_state(ctx, rev_list, paths, filters, mode, outfile_f, color)
+
+    if mode == 'xlsx':
+        # capture the rev_list to reproduce the state on input later
+        SP = openpyxl.packaging.custom.StringProperty
+        if rev_list is None:
+            rev_list = 'HEAD'
+        p = subprocess.run(['git', 'rev-parse', rev_list], stdout=subprocess.PIPE,
+                           check=True)
+        workbook.custom_doc_props.append(SP(name="rev_list",
+                                            value=p.stdout.decode('ascii')))
+        workbook.save(outfile)
+
+def _parse_ref_arg(git_dir, ref, msg):
+    try:
+        return _rev_parse(git_dir, ref)
+    except:
+        raise click.BadParameter(msg)
+
+def _set_note(ctx, state, update=None):
+    update = (update or {}).copy()
+    update['state'] = state
+    if ctx.comment is not None:
+        update['comment'] = ctx.comment
+    assert ctx.commit is not None
+    notes_ref = f'refs/notes/{ctx.config.notes_branch}'
+    if not ctx.local:
+        _refresh_notes(ctx)
+
+    p = subprocess.run(['git', 'notes', f'--ref={ctx.config.notes_branch}',
+                       'show', ctx.commit], check=False,
+                       capture_output=True)
+    if p.returncode == 0:
+        have_note = True
+        info = yaml.safe_load(p.stdout.decode('utf-8'))
+    else:
+        have_note = False
+        info = {}
+
+    for k, v in update.items():
+        if v is None:
+            continue
+        if not v:
+            if k in info:
+                del info[k]
+        else:
+            info[k] = v
+
+    if not info:
+        args = ['git', 'notes', f'--ref={ctx.config.notes_branch}', 'remove',
+                ctx.commit]
+        input = None
+        run = have_note
+    else:
+        input = yaml.dump(info).encode('utf-8')
+        args = ['git', 'notes', f'--ref={ctx.config.notes_branch}', 'add',
+                '-F-', '-f', ctx.commit]
+        run = True
+
+    try:
+        if run:
+            subprocess.run(args, check=True, input=input)
+    except:
+        raise click.Abort()
+
+    if not ctx.local:
+        subprocess.run(['git', 'push', ctx.config.notes_remote,
+                        f'{notes_ref}:{notes_ref}'], check=True)
+
+@iwl.group()
+@click.pass_obj
+@click.option('--comment', 'comment')
+@click.option('--local', 'local', flag_value=True, default=False)
+@click.argument('commit')
+def set(ctx, comment, local, commit):
+    '''
+    Set the state of the given COMMIT.
+    '''
+    ctx.comment = comment
+    ctx.local = local
+    ctx.commit = _parse_ref_arg('.', commit, f"commit '{commit}' not known")
+
+@set.command()
+@click.pass_obj
+@click.argument('ref', required=False)
+def upstream(ctx, ref):
+    '''
+    Set the commit to upstreamed as REF.
+
+    REF can be a sha1 or any other reference to a patch that can be
+    resolved in the upstream tree.
+    '''
+    if ref is not None:
+        ref = _parse_ref_arg(ctx.config.upstream_tree, ref,
+                             f"ref/sha1 '{ref}' not known in upstream tree")
+    info = {}
+    if ref is not None:
+        info['commit-id'] = ref
+    _set_note(ctx, 'upstream', info)
+
+@set.command()
+@click.pass_obj
+def noupstream(ctx):
+    '''
+    Set the commit to not be upstreamed.
+    '''
+    _set_note(ctx, 'noupstream')
+
+@set.command()
+@click.pass_obj
+@click.argument('into', required=False)
+def squashed(ctx, into):
+    '''
+    Set the commit to squashed (optionally into INTO).
+
+    INTO refers to a commit in the local tree (not upstream),
+    and can be given as a Change-Id or sha1/git ref.
+    '''
+    # refresh the local change-id table
+    _map_change_ids(ctx.db, 'local', '.', 'HEAD')
+
+    cur = ctx.db.cursor()
+
+    params = {}
+    if into is not None:
+        if len(into) == 41 and into[0] == 'I':
+            cur.execute("SELECT sha1 FROM local WHERE change_id=?", (into, ))
+            res = cur.fetchone()
+            if res is None:
+                raise click.BadParameter(f'{into} is not a Change-Id that exists!')
+            sha1 = res[0]
+        else:
+            sha1 = _parse_ref_arg('.', into, f"ref/sha1 '{into} not known")
+
+        if sha1 == ctx.commit:
+            raise click.BadParameter(f'cannot mark patch as squashed into itself!')
+
+        params['commit-id'] = sha1
+
+    _set_note(ctx, 'squashed', params)
+
+@set.command()
+@click.pass_obj
+@click.argument('by', required=False)
+def reverted(ctx, by):
+    '''
+    Set the commit to reverted (optionally by BY).
+
+    BY refers to a commit in the local tree (not upstream),
+    and can be given as a Change-Id or sha1/git ref.
+    '''
+    # refresh the local change-id table
+    _map_change_ids(ctx.db, 'local', '.', 'HEAD')
+
+    cur = ctx.db.cursor()
+
+    params = {}
+    if by is not None:
+        if len(by) == 41 and by[0] == 'I':
+            cur.execute("SELECT sha1 FROM local WHERE change_id=?", (by, ))
+            res = cur.fetchone()
+            if res is None:
+                raise click.BadParameter(f'{by} is not a Change-Id that exists!')
+            sha1 = res[0]
+        else:
+            sha1 = _parse_ref_arg('.', by, f"ref/sha1 '{by} not known")
+
+        if sha1 == ctx.commit:
+            raise click.BadParameter(f'cannot mark patch as reverted by itself!')
+
+        # mark the revert as well
+        real_commit = ctx.commit
+        ctx.commit = sha1
+        revert_params = {
+            'commit-id': real_commit,
+        }
+        _set_note(ctx, 'revert', revert_params)
+        ctx.commit = real_commit
+
+        params['commit-id'] = sha1
+
+    _set_note(ctx, 'reverted', params)
+
+@set.command()
+@click.pass_obj
+@click.argument('of')
+def revert(ctx, of):
+    '''
+    Set the commit to be a revert of OF.
+
+    OF refers to a commit in the local tree (not upstream),
+    and can be given as a Change-Id or sha1/git ref.
+    '''
+    # refresh the local change-id table
+    _map_change_ids(ctx.db, 'local', '.', 'HEAD')
+
+    cur = ctx.db.cursor()
+
+    if len(of) == 41 and of[0] == 'I':
+        cur.execute("SELECT sha1 FROM local WHERE change_id=?", (of, ))
+        res = cur.fetchone()
+        if res is None:
+            raise click.BadParameter(f'{of} is not a Change-Id that exists!')
+        sha1 = res[0]
+    else:
+        sha1 = _parse_ref_arg('.', of, f"ref/sha1 '{of} not known")
+
+    if sha1 == ctx.commit:
+        raise click.BadParameter(f'cannot mark patch as reverting itself!')
+
+    # mark the reverted as well
+    real_commit = ctx.commit
+    ctx.commit = sha1
+    reverted_params = {
+        'commit-id': real_commit,
+    }
+    _set_note(ctx, 'reverted', reverted_params)
+    ctx.commit = real_commit
+
+    params = {
+        'commit-id': sha1,
+    }
+    _set_note(ctx, 'revert', params)
+
+@set.command()
+@click.pass_obj
+@click.argument('by', required=False)
+def reverted_upstream(ctx, by):
+    '''
+    Set the commit to reverted-upstream (optionally by BY).
+
+    BY refers to a commit in the upstream tree (sha1/git ref).
+    '''
+    if by is not None:
+        by = _parse_ref_arg(ctx.config.upstream_tree, by,
+                            f"ref/sha1 '{by}' not known in upstream tree")
+    info = {}
+    if by is not None:
+        info['commit-id'] = by
+    _set_note(ctx, 'reverted-upstream', info)
+
+@set.command()
+@click.pass_obj
+def undecided(ctx):
+    '''
+    Remove manual state set for the commit.
+    '''
+    _set_note(ctx, '')
+
+@set.command()
+@click.pass_obj
+@click.argument('comment', required=False)
+def comment(ctx, comment):
+    '''
+    Update comment for commit (if not using --comment)
+    '''
+    if comment is not None:
+        if ctx.comment is not None:
+            raise click.BadParameter('Two comments given')
+        ctx.comment = comment
+    _set_note(ctx, None)
+
+
+@iwl.command()
+@click.pass_obj
+@click.option('--local', 'local', flag_value=True, default=False)
+@click.argument('input-file', type=click.Path())
+def read_xlsx(ctx, local, input_file):
+    '''
+    Read back an XLSX file created earlier and updates state notes.
+    '''
+    if openpyxl is None:
+        raise click.UsageError("XSLX output requires openpyxl")
+
+    if not local:
+        _refresh_notes(ctx)
+
+    wb = openpyxl.load_workbook(filename=input_file)
+    rev_list_s = wb.custom_doc_props['rev_list'].value
+    rev_list_l = rev_list_s.split('\n')
+    if not rev_list_l[-1]:
+        rev_list_l = rev_list_l[:-1]
+    assert len(rev_list_l) in (1, 2)
+    if len(rev_list_l) == 2:
+        assert rev_list_l[1][0] == '^'
+        rev_list = f'{rev_list_l[1][1:]}..{rev_list_l[0]}'
+    else:
+        rev_list = rev_list_l[0]
+
+    click.echo('re-checking states ...')
+    states = _get_states(ctx, '', rev_list, [])
+    existing = {}
+    for commit, data in states.items():
+        existing[commit[:ctx.config.abbrev]] = data
+    click.echo('reading spreadsheet ...')
+    ws = wb.active
+    assert ws.title == 'upstreaming'
+    state_col = None
+    commit_col = None
+    comment_col = None
+    # find state, commit and comment columns
+    for row in ws.iter_rows(max_row=1, values_only=True):
+        for col_idx, col_name in enumerate(row):
+            if col_name == 'state':
+                state_col = col_idx
+            elif col_name == 'commit':
+                commit_col = col_idx
+            elif col_name == 'comment':
+                comment_col = col_idx
+    assert state_col is not None
+    assert commit_col is not None
+    assert comment_col is not None
+    for row in wb.active.iter_rows(min_row=2, values_only=True):
+        state = row[state_col]
+        commit = row[commit_col]
+        comment = row[comment_col]
+        try:
+            data = existing[commit]
+        except KeyError:
+            click.echo(f'WARNING: commit {commit} not found - skipping!')
+            continue
+        if state == _abbrev_state(ctx.config.abbrev, data.state) and comment == data.comment:
+            continue
+        click.echo(f'commit {commit} changed:')
+        if state != _abbrev_state(ctx.config.abbrev, data.state):
+            click.echo(f'  state: {_abbrev_state(ctx.config.abbrev, data.state)} -> {state}')
+        if comment != data.comment:
+            click.echo('  comment: %r -> %r' % (data.comment, comment))
+
+        params = {}
+        if state is None:
+            pass
+        elif state in ('noupstream', 'upstream', 'squashed', 'reverted', 'revert'):
+            pass
+        elif state.startswith('upstream:') or state.startswith('squashed:') or \
+             state.startswith('reverted:') or state.startswith('revert:'):
+            state, commit_id = state.split(':', 1)
+            if state == 'upstream':
+                git_dir = ctx.config.upstream_tree
+            else:
+                git_dir = '.'
+            try:
+                params['commit-id'] = _rev_parse(git_dir, commit_id)
+            except:
+                click.echo(f'  WARNING: {state} commit ID {commit_id} unknown - skipping!')
+                continue
+        else:
+            click.echo(f'  WARNING: new state {state} is invalid - skipping!')
+            continue
+
+        # this is a bit of a hack ...
+        ctx.commit = commit
+        ctx.comment = comment or '' # openpyxl does None for empty cells
+        # we'll just push in the end all together if needed
+        ctx.local = True
+        _set_note(ctx, state or '', params)
+
+    if not local:
+        subprocess.run(['git', 'push', ctx.config.notes_remote,
+                        f'{notes_ref}:{notes_ref}'], check=True)
+
+if __name__ == '__main__':
+    p = subprocess.run(['git', '-C',
+                        os.path.dirname(os.path.realpath(__file__)),
+                        'rev-parse', '--show-toplevel'],
+                       stdout=subprocess.PIPE, check=True)
+    os.chdir(p.stdout.strip())
+    iwl()

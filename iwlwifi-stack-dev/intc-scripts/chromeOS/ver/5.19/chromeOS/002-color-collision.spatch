@@ -1,0 +1,7 @@
+@@
+@@
+-ieee80211_rx_check_bss_color_collision(...) { ... }
+
+@@
+@@
+-ieee80211_rx_check_bss_color_collision(...);

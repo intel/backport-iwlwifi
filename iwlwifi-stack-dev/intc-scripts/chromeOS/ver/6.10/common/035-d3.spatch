@@ -1,0 +1,21 @@
+@@
+identifier reasons, wakeup, unprot_deauth_disassoc, true;
+@@
+iwl_mvm_report_wakeup_reasons(...)
+{
+...
+-	if (reasons & IWL_WAKEUP_BY_11W_UNPROTECTED_DEAUTH_OR_DISASSOC)
+-		wakeup.unprot_deauth_disassoc = true;
+...
+}
+
+@@
+identifier reasons, wakeup, unprot_deauth_disassoc, true;
+@@
+iwl_mld_report_wowlan_wakeup(...)
+{
+...
+-	if (reasons & IWL_WAKEUP_BY_11W_UNPROTECTED_DEAUTH_OR_DISASSOC)
+-		wakeup.unprot_deauth_disassoc = true;
+...
+}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2010-2014, 2018-2022 Intel Corporation
+ * Copyright (C) 2010-2014, 2018-2023, 2025 Intel Corporation
  * Copyright (C) 2013-2014 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
@@ -14,14 +14,12 @@
 #include "iwl-op-mode.h"
 #include "iwl-tm-gnl.h"
 #include "iwl-tm-infc.h"
-#include "iwl-dnt-cfg.h"
-#include "iwl-dnt-dispatch.h"
 #include "iwl-csr.h"
 
 /**
  * iwl_tm_validate_fw_cmd() - Validates FW host command input data
  * @data_in:	Input to be validated
- *
+ * Returns: an error code
  */
 static int iwl_tm_validate_fw_cmd(struct iwl_tm_data *data_in)
 {
@@ -45,6 +43,7 @@ static int iwl_tm_validate_fw_cmd(struct iwl_tm_data *data_in)
  * iwl_tm_validate_reg_ops() - Checks the input data for registers operations
  * @data_in:	data is casted to iwl_tm_regs_request len in
  *		the size of the request struct in bytes.
+ * Returns: an error code
  */
 static int iwl_tm_validate_reg_ops(struct iwl_tm_data *data_in)
 {
@@ -86,68 +85,6 @@ static int iwl_tm_validate_reg_ops(struct iwl_tm_data *data_in)
 	return 0;
 }
 
-/**
- * iwl_tm_trace_end - Ends debug trace. Common for all op modes.
- * @dev: testmode device struct
- */
-static int iwl_tm_trace_end(struct iwl_tm_gnl_dev *dev)
-{
-	struct iwl_trans *trans = dev->trans;
-	struct iwl_test_trace *trace = &dev->tst.trace;
-
-	if (!trace->enabled)
-		return -EILSEQ;
-
-	if (trace->cpu_addr && trace->dma_addr)
-		dma_free_coherent(trans->dev, trace->size,
-				  trace->cpu_addr, trace->dma_addr);
-	memset(trace, 0, sizeof(struct iwl_test_trace));
-
-	return 0;
-}
-
-/**
- * iwl_tm_trace_begin() - Checks input data for trace request
- * @dev:	testmode device struct
- * @data_in:	Only size is relevant - Desired size of trace buffer.
- * @data_out:	Trace request data (address & size)
- */
-static int iwl_tm_trace_begin(struct iwl_tm_gnl_dev *dev,
-			      struct iwl_tm_data *data_in,
-			      struct iwl_tm_data *data_out)
-{
-	struct iwl_tm_trace_request *req = data_in->data;
-	struct iwl_tm_trace_request *resp;
-
-	if (!data_in->data ||
-	    data_in->len < sizeof(struct iwl_tm_trace_request))
-		return -EINVAL;
-
-	req = data_in->data;
-
-	/* size zero means use the default */
-	if (!req->size)
-		req->size = TRACE_BUFF_SIZE_DEF;
-	else if (req->size < TRACE_BUFF_SIZE_MIN ||
-		 req->size > TRACE_BUFF_SIZE_MAX)
-		return -EINVAL;
-	else if (!dev->dnt->mon_buf_cpu_addr)
-		return -ENOMEM;
-
-	resp = kmalloc(sizeof(*resp), GFP_KERNEL);
-	if (!resp) {
-		return -ENOMEM;
-	}
-	resp->size = dev->dnt->mon_buf_size;
-	/* Casting to avoid compilation warnings when DMA address is 32bit */
-	resp->addr = (u64)dev->dnt->mon_base_addr;
-
-	data_out->data = resp;
-	data_out->len = sizeof(*resp);
-
-	return 0;
-}
-
 static bool iwl_tm_gnl_valid_hw_addr(u32 addr)
 {
 	/* TODO need to implement */
@@ -158,6 +95,7 @@ static bool iwl_tm_gnl_valid_hw_addr(u32 addr)
  * iwl_tm_validate_sram_write_req() - Checks input data of SRAM write request
  * @dev:	testmode device struct
  * @data_in:	SRAM access request
+ * Returns: an error code
  */
 static int iwl_tm_validate_sram_write_req(struct iwl_tm_gnl_dev *dev,
 					  struct iwl_tm_data *data_in)
@@ -191,6 +129,7 @@ static int iwl_tm_validate_sram_write_req(struct iwl_tm_gnl_dev *dev,
  * iwl_tm_validate_sram_read_req() - Checks input data of SRAM read request
  * @dev:	testmode device struct
  * @data_in:	SRAM access request
+ * Returns: an error code
  */
 static int iwl_tm_validate_sram_read_req(struct iwl_tm_gnl_dev *dev,
 					 struct iwl_tm_data *data_in)
@@ -218,6 +157,7 @@ static int iwl_tm_validate_sram_read_req(struct iwl_tm_gnl_dev *dev,
  * iwl_tm_notifications_en() - Checks input for enable test notifications
  * @tst:	Device's test data pointer
  * @data_in:	u32 notification (flag)
+ * Returns: an error code
  */
 static int iwl_tm_notifications_en(struct iwl_test *tst,
 				   struct iwl_tm_data *data_in)
@@ -240,7 +180,7 @@ static int iwl_tm_notifications_en(struct iwl_test *tst,
 /**
  * iwl_tm_validate_tx_cmd() - Validates FW host command input data
  * @data_in:	Input to be validated
- *
+ * Returns: an error code
  */
 static int iwl_tm_validate_tx_cmd(struct iwl_tm_data *data_in)
 {
@@ -267,7 +207,7 @@ static int iwl_tm_validate_tx_cmd(struct iwl_tm_data *data_in)
 /**
  * iwl_tm_validate_rx_hdrs_mode_req() - Validates RX headers mode request
  * @data_in:	Input to be validated
- *
+ * Returns: an error code
  */
 static int iwl_tm_validate_rx_hdrs_mode_req(struct iwl_tm_data *data_in)
 {
@@ -286,31 +226,13 @@ static int iwl_tm_validate_get_chip_id(struct iwl_trans *trans)
 /**
  * iwl_tm_validate_apmg_pd_mode_req() - Validates apmg rx mode request
  * @data_in:	Input to be validated
- *
+ * Returns: an error code
  */
 static int iwl_tm_validate_apmg_pd_mode_req(struct iwl_tm_data *data_in)
 {
 	if (!data_in->data ||
 	    (data_in->len != sizeof(struct iwl_xvt_apmg_pd_mode_request)))
 		return -EINVAL;
-
-	return 0;
-}
-
-static int iwl_tm_get_device_status(struct iwl_tm_gnl_dev *dev,
-				    struct iwl_tm_data *data_in,
-				    struct iwl_tm_data *data_out)
-{
-	__u32 *status;
-
-	status = kmalloc(sizeof(__u32), GFP_KERNEL);
-	if (!status)
-		return -ENOMEM;
-
-	*status = dev->dnt->iwl_dnt_status;
-
-	data_out->data = status;
-	data_out->len = sizeof(__u32);
 
 	return 0;
 }
@@ -341,6 +263,35 @@ static int iwl_tm_switch_op_mode(struct iwl_tm_gnl_dev *dev,
 
 	return ret;
 }
+
+static int iwl_tm_select_op_mode(struct iwl_tm_gnl_dev *dev,
+				 struct iwl_tm_data *data_in)
+{
+	struct iwl_select_op_mode *select_cmd = data_in->data;
+	struct iwl_drv *drv;
+	bool xvt;
+	int ret;
+
+	if (data_in->len < sizeof(*select_cmd))
+		return -EINVAL;
+
+	drv = iwl_drv_get_dev_container(dev->trans->dev);
+	if (!drv) {
+		IWL_ERR(dev->trans, "Couldn't retrieve device information\n");
+		return -ENODEV;
+	}
+
+	xvt = select_cmd->op_mode == IWL_SELECT_XVT_OP_MODE;
+
+	/* Executing select command */
+	ret = iwl_drv_select_op_mode(drv, xvt);
+
+	if (ret < 0)
+		IWL_ERR(dev->trans, "Failed to select op mode to %d (err:%d)\n",
+			select_cmd->op_mode, ret);
+
+	return ret;
+}
 #endif
 
 static int iwl_tm_gnl_get_sil_step(struct iwl_trans *trans,
@@ -352,7 +303,7 @@ static int iwl_tm_gnl_get_sil_step(struct iwl_trans *trans,
 		return -ENOMEM;
 	data_out->len = sizeof(struct iwl_sil_step);
 	resp = (struct iwl_sil_step *)data_out->data;
-	resp->silicon_step = trans->hw_rev_step;
+	resp->silicon_step = trans->info.hw_rev_step;
 	return 0;
 }
 
@@ -370,12 +321,6 @@ static int iwl_tm_gnl_get_build_info(struct iwl_trans *trans,
 	memset(resp, 0 , sizeof(*resp));
 	strncpy(resp->driver_version, BACKPORTS_GIT_TRACKED,
 		sizeof(resp->driver_version));
-#ifdef BACKPORTS_BRANCH_TSTAMP
-	strncpy(resp->branch_time, BACKPORTS_BRANCH_TSTAMP,
-		sizeof(resp->branch_time));
-#endif
-	strncpy(resp->build_time, BACKPORTS_BUILD_TSTAMP,
-		sizeof(resp->build_time));
 
 	return 0;
 }
@@ -388,7 +333,7 @@ static int iwl_tm_gnl_get_sil_type(struct iwl_trans * trans,struct iwl_tm_data *
 	if (!resp)
 		return -ENOMEM;
 
-	resp->silicon_type = CSR_HW_REV_TYPE(trans->hw_rev);
+	resp->silicon_type = CSR_HW_REV_TYPE(trans->info.hw_rev);
 
 	data_out->data = resp;
 	data_out->len = sizeof(*resp);
@@ -405,14 +350,14 @@ static int iwl_tm_gnl_get_rfid(struct iwl_trans *trans,
 	if (!resp)
 		return -ENOMEM;
 
-	IWL_DEBUG_INFO(trans, "HW RFID=0x08%X\n", trans->hw_rf_id);
+	IWL_DEBUG_INFO(trans, "HW RFID=0x08%X\n", trans->info.hw_rf_id);
 
-	resp->flavor = CSR_HW_RFID_FLAVOR(trans->hw_rf_id);
-	resp->dash   = CSR_HW_RFID_DASH(trans->hw_rf_id);
-	resp->step   = CSR_HW_RFID_STEP(trans->hw_rf_id);
-	resp->type   = CSR_HW_RFID_TYPE(trans->hw_rf_id);
-	resp->is_cdb = CSR_HW_RFID_IS_CDB(trans->hw_rf_id);
-	resp->is_jacket = CSR_HW_RFID_IS_JACKET(trans->hw_rf_id);
+	resp->flavor = CSR_HW_RFID_FLAVOR(trans->info.hw_rf_id);
+	resp->dash   = CSR_HW_RFID_DASH(trans->info.hw_rf_id);
+	resp->step   = CSR_HW_RFID_STEP(trans->info.hw_rf_id);
+	resp->type   = CSR_HW_RFID_TYPE(trans->info.hw_rf_id);
+	resp->is_cdb = CSR_HW_RFID_IS_CDB(trans->info.hw_rf_id);
+	resp->is_jacket = CSR_HW_RFID_IS_JACKET(trans->info.hw_rf_id);
 
 	data_out->data = resp;
 	data_out->len = sizeof(*resp);
@@ -429,12 +374,12 @@ static int iwl_tm_gnl_get_rfid_v2(struct iwl_trans *trans,
 	if (!resp)
 		return -ENOMEM;
 
-	resp->flavor = CSR_HW_RFID_FLAVOR(trans->hw_crf_id);
-	resp->dash   = CSR_HW_RFID_DASH(trans->hw_crf_id);
-	resp->step   = CSR_HW_RFID_STEP(trans->hw_crf_id);
-	resp->type   = CSR_HW_RFID_TYPE(trans->hw_rf_id);
-	resp->is_cdb = CSR_HW_RFID_IS_CDB(trans->hw_rf_id);
-	resp->is_jacket = CSR_HW_RFID_IS_JACKET(trans->hw_rf_id);
+	resp->flavor = CSR_HW_RFID_FLAVOR(trans->info.hw_crf_id);
+	resp->dash   = CSR_HW_RFID_DASH(trans->info.hw_crf_id);
+	resp->step   = CSR_HW_RFID_STEP(trans->info.hw_crf_id);
+	resp->type   = CSR_HW_RFID_TYPE(trans->info.hw_rf_id);
+	resp->is_cdb = CSR_HW_RFID_IS_CDB(trans->info.hw_rf_id);
+	resp->is_jacket = CSR_HW_RFID_IS_JACKET(trans->info.hw_rf_id);
 
 	data_out->data = resp;
 	data_out->len = sizeof(*resp);
@@ -505,6 +450,8 @@ iwl_tm_gnl_msg_policy[IWL_TM_GNL_MSG_ATTR_MAX] = {
  * Finds the device information according to device name,
  * must be protected by list mutex when used (mutex is not
  * locked inside the function to allow code flexibility)
+ *
+ * Returns: an error code
  */
 static struct iwl_tm_gnl_dev *iwl_tm_gnl_get_dev(const char *dev_name)
 {
@@ -528,6 +475,8 @@ static struct iwl_tm_gnl_dev *iwl_tm_gnl_get_dev(const char *dev_name)
  * @seq:	sequence number (usually the one of the sender)
  * @cmd_data:	Message's data
  * @flags:	Resources allocation flags
+ *
+ * Returns: an error code
  */
 static struct sk_buff *iwl_tm_gnl_create_msg(u32 pid, u32 seq,
 					     struct iwl_tm_gnl_cmd cmd_data,
@@ -587,6 +536,8 @@ send_msg_err:
  * Initiate a message sending to user space (as apposed
  * to replying to a message that was initiated by user
  * space). Uses multicast broadcasting method.
+ *
+ * Returns: an error code
  */
 int iwl_tm_gnl_send_msg(struct iwl_trans *trans, u32 cmd, bool check_notify,
 			void *data_out, u32 data_len, gfp_t flags)
@@ -628,6 +579,7 @@ IWL_EXPORT_SYMBOL(iwl_tm_gnl_send_msg);
  * iwl_tm_gnl_reply() - Sends command's results back to user space
  * @info:	info struct received in .doit callback
  * @cmd_data:	Data of command to be responded
+ * Returns: an error code
  */
 static int iwl_tm_gnl_reply(struct genl_info *info,
 			    struct iwl_tm_gnl_cmd cmd_data)
@@ -645,6 +597,7 @@ static int iwl_tm_gnl_reply(struct genl_info *info,
 /**
  * iwl_tm_gnl_cmd_execute() - Execute IWL testmode GNL command
  * @cmd_data:	Pointer to the data of command to be executed
+ * Returns: an error code
  */
 static int iwl_tm_gnl_cmd_execute(struct iwl_tm_gnl_cmd *cmd_data)
 {
@@ -673,14 +626,12 @@ static int iwl_tm_gnl_cmd_execute(struct iwl_tm_gnl_cmd *cmd_data)
 		break;
 
 	case IWL_TM_USER_CMD_BEGIN_TRACE:
-		ret = iwl_tm_trace_begin(dev,
-					 &cmd_data->data_in,
-					 &cmd_data->data_out);
+		ret = -EOPNOTSUPP;
 		common_op = true;
 		break;
 
 	case IWL_TM_USER_CMD_END_TRACE:
-		ret = iwl_tm_trace_end(dev);
+		ret = -EOPNOTSUPP;
 		common_op = true;
 		break;
 
@@ -702,13 +653,16 @@ static int iwl_tm_gnl_cmd_execute(struct iwl_tm_gnl_cmd *cmd_data)
 		break;
 
 	case IWL_TM_USER_CMD_GET_DEVICE_STATUS:
-		ret = iwl_tm_get_device_status(dev, &cmd_data->data_in,
-					       &cmd_data->data_out);
+		ret = -EOPNOTSUPP;
 		common_op = true;
 		break;
 #if IS_ENABLED(CPTCFG_IWLXVT)
 	case IWL_TM_USER_CMD_SWITCH_OP_MODE:
 		ret = iwl_tm_switch_op_mode(dev, &cmd_data->data_in);
+		common_op = true;
+		break;
+	case IWL_TM_USER_CMD_SELECT_OP_MODE:
+		ret = iwl_tm_select_op_mode(dev, &cmd_data->data_in);
 		common_op = true;
 		break;
 #endif
@@ -765,6 +719,7 @@ static int iwl_tm_gnl_cmd_execute(struct iwl_tm_gnl_cmd *cmd_data)
  * @dev:	testmode device struct
  * @data_in:	input data
  * @data_out:	Dump data
+ * Returns: an error code
  */
 static int iwl_tm_mem_dump(struct iwl_tm_gnl_dev *dev,
 			   struct iwl_tm_data *data_in,
@@ -782,47 +737,11 @@ static int iwl_tm_mem_dump(struct iwl_tm_gnl_dev *dev,
 }
 
 /**
- * iwl_tm_trace_dump - Returns trace buffer data
- * @dev:	Device pointer
- * @data_out:	Dump data
- */
-static int iwl_tm_trace_dump(struct iwl_tm_gnl_dev *dev,
-			     struct iwl_tm_data *data_out)
-{
-	int ret;
-	u32 buf_size;
-
-	if (!(dev->dnt->iwl_dnt_status & IWL_DNT_STATUS_MON_CONFIGURED)) {
-		IWL_ERR(dev->trans, "Invalid monitor status\n");
-		return -EINVAL;
-	}
-
-	if (dev->dnt->mon_buf_size == 0) {
-		IWL_ERR(dev->trans, "No available monitor buffer\n");
-		return -ENOMEM;
-	}
-
-	buf_size = dev->dnt->mon_buf_size;
-	data_out->data =  kmalloc(buf_size, GFP_KERNEL);
-	if (!data_out->data)
-		return -ENOMEM;
-
-	ret = iwl_dnt_dispatch_pull(dev->trans, data_out->data,
-				    buf_size, MONITOR);
-	if (ret < 0) {
-		kfree(data_out->data);
-		return ret;
-	}
-	data_out->len = ret;
-
-	return 0;
-}
-
-/**
  * iwl_tm_gnl_command_dump() - Returns dump buffer data
  * @cmd_data:	Pointer to the data of dump command.
  *		Only device name and command index are the relevant input.
  *		Data out is the start address of the buffer, and it's size.
+ * Returns: an error code
  */
 static int iwl_tm_gnl_command_dump(struct iwl_tm_gnl_cmd *cmd_data)
 {
@@ -838,7 +757,7 @@ static int iwl_tm_gnl_command_dump(struct iwl_tm_gnl_cmd *cmd_data)
 	switch (cmd_data->cmd) {
 
 	case IWL_TM_USER_CMD_TRACE_DUMP:
-		ret = iwl_tm_trace_dump(dev, &cmd_data->data_out);
+		ret = -EOPNOTSUPP;
 		break;
 
 	case IWL_TM_USER_CMD_SRAM_READ:
@@ -858,6 +777,7 @@ static int iwl_tm_gnl_command_dump(struct iwl_tm_gnl_cmd *cmd_data)
  * iwl_tm_gnl_parse_msg - Extract input cmd data out of netlink attributes
  * @attrs:	Input netlink attributes
  * @cmd_data:	Command
+ * Returns: an error code
  */
 static int iwl_tm_gnl_parse_msg(struct nlattr **attrs,
 				struct iwl_tm_gnl_cmd *cmd_data)
@@ -885,6 +805,7 @@ static int iwl_tm_gnl_parse_msg(struct nlattr **attrs,
  * iwl_tm_gnl_cmd_do() - Executes IWL testmode GNL command
  * @skb: SKB with the command data
  * @info: generic netlink info
+ * Returns: an error code
  */
 static int iwl_tm_gnl_cmd_do(struct sk_buff *skb, struct genl_info *info)
 {
@@ -920,6 +841,7 @@ static int iwl_tm_gnl_cmd_do(struct sk_buff *skb, struct genl_info *info)
  * cb->args[1]:	Buffer data to dump
  * cb->args[2]:	Buffer size
  * cb->args[3]: Buffer offset from where to dump in the next round
+ * Returns: an error code
  */
 static int iwl_tm_gnl_dump(struct sk_buff *skb, struct netlink_callback *cb)
 {
@@ -964,10 +886,10 @@ static int iwl_tm_gnl_dump(struct sk_buff *skb, struct netlink_callback *cb)
 	dump_size = cb->args[2];
 	dump_offset = cb->args[3];
 
-	nlmsg_head = genlmsg_put(skb, NETLINK_CB_PORTID(cb->skb),
-				cb->nlh->nlmsg_seq,
-				&iwl_tm_gnl_family, NLM_F_MULTI,
-				IWL_TM_GNL_CMD_EXECUTE);
+	nlmsg_head = genlmsg_put(skb, NETLINK_CB(cb->skb).portid,
+				 cb->nlh->nlmsg_seq,
+				 &iwl_tm_gnl_family, NLM_F_MULTI,
+				 IWL_TM_GNL_CMD_EXECUTE);
 
 	/*
 	 * Reserve some room for NL attribute header,
@@ -1079,6 +1001,9 @@ static struct genl_family iwl_tm_gnl_family __genl_ro_after_init = {
 	.module		= THIS_MODULE,
 	.ops		= iwl_tm_gnl_ops,
 	.n_ops		= ARRAY_SIZE(iwl_tm_gnl_ops),
+#if LINUX_VERSION_IS_GEQ(6,1,0)
+	.resv_start_op  = IWL_TM_GNL_CMD_SUBSCRIBE_EVENTS + 1,
+#endif
 	.mcgrps		= iwl_tm_gnl_mcgrps,
 	.n_mcgrps	= ARRAY_SIZE(iwl_tm_gnl_mcgrps),
 };
@@ -1154,7 +1079,7 @@ static int iwl_tm_gnl_netlink_notify(struct notifier_block *nb,
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(dev, &dev_list, list) {
-		if (dev->nl_events_portid == netlink_notify_portid(notify))
+		if (dev->nl_events_portid == notify->portid)
 			dev->nl_events_portid = 0;
 	}
 	rcu_read_unlock();
@@ -1169,6 +1094,7 @@ static struct notifier_block iwl_tm_gnl_netlink_notifier = {
 
 /**
  * iwl_tm_gnl_init() - Registers tm-gnl module
+ * Returns: an error code
  *
  * Registers Testmode GNL family and initializes
  * TM GNL global variables
@@ -1191,6 +1117,7 @@ int iwl_tm_gnl_init(void)
 
 /**
  * iwl_tm_gnl_exit() - Unregisters Testmode GNL family
+ * Returns: an error code
  */
 int iwl_tm_gnl_exit(void)
 {

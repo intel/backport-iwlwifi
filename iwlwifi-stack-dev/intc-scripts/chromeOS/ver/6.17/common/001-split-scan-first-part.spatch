@@ -1,0 +1,14 @@
+@@
+struct cfg80211_scan_request *req;
+expression internal_req;
+@@
+
+-internal_req = req->first_part;
+
+@@
+struct cfg80211_scan_request *req;
+@@
+
+-req->first_part
++true
+

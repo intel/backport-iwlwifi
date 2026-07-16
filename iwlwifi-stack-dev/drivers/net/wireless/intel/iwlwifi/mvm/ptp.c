@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2021 - 2022 Intel Corporation
+ * Copyright (C) 2021 - 2023, 2025 Intel Corporation
  */
 
 #include "mvm.h"
@@ -11,8 +11,7 @@
 #define IWL_PTP_GP2_WRAP	0x100000000ULL
 #define IWL_PTP_WRAP_TIME	(3600 * HZ)
 
-/*
- * The scaled_ppm parameter is ppm (parts per million) with a 16-bit fractional
+/* The scaled_ppm parameter is ppm (parts per million) with a 16-bit fractional
  * part, which means that a value of 1 in one of those fields actually means
  * 2^-16 ppm, and 2^16=65536 is 1 ppm.
  */
@@ -23,8 +22,7 @@
 
 static void iwl_mvm_ptp_update_new_read(struct iwl_mvm *mvm, u32 gp2)
 {
-	/*
-	 * If the difference is above the threshold, assume it's a wraparound.
+	/* If the difference is above the threshold, assume it's a wraparound.
 	 * Otherwise assume it's an old read and ignore it.
 	 */
 	if (gp2 < mvm->ptp_data.last_gp2 &&
@@ -37,7 +35,8 @@ static void iwl_mvm_ptp_update_new_read(struct iwl_mvm *mvm, u32 gp2)
 
 	if (gp2 < mvm->ptp_data.last_gp2) {
 		mvm->ptp_data.wrap_counter++;
-		IWL_DEBUG_INFO(mvm, "PTP: wraparound detected (new counter=%u)\n",
+		IWL_DEBUG_INFO(mvm,
+			       "PTP: wraparound detected (new counter=%u)\n",
 			       mvm->ptp_data.wrap_counter);
 	}
 
@@ -52,7 +51,8 @@ u64 iwl_mvm_ptp_get_adj_time(struct iwl_mvm *mvm, u64 base_time_ns)
 	u64 res;
 	u64 diff;
 
-	iwl_mvm_ptp_update_new_read(mvm, base_time_ns / NSEC_PER_USEC);
+	iwl_mvm_ptp_update_new_read(mvm,
+				    div64_u64(base_time_ns, NSEC_PER_USEC));
 
 	IWL_DEBUG_INFO(mvm, "base_time_ns=%llu, wrap_counter=%u\n",
 		       (unsigned long long)base_time_ns, data->wrap_counter);
@@ -60,8 +60,7 @@ u64 iwl_mvm_ptp_get_adj_time(struct iwl_mvm *mvm, u64 base_time_ns)
 	base_time_ns = base_time_ns +
 		(data->wrap_counter * IWL_PTP_GP2_WRAP * NSEC_PER_USEC);
 
-	/*
-	 * It is possible that a GP2 timestamp was received from fw before the
+	/* It is possible that a GP2 timestamp was received from fw before the
 	 * last scale update. Since we don't know how to scale - ignore it.
 	 */
 	if (base_time_ns < last_gp2_ns) {
@@ -117,7 +116,7 @@ iwl_mvm_get_crosstimestamp_fw(struct iwl_mvm *mvm, u32 *gp2, u64 *sys_time)
 
 	gp2_10ns = (u64)le32_to_cpu(resp->gp2_timestamp_hi) << 32 |
 		le32_to_cpu(resp->gp2_timestamp_lo);
-	*gp2 = gp2_10ns / 100;
+	*gp2 = div_u64(gp2_10ns, 100);
 
 	*sys_time = (u64)le32_to_cpu(resp->platform_timestamp_hi) << 32 |
 		le32_to_cpu(resp->platform_timestamp_lo);
@@ -204,7 +203,8 @@ static void iwl_mvm_ptp_work(struct work_struct *wk)
 	mutex_unlock(&mvm->mutex);
 }
 
-static int iwl_mvm_ptp_gettime(struct ptp_clock_info *ptp, struct timespec64 *ts)
+static int iwl_mvm_ptp_gettime(struct ptp_clock_info *ptp,
+			       struct timespec64 *ts)
 {
 	struct iwl_mvm *mvm = container_of(ptp, struct iwl_mvm,
 					   ptp_data.ptp_clock_info);
@@ -218,6 +218,12 @@ static int iwl_mvm_ptp_gettime(struct ptp_clock_info *ptp, struct timespec64 *ts
 
 	*ts = ns_to_timespec64(ns);
 	return 0;
+}
+
+static int iwl_mvm_ptp_settime(struct ptp_clock_info *ptp,
+			       const struct timespec64 *ts)
+{
+	return -EOPNOTSUPP;
 }
 
 static int iwl_mvm_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
@@ -244,8 +250,7 @@ static int iwl_mvm_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 
 	mutex_lock(&mvm->mutex);
 
-	/*
-	 * Must call _iwl_mvm_ptp_get_adj_time() before updating
+	/* Must call _iwl_mvm_ptp_get_adj_time() before updating
 	 * data->scale_update_gp2 or data->scaled_freq since
 	 * scale_update_adj_time_ns should reflect the previous scaled_freq.
 	 */
@@ -264,8 +269,7 @@ static int iwl_mvm_ptp_adjfine(struct ptp_clock_info *ptp, long scaled_ppm)
 	return 0;
 }
 
-/*
- * iwl_mvm_ptp_init - initialize PTP for devices which support it.
+/* iwl_mvm_ptp_init - initialize PTP for devices which support it.
  * @mvm: internal mvm structure, see &struct iwl_mvm.
  *
  * Performs the required steps for enabling PTP support.
@@ -278,25 +282,13 @@ void iwl_mvm_ptp_init(struct iwl_mvm *mvm)
 
 	mvm->ptp_data.ptp_clock_info.owner = THIS_MODULE;
 	mvm->ptp_data.ptp_clock_info.max_adj = 0x7fffffff;
-	mvm->ptp_data.ptp_clock_info.n_alarm = 0;
-	mvm->ptp_data.ptp_clock_info.n_ext_ts = 0;
-	mvm->ptp_data.ptp_clock_info.n_per_out = 0;
-	mvm->ptp_data.ptp_clock_info.n_pins = 0;
-	mvm->ptp_data.ptp_clock_info.pps = 0;
-	mvm->ptp_data.ptp_clock_info.adjfreq = NULL;
 	mvm->ptp_data.ptp_clock_info.getcrosststamp =
 					iwl_mvm_phc_get_crosstimestamp;
 	mvm->ptp_data.ptp_clock_info.adjfine = iwl_mvm_ptp_adjfine;
 	mvm->ptp_data.ptp_clock_info.adjtime = iwl_mvm_ptp_adjtime;
 	mvm->ptp_data.ptp_clock_info.gettime64 = iwl_mvm_ptp_gettime;
-	mvm->ptp_data.ptp_clock_info.enable = NULL;
-	mvm->ptp_data.ptp_clock_info.verify = NULL;
-	mvm->ptp_data.last_gp2 = 0;
-	mvm->ptp_data.wrap_counter = 0;
-	mvm->ptp_data.scale_update_gp2 = 0;
-	mvm->ptp_data.scale_update_adj_time_ns = 0;
+	mvm->ptp_data.ptp_clock_info.settime64 = iwl_mvm_ptp_settime;
 	mvm->ptp_data.scaled_freq = SCALE_FACTOR;
-	mvm->ptp_data.delta = 0;
 
 	/* Give a short 'friendly name' to identify the PHC clock */
 	snprintf(mvm->ptp_data.ptp_clock_info.name,
@@ -312,15 +304,16 @@ void iwl_mvm_ptp_init(struct iwl_mvm *mvm)
 		IWL_ERR(mvm, "Failed to register PHC clock (%ld)\n",
 			PTR_ERR(mvm->ptp_data.ptp_clock));
 		mvm->ptp_data.ptp_clock = NULL;
-	} else if (mvm->ptp_data.ptp_clock) {
-		IWL_INFO(mvm, "Registered PHC clock: %s, with index: %d\n",
-			 mvm->ptp_data.ptp_clock_info.name,
-			 ptp_clock_index(mvm->ptp_data.ptp_clock));
+	} else if (!mvm->ptp_data.ptp_clock) {
+		IWL_DEBUG_INFO(mvm, "PTP module unavailable on this kernel\n");
+	} else {
+		IWL_DEBUG_INFO(mvm, "Registered PHC clock: %s, with index: %d\n",
+			       mvm->ptp_data.ptp_clock_info.name,
+			       ptp_clock_index(mvm->ptp_data.ptp_clock));
 	}
 }
 
-/*
- * iwl_mvm_ptp_remove - disable PTP device.
+/* iwl_mvm_ptp_remove - disable PTP device.
  * @mvm: internal mvm structure, see &struct iwl_mvm.
  *
  * Disable PTP support.
@@ -328,9 +321,9 @@ void iwl_mvm_ptp_init(struct iwl_mvm *mvm)
 void iwl_mvm_ptp_remove(struct iwl_mvm *mvm)
 {
 	if (mvm->ptp_data.ptp_clock) {
-		IWL_INFO(mvm, "Unregistering PHC clock: %s, with index: %d\n",
-			 mvm->ptp_data.ptp_clock_info.name,
-			 ptp_clock_index(mvm->ptp_data.ptp_clock));
+		IWL_DEBUG_INFO(mvm, "Unregistering PHC clock: %s, with index: %d\n",
+			       mvm->ptp_data.ptp_clock_info.name,
+			       ptp_clock_index(mvm->ptp_data.ptp_clock));
 
 		ptp_clock_unregister(mvm->ptp_data.ptp_clock);
 		mvm->ptp_data.ptp_clock = NULL;

@@ -56,6 +56,8 @@ def prune_one(config, args):
         prune_cmd.append('--noverify')
     if args.modcompat:
         prune_cmd.append('--modcompat')
+    if args.undo_cptcfg:
+        prune_cmd.append('--undo_cptcfg')
     prune_cmd.append(args.defconfig)
 
     try:
@@ -63,51 +65,56 @@ def prune_one(config, args):
     except subprocess.CalledProcessError:
         return False
 
-    # rewrite versions file
-    vfd = open(os.path.join(config.output_tree, 'versions'))
-    vfl = [l for l in vfd]
-    vfd.close()
+    if args.no_versions:
+        # remove versions file if it exists
+        if os.path.exists(os.path.join(config.output_tree, 'versions')):
+            os.unlink(os.path.join(config.output_tree, 'versions'))
+    else:
+        # rewrite versions file if needed
+        vfd = open(os.path.join(config.output_tree, 'versions'))
+        vfl = [l for l in vfd]
+        vfd.close()
 
-    vfd = open(os.path.join(config.output_tree, 'versions'), 'w')
+        vfd = open(os.path.join(config.output_tree, 'versions'), 'w')
 
-    for line in vfl:
-        if line.startswith('BACKPORTS_GIT_TRACKED'):
-            continue
-        if line.startswith('BACKPORTS_BRANCH_TSTAMP'):
-            continue
-        vfd.write(line)
+        for line in vfl:
+            if line.startswith('BACKPORTS_GIT_TRACKED'):
+                continue
+            if line.startswith('BACKPORTS_BRANCH_TSTAMP'):
+                continue
+            vfd.write(line)
 
-    branch_tstamp = None
+        branch_tstamp = None
 
-    # get version/tstamp from output tree database
-    obj = git.ls_tree('HEAD', files=['versions'], tree=config.output_tree)[0][2]
-    version_id = 1
-    for line in git.get_blob(obj, tree=config.output_tree).split('\n'):
-        if line.startswith('BACKPORTS_GIT_TRACKED'):
-            try:
-                version_id = int(line.split(':')[2]) + 1
-            except ValueError:
-                pass
-        if line.startswith('BACKPORTS_BRANCH_TSTAMP'):
-            branch_tstamp = line[24:]
+        # get version/tstamp from output tree database
+        obj = git.ls_tree('HEAD', files=['versions'], tree=config.output_tree)[0][2]
+        version_id = 1
+        for line in git.get_blob(obj, tree=config.output_tree).split('\n'):
+            if line.startswith('BACKPORTS_GIT_TRACKED'):
+                try:
+                    version_id = int(line.split(':')[2]) + 1
+                except ValueError:
+                    pass
+            if line.startswith('BACKPORTS_BRANCH_TSTAMP'):
+                branch_tstamp = line[24:]
 
-    if config.branch != 'master' and not branch_tstamp:
-        if config.new_branch:
-            mbase = config.start_commit
-        else:
-            mbase = git.merge_base(config.branch, 'origin/master', tree=config.output_tree)
-        branch_tstamp = git.commit_date(mbase, tree=config.output_tree)
-        with use_locale('C'):
-            branch_tstamp = branch_tstamp.strftime('"%b %d %Y %H:%M:%S"')
+        if config.branch != 'master' and not branch_tstamp:
+            if config.new_branch:
+                mbase = config.start_commit
+            else:
+                mbase = git.merge_base(config.branch, 'origin/master', tree=config.output_tree)
+            branch_tstamp = git.commit_date(mbase, tree=config.output_tree)
+            with use_locale('C'):
+                branch_tstamp = branch_tstamp.strftime('"%b %d %Y %H:%M:%S"')
 
-    # keep only tree name, without ".git" (if present)
-    treename = args.output_tree.split('/')[-1].split('.git')[0]
-    vfd.write('BACKPORTS_GIT_TRACKED="%s:%s:%d:%s"\n' % (
-        treename, config.branch, version_id, config.commit.tree_id[:8]
-    ))
-    if branch_tstamp:
-        vfd.write('BACKPORTS_BRANCH_TSTAMP=%s\n' % branch_tstamp)
-    vfd.close()
+        # keep only tree name, without ".git" (if present)
+        treename = args.output_tree.split('/')[-1].split('.git')[0]
+        vfd.write('BACKPORTS_GIT_TRACKED="%s:%s:%d:%s"\n' % (
+            treename, config.branch, version_id, config.commit.tree_id[:8]
+        ))
+        if branch_tstamp:
+            vfd.write('BACKPORTS_BRANCH_TSTAMP=%s\n' % branch_tstamp)
+        vfd.close()
 
     return True
 
@@ -134,6 +141,12 @@ def main():
     parser.add_argument('--modcompat', dest='modcompat', action='store_const',
                         const=True, default=False,
                         help='create module compatibility')
+    parser.add_argument('--undo_cptcfg', dest='undo_cptcfg', action='store_const',
+                        const=True, default=False,
+                        help='replace CPTCFG_ with CONFIG_')
+    parser.add_argument('--no-versions', dest='no_versions', action='store_const',
+                        const=True, default=False,
+                        help="don't modify versions file")
     args = parser.parse_args()
     mirror = GitMirror(INPUT_TREE, OUTPUT_TREE + args.output_tree,
                        args.branches,

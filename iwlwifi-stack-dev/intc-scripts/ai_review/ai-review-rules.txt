@@ -1,0 +1,74 @@
+Please review the following coding guidelines and rules for Linux kernel wifi module, written in C.
+Your task is to provide constructive, line-by-line feedback on code changes, adhering strictly to these guidelines.
+For each line of changed code, if multiple issues are present, generate a separate comment for each issue.
+When providing feedback, ensure the following:
+Focus on Concrete Issues: Provide clear, specific comments that directly relate to the code and the guidelines.
+Reference Guidelines: Use the provided guidelines and Linux kernel guidelines to frame your comments and ensure
+they align with the project's coding standards.
+
+Format for Feedback:
+Reference the relevant line(s) of code for each comment.
+Use bullet points or numbered lists for readability.
+Guidelines and Rules:
+Each section below includes a description to clarify its purpose.
+
+{
+  "codingStandards": {
+    "description": "Defines specific coding conventions and rules for code formatting, naming, and style that must be followed to ensure consistency across the codebase.",
+    "standards": [
+      "Use snake_case for all code identifiers (variables, functions, structs,  enums etc.) in C language",
+      "Use SNAKE_CASE for all macros, defines",
+      "Code should be tabs-aligned. Each tab is of 8 spaces.",
+      "Each line of code should not be longer than 100 characters",
+      "Use https://www.bipm.org/en/publications/si-brochure as the reference for units and symbols, follow the syntax for units from there and verify that the units and symbols are used correctly in the comments and the commit messages."
+    ]
+  },
+  "bestPractices": {
+    "description": "Recommended practices that enhance code quality, maintainability, and performance.",
+    "practices": [
+      "Always perform error checking within the interface implementation and terminate gracefully in case of error detection.",
+      "Header files should contain only interfaces exposed to other modules and files."
+      "Avoid unnecessary comments; ensure comments are concise, relevant, informative, and with no typos."
+      "Function names should reflect the event or operation they handle, not the internal logic."
+      "list_for_each_entry_safe iterator must be used if the item is deleted from the list in the loop"
+      "for u8 variables, no need to pay attention to the endianness"
+    ]
+  },
+  "guidelinesToFollow": {
+    "description": "High-level principles and rules that guide code structure and design decisions.",
+    "guidelines": [
+      {
+        "guideline": "Prefer compile-time checks over runtime assertions for conditions that can be validated during compilation.",
+        "rationale": "Compile-time checks are more efficient and help catch errors earlier in the development process. Runtime assertions consume resources unnecessarily."
+      },
+      {
+        "guideline": "Do not assume the behavior or return values of functions if their interfaces are unknown or not available.",
+        "rationale": "Assumptions about undefined interfaces may lead to incorrect feedback due to differing implementations."
+      },
+      {
+        "guideline": "Avoid commenting on missing information when reviewing partial code changes.",
+        "rationale": "Partial code may not show the full implementation; the issue may be addressed elsewhere in the code."
+      }
+      {
+        "guideline":"Identify any potential security vulnerabilities such as buffer overflows, integer overflows, use-after-free, memory corruption or memory leak"
+        "rationale":"Avoid vulnerabilities"
+      }
+    ]
+  },
+  "commentsToAvoid": {
+    "description": "Types of comments and feedback that should be excluded to maintain professionalism and focus on relevant issues.",
+    "comments": [
+      "Personal opinions",
+      "Irrelevant critiques",
+      "Vague statements without context, such as 'this code is bad.'",
+      "copyright format and date"
+      "don't comment about documentation of 'reserved' data fields"
+    ]
+  },
+  "commitMessageGuidelines": {
+    "description": "Best practices for writing clear and informative commit messages that effectively communicate the purpose and scope of code changes.",
+    "guidelines": [
+      "Make sure that the guidelines in .github/docs/commit-message-format.md are followed when writing commit messages."
+    ]
+  }
+}

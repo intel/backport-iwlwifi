@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2021-2022 Intel Corporation
+ * Copyright (C) 2021-2025 Intel Corporation
  */
 
 #include "iwl-drv.h"
 #include "platform-mockups.h"
 #include "acpi.h"
+#include "uefi.h"
 #include "fw/runtime.h"
 
 #undef efi
@@ -247,6 +248,9 @@ static efi_status_t mockup_efi_get_variable(efi_char16_t *name,
 					    unsigned long *data_size,
 					    void *data)
 {
+	static const efi_guid_t wifi_guid = EFI_GUID(0x92daaf2f, 0xc02b, 0x455b,
+						     0xb2, 0xec, 0xf5, 0xa3,
+						     0x59, 0x4f, 0x4a, 0xea);
 	struct mockup_efi_var *var;
 
 	list_for_each_entry(var, &mockup_efi_var_list, list) {
@@ -256,9 +260,27 @@ static efi_status_t mockup_efi_get_variable(efi_char16_t *name,
 			     EFI_VAR_NAME_LEN / sizeof(efi_char16_t)))
 			continue;
 
-		memcpy(data, var->data,
-		       min_t(unsigned long, data_size, var->size));
-		*data_size = var->size;
+		/* Function will be called with NULL data pointer to get the
+		 * data size first
+		 */
+		if (!data) {
+			*data_size = var->size;
+			return EFI_BUFFER_TOO_SMALL;
+		}
+
+		memcpy(data, var->data, min(*data_size, var->size));
+
+		if (!memcmp(vendor, &wifi_guid, sizeof(*vendor)) &&
+		    !_wcsncmp(name, IWL_UEFI_DSM_NAME,
+			      EFI_VAR_NAME_LEN / sizeof(efi_char16_t))) {
+			struct uefi_cnv_var_general_cfg *val = data;
+
+			/* if the mockup really wants control, set BIT(0) */
+			if (val->revision == IWL_UEFI_DSM_REVISION &&
+			    !val->functions[DSM_FUNC_QUERY])
+				val->functions[DSM_FUNC_QUERY] = ~0;
+		}
+
 		return EFI_SUCCESS;
 	}
 
@@ -301,8 +323,11 @@ int iwl_platform_mockups_init(void)
 		return 0;
 
 	ret = firmware_request_nowarn(&tables_file, "iwlwifi-platform.dat", NULL);
-	if (ret)
+	if (ret) {
+		/* It is valid to load the driver without this file */
+		ret = 0;
 		goto out;
+	}
 
 	len = tables_file->size;
 	obj = (const void *)tables_file->data;
@@ -416,6 +441,7 @@ void iwl_platform_mockups_free(void)
 {
 	struct mockup_acpi_handle *entry, *tmp;
 	struct mockup_acpi_dsm_func *dsm_entry, *tmp2;
+	struct mockup_efi_var *efi_entry, *tmp3;
 	int i;
 
 	if (!iwlwifi_mod_params.enable_acpi_mockups &&
@@ -441,6 +467,11 @@ void iwl_platform_mockups_free(void)
 		kfree(dsm_entry);
 	}
 
+	list_for_each_entry_safe(efi_entry, tmp3, &mockup_efi_var_list, list) {
+		list_del(&efi_entry->list);
+		kfree(efi_entry);
+	}
+
 	for (i = 0; i < ARRAY_SIZE(mockup_dmi_ident); i++)
 		kfree(mockup_dmi_ident[i]);
 }
@@ -451,6 +482,9 @@ static union acpi_object *mockup_acpi_evaluate_dsm(acpi_handle root,
 						   union acpi_object *argv4)
 {
 	struct mockup_acpi_dsm_func *entry;
+	static const guid_t wifi_guid = GUID_INIT(0xF21202BF, 0x8F78, 0x4DC6,
+						  0xA5, 0xB3, 0x1F, 0x73,
+						  0x8E, 0x28, 0x5A, 0xDE);
 
 	list_for_each_entry(entry, &mockup_acpi_dsm_list, list) {
 		if (!memcmp(guid, &entry->key, 16) &&
@@ -465,6 +499,25 @@ static union acpi_object *mockup_acpi_evaluate_dsm(acpi_handle root,
 
 			return copy;
 		}
+	}
+
+	/* if not contained in the mockup, return all are valid */
+	if (!memcmp(guid, &wifi_guid, sizeof(wifi_guid)) &&
+	    rev == ACPI_DSM_REV && func == DSM_FUNC_QUERY) {
+		static const union acpi_object acpi_all_ones = {
+			.integer = {
+				.type = ACPI_TYPE_INTEGER,
+				.value = ~0ULL,
+			},
+		};
+		union acpi_object *copy;
+
+		copy = kmemdup(&acpi_all_ones, sizeof(acpi_all_ones),
+			       GFP_KERNEL);
+		if (!copy)
+			return ERR_PTR(-ENOMEM);
+
+		return copy;
 	}
 
 	return NULL;

@@ -1,0 +1,5 @@
+@@
+struct station_del_parameters *params;
+@@
+-params->link_id
++ -1

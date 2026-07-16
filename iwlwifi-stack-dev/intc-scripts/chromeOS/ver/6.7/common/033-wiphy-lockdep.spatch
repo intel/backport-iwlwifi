@@ -1,0 +1,8 @@
+@@
+@@
+drv_set_wakeup(...)
+{
+...
+-lockdep_assert_wiphy(local->hw.wiphy);
+...
+}

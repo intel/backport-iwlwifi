@@ -1,0 +1,9 @@
+@@
+type bool;
+@@
+bool ieee80211_chandef_s1g_oper(const struct ieee80211_s1g_oper_ie *oper,
+				struct cfg80211_chan_def *chandef)
+{
++return false;
+-...
+}

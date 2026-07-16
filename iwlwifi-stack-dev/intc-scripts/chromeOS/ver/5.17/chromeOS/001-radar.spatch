@@ -1,0 +1,14 @@
+@radar_bg@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.set_radar_background = fn,
+...
+};
+
+@@
+identifier radar_bg.fn;
+@@
+-fn(...) {...}

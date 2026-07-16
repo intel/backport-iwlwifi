@@ -1,0 +1,43 @@
+@@
+identifier f;
+@@
+iwl_mvm_set_sta_rate(...)
+{
+<+...
+switch (f) {
+-case RATE_MCS_MOD_TYPE_EHT: ...
+}
+...+>
+}
+
+@@
+expression E;
+@@
+switch (E) {
+case STA_STATS_RATE_TYPE_EHT:
+-...
++WARN_ONCE(1, "EHT not supported on this kernel version\n");
+ break;
+}
+
+@@
+expression E;
+identifier ri;
+@@
+switch (E) {
+-case RX_ENC_EHT: ri.flags |= RATE_INFO_FLAGS_EHT_MCS; ... break;
+}
+
+@@
+expression flags;
+@@
+-flags & RATE_INFO_FLAGS_EHT_MCS
++false
+
+@@
+expression E;
+identifier ri, stat;
+@@
+switch (E) {
+-case RX_ENC_EHT: stat->eht.gi = ri->eht_gi; break;
+}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2025 Intel Corporation
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
 #include <linux/module.h>
@@ -15,17 +15,20 @@
 #include "iwl-csr.h"
 #include "xvt.h"
 #include "user-infc.h"
-#include "iwl-dnt-cfg.h"
-#include "iwl-dnt-dispatch.h"
 #include "iwl-io.h"
 #include "iwl-prph.h"
 #include "fw/dbg.h"
 #include "fw/api/rx.h"
+#include "fw/uefi.h"
 
 #define DRV_DESCRIPTION	"Intel(R) xVT driver for Linux"
 MODULE_DESCRIPTION(DRV_DESCRIPTION);
 MODULE_LICENSE("GPL");
+#if LINUX_VERSION_IS_LESS(6,13,0)
 MODULE_IMPORT_NS(IWLWIFI);
+#else
+MODULE_IMPORT_NS("IWLWIFI");
+#endif /* LINUX_VERSION_IS_LESS(6,13,0) */
 
 #define TX_QUEUE_CFG_TID (6)
 
@@ -139,6 +142,9 @@ static const struct iwl_hcmd_names iwl_xvt_xvt_names[] = {
 static const struct iwl_hcmd_names iwl_xvt_debug_names[] = {
 	HCMD_NAME(DBGC_SUSPEND_RESUME),
 	HCMD_NAME(BUFFER_ALLOCATION),
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+	HCMD_NAME(FW_STOP_ON_ASSERT_CMD),
+#endif
 };
 
 static const struct iwl_hcmd_arr iwl_xvt_cmd_groups[] = {
@@ -183,13 +189,12 @@ static int iwl_xvt_tm_send_hcmd(void *op_mode, struct iwl_host_cmd *host_cmd)
 }
 
 static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
-					 const struct iwl_cfg *cfg,
+					 const struct iwl_rf_cfg *cfg,
 					 const struct iwl_fw *fw,
 					 struct dentry *dbgfs_dir)
 {
 	struct iwl_op_mode *op_mode;
 	struct iwl_xvt *xvt;
-	struct iwl_trans_config trans_cfg = {};
 	static const u8 no_reclaim_cmds[] = {
 		TX_CMD,
 	};
@@ -199,7 +204,7 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	op_mode = kzalloc(sizeof(struct iwl_op_mode) +
 			  sizeof(struct iwl_xvt), GFP_KERNEL);
 	if (!op_mode)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	op_mode->ops = &iwl_xvt_ops;
 
@@ -212,6 +217,8 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	iwl_fw_runtime_init(&xvt->fwrt, trans, fw, &iwl_xvt_fwrt_ops, xvt,
 			    NULL, NULL, dbgfs_dir);
 
+	iwl_bios_setup_step(trans, &xvt->fwrt);
+
 	mutex_init(&xvt->mutex);
 	spin_lock_init(&xvt->notif_lock);
 
@@ -219,58 +226,47 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 	 * Populate the state variables that the
 	 * transport layer needs to know about.
 	 */
-	trans_cfg.op_mode = op_mode;
-	trans_cfg.no_reclaim_cmds = no_reclaim_cmds;
-	trans_cfg.n_no_reclaim_cmds = ARRAY_SIZE(no_reclaim_cmds);
-	trans_cfg.command_groups = iwl_xvt_cmd_groups;
-	trans_cfg.command_groups_size = ARRAY_SIZE(iwl_xvt_cmd_groups);
-	trans_cfg.cmd_queue = IWL_MVM_DQA_CMD_QUEUE;
+	BUILD_BUG_ON(sizeof(no_reclaim_cmds) >
+		     sizeof(trans->conf.no_reclaim_cmds));
+	memcpy(trans->conf.no_reclaim_cmds, no_reclaim_cmds,
+	       sizeof(no_reclaim_cmds));
+	trans->conf.n_no_reclaim_cmds = ARRAY_SIZE(no_reclaim_cmds);
+	trans->conf.command_groups = iwl_xvt_cmd_groups;
+	trans->conf.command_groups_size = ARRAY_SIZE(iwl_xvt_cmd_groups);
+	trans->conf.cmd_queue = IWL_MVM_DQA_CMD_QUEUE;
 	IWL_DEBUG_INFO(xvt, "dqa supported\n");
-	trans_cfg.cmd_fifo = IWL_MVM_TX_FIFO_CMD;
-	trans_cfg.bc_table_dword =
-		trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_AX210;
-	trans_cfg.scd_set_active = true;
-	trans->wide_cmd_header = true;
+	trans->conf.cmd_fifo = IWL_MVM_TX_FIFO_CMD;
+	trans->conf.scd_set_active = true;
+	trans->conf.wide_cmd_header = true;
 
-	switch (iwlwifi_mod_params.amsdu_size) {
-	case IWL_AMSDU_DEF:
-	case IWL_AMSDU_4K:
-		trans_cfg.rx_buf_size = IWL_AMSDU_4K;
-		break;
-	case IWL_AMSDU_8K:
-		trans_cfg.rx_buf_size = IWL_AMSDU_8K;
-		break;
-	case IWL_AMSDU_12K:
-		trans_cfg.rx_buf_size = IWL_AMSDU_12K;
-		break;
-	default:
-		pr_err("%s: Unsupported amsdu_size: %d\n", KBUILD_MODNAME,
-		       iwlwifi_mod_params.amsdu_size);
-		trans_cfg.rx_buf_size = IWL_AMSDU_4K;
-	}
+#ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
+	trans->conf.fseq_img = &fw->fseq;
+#endif
+
+	trans->conf.rx_buf_size = iwl_amsdu_size_to_rxb_size();
+
 	/* the hardware splits the A-MSDU */
-	if (xvt->trans->trans_cfg->mq_rx_supported)
-		trans_cfg.rx_buf_size = IWL_AMSDU_4K;
+	if (xvt->trans->mac_cfg->mq_rx_supported)
+		trans->conf.rx_buf_size = IWL_AMSDU_4K;
 
-	trans->rx_mpdu_cmd_hdr_size =
-		(trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) ?
+	trans->conf.rx_mpdu_cmd = REPLY_RX_MPDU_CMD;
+	trans->conf.rx_mpdu_cmd_hdr_size =
+		(trans->mac_cfg->device_family >= IWL_DEVICE_FAMILY_AX210) ?
 		sizeof(struct iwl_rx_mpdu_desc) : IWL_RX_DESC_SIZE_V1;
 
-	trans_cfg.cb_data_offs = offsetof(struct iwl_xvt_skb_info, trans);
+	trans->conf.cb_data_offs = offsetof(struct iwl_xvt_skb_info, trans);
 
-	trans_cfg.fw_reset_handshake = fw_has_capa(&xvt->fw->ucode_capa,
-						   IWL_UCODE_TLV_CAPA_FW_RESET_HANDSHAKE);
+	trans->conf.fw_reset_handshake =
+		fw_has_capa(&xvt->fw->ucode_capa,
+			    IWL_UCODE_TLV_CAPA_FW_RESET_HANDSHAKE);
 
-	trans_cfg.queue_alloc_cmd_ver =
+	trans->conf.queue_alloc_cmd_ver =
 		iwl_fw_lookup_cmd_ver(xvt->fw,
 				      WIDE_ID(DATA_PATH_GROUP,
 					      SCD_QUEUE_CONFIG_CMD),
 				      0);
 
-	/* Configure transport layer */
-	iwl_trans_configure(xvt->trans, &trans_cfg);
-	trans->command_groups = trans_cfg.command_groups;
-	trans->command_groups_size = trans_cfg.command_groups_size;
+	iwl_trans_op_mode_enter(xvt->trans, op_mode);
 
 	/* set up notification wait support */
 	iwl_notification_wait_init(&xvt->notif_wait);
@@ -279,10 +275,10 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 
 	/* Init phy db */
 	xvt->phy_db = iwl_phy_db_init(xvt->trans);
-	if (!xvt->phy_db)
+	if (!xvt->phy_db) {
+		err = -ENOMEM;
 		goto out_free;
-
-	iwl_dnt_init(xvt->trans, dbgfs_dir);
+	}
 
 	for (i = 0; i < NUM_OF_LMACS; i++) {
 		init_waitqueue_head(&xvt->tx_meta_data[i].mod_tx_wq);
@@ -305,24 +301,19 @@ static struct iwl_op_mode *iwl_xvt_start(struct iwl_trans *trans,
 
 	trans->dbg.dest_tlv = xvt->fw->dbg.dest_tlv;
 	trans->dbg.n_dest_reg = xvt->fw->dbg.n_dest_reg;
-	memcpy(trans->dbg.conf_tlv, xvt->fw->dbg.conf_tlv,
-	       sizeof(trans->dbg.conf_tlv));
-	trans->dbg.trigger_tlv = xvt->fw->dbg.trigger_tlv;
 
-	IWL_INFO(xvt, "Detected %s, REV=0x%X, xVT operation mode\n",
-		 xvt->trans->name, xvt->trans->hw_rev);
+	IWL_INFO(xvt, "xVT operation mode\n");
 
-	err = iwl_xvt_dbgfs_register(xvt, dbgfs_dir);
-	if (err)
-		IWL_ERR(xvt, "failed register xvt debugfs folder (%d)\n", err);
+	iwl_xvt_dbgfs_register(xvt, dbgfs_dir);
 
 	return op_mode;
 
 out_free:
+	iwl_trans_op_mode_leave(xvt->trans);
 	iwl_fw_runtime_free(&xvt->fwrt);
 	kfree(op_mode);
 
-	return NULL;
+	return ERR_PTR(err);
 }
 
 static void iwl_xvt_stop(struct iwl_op_mode *op_mode)
@@ -332,14 +323,9 @@ static void iwl_xvt_stop(struct iwl_op_mode *op_mode)
 
 	iwl_fw_cancel_timestamp(&xvt->fwrt);
 
-	if (xvt->state != IWL_XVT_STATE_UNINITIALIZED) {
-		if (xvt->fw_running) {
-			iwl_xvt_txq_disable(xvt);
-			xvt->fw_running = false;
-		}
-		iwl_fw_dbg_stop_sync(&xvt->fwrt);
-		iwl_trans_stop_device(xvt->trans);
-	}
+	mutex_lock(&xvt->mutex);
+	iwl_xvt_stop_op_mode(xvt);
+	mutex_unlock(&xvt->mutex);
 
 	for (i = 0; i < ARRAY_SIZE(xvt->reorder_bufs); i++) {
 		struct iwl_xvt_reorder_buffer *buffer;
@@ -353,13 +339,12 @@ static void iwl_xvt_stop(struct iwl_op_mode *op_mode)
 
 	iwl_phy_db_free(xvt->phy_db);
 	xvt->phy_db = NULL;
-	iwl_dnt_free(xvt->trans);
 	kfree(op_mode);
 }
 
 static void iwl_xvt_reclaim_and_free(struct iwl_xvt *xvt,
 				     struct tx_meta_data *tx_data,
-				     u16 txq_id, u16 ssn)
+				     u16 txq_id, u16 ssn, bool is_flush)
 {
 	struct sk_buff_head skbs;
 	struct sk_buff *skb;
@@ -367,7 +352,7 @@ static void iwl_xvt_reclaim_and_free(struct iwl_xvt *xvt,
 
 	__skb_queue_head_init(&skbs);
 
-	iwl_trans_reclaim(xvt->trans, txq_id, ssn, &skbs);
+	iwl_trans_reclaim(xvt->trans, txq_id, ssn, &skbs, is_flush);
 
 	while (!skb_queue_empty(&skbs)) {
 		skb = __skb_dequeue(&skbs);
@@ -375,7 +360,7 @@ static void iwl_xvt_reclaim_and_free(struct iwl_xvt *xvt,
 		if (xvt->is_enhanced_tx) {
 			xvt->queue_data[txq_id].tx_counter++;
 			xvt->num_of_tx_resp++;
-		} else {
+		} else if (tx_data) {
 			tx_data->tx_counter++;
 		}
 
@@ -388,7 +373,7 @@ static void iwl_xvt_reclaim_and_free(struct iwl_xvt *xvt,
 	if (xvt->is_enhanced_tx &&
 	    xvt->expected_tx_amount == xvt->num_of_tx_resp)
 		wake_up_interruptible(&xvt->tx_done_wq);
-	else if (tx_data->tot_tx == tx_data->tx_counter)
+	else if (tx_data && tx_data->tot_tx == tx_data->tx_counter)
 		wake_up_interruptible(&tx_data->mod_tx_done_wq);
 }
 
@@ -416,10 +401,12 @@ iwl_xvt_rx_get_tx_meta_data(struct iwl_xvt *xvt, u16 txq_id)
 
 	lmac_id = XVT_LMAC_0_ID;
 verify:
-	if (WARN(txq_id != xvt->tx_meta_data[lmac_id].queue,
-		 "got TX_CMD from unidentified queue: (lmac %d) %d %d\n",
-		 lmac_id, txq_id, xvt->tx_meta_data[lmac_id].queue))
+	if (txq_id != xvt->tx_meta_data[lmac_id].queue) {
+		IWL_DEBUG_TX(xvt,
+			     "got TX_CMD from unidentified queue: (lmac %d) %d %d\n",
+			     lmac_id, txq_id, xvt->tx_meta_data[lmac_id].queue);
 		return NULL;
+	}
 
 	return &xvt->tx_meta_data[lmac_id];
 }
@@ -461,10 +448,8 @@ static void iwl_xvt_txpath_flush(struct iwl_xvt *xvt,
 		if (read_before != read_after &&
 		    xvt->queue_data[queue_num].txq_full != 1) {
 			tx_data = iwl_xvt_rx_get_tx_meta_data(xvt, queue_num);
-			if (!tx_data)
-				continue;
-
-			iwl_xvt_reclaim_and_free(xvt, tx_data, queue_num, read_after);
+			iwl_xvt_reclaim_and_free(xvt, tx_data, queue_num,
+						 read_after, true);
 		}
 	}
 }
@@ -472,28 +457,25 @@ static void iwl_xvt_txpath_flush(struct iwl_xvt *xvt,
 static void iwl_xvt_rx_tx_cmd_single(struct iwl_xvt *xvt,
 				     struct iwl_rx_packet *pkt)
 {
-	/* struct iwl_mvm_tx_resp_v3 is almost the same */
-	struct iwl_mvm_tx_resp *tx_resp = (void *)pkt->data;
+	/* struct iwl_tx_resp_v3 is almost the same */
+	struct iwl_tx_resp *tx_resp = (void *)pkt->data;
 	int txq_id = SEQ_TO_QUEUE(le16_to_cpu(pkt->hdr.sequence));
 	u16 ssn = iwl_xvt_get_scd_ssn(xvt, tx_resp);
 	struct tx_meta_data *tx_data;
 	u16 status = le16_to_cpu(iwl_xvt_get_agg_status(xvt, tx_resp)->status) &
 				 TX_STATUS_MSK;
 
-	tx_data = iwl_xvt_rx_get_tx_meta_data(xvt, txq_id);
-	if (!tx_data)
-		return;
-
 	if (unlikely(status != TX_STATUS_SUCCESS))
 		IWL_WARN(xvt, "got error TX_RSP status %#x\n", status);
 
-	iwl_xvt_reclaim_and_free(xvt, tx_data, txq_id, ssn);
+	tx_data = iwl_xvt_rx_get_tx_meta_data(xvt, txq_id);
+	iwl_xvt_reclaim_and_free(xvt, tx_data, txq_id, ssn, false);
 }
 
 static void iwl_xvt_rx_tx_cmd_handler(struct iwl_xvt *xvt,
 				      struct iwl_rx_packet *pkt)
 {
-	struct iwl_mvm_tx_resp *tx_resp = (void *)pkt->data;
+	struct iwl_tx_resp *tx_resp = (void *)pkt->data;
 
 	if (tx_resp->frame_count == 1)
 		iwl_xvt_rx_tx_cmd_single(xvt, pkt);
@@ -510,7 +492,7 @@ static void iwl_xvt_rx_ba_notif(struct iwl_xvt *xvt,
 	u16 scd_ssn;
 
 	if (iwl_xvt_is_unified_fw(xvt)) {
-		struct iwl_mvm_compressed_ba_notif *ba_res = (void *)pkt->data;
+		struct iwl_compressed_ba_notif *ba_res = (void *)pkt->data;
 		u16 queue;
 		u16 tfd_idx;
 
@@ -521,10 +503,7 @@ static void iwl_xvt_rx_ba_notif(struct iwl_xvt *xvt,
 		tfd_idx = le16_to_cpu(ba_res->tfd[0].tfd_index);
 
 		tx_data = iwl_xvt_rx_get_tx_meta_data(xvt, queue);
-		if (!tx_data)
-			return;
-
-		iwl_xvt_reclaim_and_free(xvt, tx_data, queue, tfd_idx);
+		iwl_xvt_reclaim_and_free(xvt, tx_data, queue, tfd_idx, false);
 out:
 		IWL_DEBUG_TX_REPLY(xvt,
 				   "BA_NOTIFICATION Received from sta_id = %d, flags %x, sent:%d, acked:%d\n",
@@ -539,10 +518,7 @@ out:
 	scd_flow = le16_to_cpu(ba_notif->scd_flow);
 
 	tx_data = iwl_xvt_rx_get_tx_meta_data(xvt, scd_flow);
-	if (!tx_data)
-		return;
-
-	iwl_xvt_reclaim_and_free(xvt, tx_data, scd_flow, scd_ssn);
+	iwl_xvt_reclaim_and_free(xvt, tx_data, scd_flow, scd_ssn, false);
 
 	IWL_DEBUG_TX_REPLY(xvt, "ba_notif from %pM, sta_id = %d\n",
 			   ba_notif->sta_addr, ba_notif->sta_id);
@@ -606,10 +582,10 @@ static void iwl_xvt_nic_config(struct iwl_op_mode *op_mode)
 	IWL_DEBUG_INFO(xvt, "Radio type=0x%x-0x%x-0x%x\n", radio_cfg_type,
 		       radio_cfg_step, radio_cfg_dash);
 
-	if (xvt->trans->trans_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
+	if (xvt->trans->mac_cfg->device_family >= IWL_DEVICE_FAMILY_AX210)
 		return;
 
-	reg_val = CSR_HW_REV_STEP_DASH(xvt->trans->hw_rev);
+	reg_val = CSR_HW_REV_STEP_DASH(xvt->trans->info.hw_rev);
 
 	/* radio configuration */
 	reg_val |= radio_cfg_type << CSR_HW_IF_CONFIG_REG_POS_PHY_TYPE;
@@ -627,7 +603,7 @@ static void iwl_xvt_nic_config(struct iwl_op_mode *op_mode)
 	 * unrelated errors. Need to further investigate this, but for now
 	 * we'll separate cases.
 	 */
-	if (xvt->trans->trans_cfg->device_family < IWL_DEVICE_FAMILY_8000)
+	if (xvt->trans->mac_cfg->device_family < IWL_DEVICE_FAMILY_8000)
 		reg_val |= CSR_HW_IF_CONFIG_REG_BIT_RADIO_SI;
 
 	iwl_trans_set_bits_mask(xvt->trans, CSR_HW_IF_CONFIG_REG,
@@ -644,13 +620,14 @@ static void iwl_xvt_nic_config(struct iwl_op_mode *op_mode)
 	 * (PCIe power is lost before PERST# is asserted), causing ME FW
 	 * to lose ownership and not being able to obtain it back.
 	 */
-	if (!xvt->trans->cfg->apmg_not_supported)
+	if (!xvt->trans->mac_cfg->base->apmg_not_supported)
 		iwl_set_bits_mask_prph(xvt->trans, APMG_PS_CTRL_REG,
 				       APMG_PS_CTRL_EARLY_PWR_OFF_RESET_DIS,
 				       ~APMG_PS_CTRL_EARLY_PWR_OFF_RESET_DIS);
 }
 
-static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode, bool sync)
+static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode,
+			      enum iwl_fw_error_type type)
 {
 	struct iwl_xvt *xvt = IWL_OP_MODE_GET_XVT(op_mode);
 	void *p_table;
@@ -698,8 +675,23 @@ static void iwl_xvt_nic_error(struct iwl_op_mode *op_mode, bool sync)
 				 err);
 		kfree(p_table_umac);
 	}
+}
 
-	iwl_fw_error_collect(&xvt->fwrt, sync);
+static void iwl_xvt_dump_error(struct iwl_op_mode *op_mode,
+			       struct iwl_fw_error_dump_mode *mode)
+{
+	struct iwl_xvt *xvt = IWL_OP_MODE_GET_XVT(op_mode);
+
+	/* if we come in from opmode we have the mutex held */
+	if (mode->context == IWL_ERR_CONTEXT_FROM_OPMODE) {
+		lockdep_assert_held(&xvt->mutex);
+		iwl_fw_error_collect(&xvt->fwrt);
+	} else {
+		mutex_lock(&xvt->mutex);
+		if (mode->context != IWL_ERR_CONTEXT_ABORT)
+			iwl_fw_error_collect(&xvt->fwrt);
+		mutex_unlock(&xvt->mutex);
+	}
 }
 
 static bool iwl_xvt_set_hw_rfkill_state(struct iwl_op_mode *op_mode, bool state)
@@ -778,6 +770,7 @@ static const struct iwl_op_mode_ops iwl_xvt_ops = {
 	.rx = iwl_xvt_rx_dispatch,
 	.nic_config = iwl_xvt_nic_config,
 	.nic_error = iwl_xvt_nic_error,
+	.dump_error = iwl_xvt_dump_error,
 	.hw_rf_kill = iwl_xvt_set_hw_rfkill_state,
 	.free_skb = iwl_xvt_free_skb,
 	.queue_full = iwl_xvt_stop_sw_queue,
@@ -791,25 +784,46 @@ static const struct iwl_op_mode_ops iwl_xvt_ops = {
 
 void iwl_xvt_free_tx_queue(struct iwl_xvt *xvt, u8 lmac_id)
 {
+	int ret = 0;
+	u32 new_cmd_id = WIDE_ID(DATA_PATH_GROUP, SCD_QUEUE_CONFIG_CMD);
+
 	if (xvt->tx_meta_data[lmac_id].queue == -1)
 		return;
+
+	if (iwl_fw_lookup_cmd_ver(xvt->fw, new_cmd_id, 0) >= 3) {
+		struct iwl_scd_queue_cfg_cmd remove_cmd = {
+			.operation = cpu_to_le32(IWL_SCD_QUEUE_REMOVE),
+			.u.remove.sta_mask = cpu_to_le32(xvt->tx_meta_data[lmac_id].sta_msk),
+			.u.remove.tid = cpu_to_le32(TX_QUEUE_CFG_TID),
+		};
+		ret = iwl_xvt_send_cmd_pdu(xvt, new_cmd_id, 0, sizeof(remove_cmd), &remove_cmd);
+		if (ret)
+			IWL_ERR(xvt, "Failed to remove queue %d with %d error\n",
+				xvt->tx_meta_data[lmac_id].queue, ret);
+	}
 
 	iwl_trans_txq_free(xvt->trans, xvt->tx_meta_data[lmac_id].queue);
 
 	xvt->tx_meta_data[lmac_id].queue = -1;
+	xvt->tx_meta_data[lmac_id].sta_msk = 0;
 }
 
 int iwl_xvt_allocate_tx_queue(struct iwl_xvt *xvt, u8 sta_id,
 			      u8 lmac_id)
 {
-	int ret, size = max_t(u32, IWL_DEFAULT_QUEUE_SIZE,
-			      xvt->trans->cfg->min_ba_txq_size);
+	int ret = 0;
+	int size = max_t(u32, IWL_DEFAULT_QUEUE_SIZE,
+			 xvt->trans->mac_cfg->base->min_ba_txq_size);
+
+	if (xvt->tx_meta_data[lmac_id].sta_msk & BIT(sta_id))
+		return ret;
 
 	ret = iwl_trans_txq_alloc(xvt->trans, 0,
 				  BIT(sta_id), TX_QUEUE_CFG_TID, size, 0);
 	/* ret is positive when func returns the allocated the queue number */
 	if (ret > 0) {
 		xvt->tx_meta_data[lmac_id].queue = ret;
+		xvt->tx_meta_data[lmac_id].sta_msk |= BIT(sta_id);
 		ret = 0;
 	} else {
 		IWL_ERR(xvt, "failed to allocate queue\n");
@@ -836,7 +850,7 @@ void iwl_xvt_txq_disable(struct iwl_xvt *xvt)
 static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 {
 	u32 cmd_id = WIDE_ID(PHY_OPS_GROUP, PER_CHAIN_LIMIT_OFFSET_CMD);
-	union iwl_geo_tx_power_profiles_cmd cmd;
+	union iwl_geo_tx_power_profiles_cmd cmd = {};
 	u16 len;
 	u32 n_bands;
 	u32 n_profiles;
@@ -852,7 +866,9 @@ static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v3, ops) !=
 		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v4, ops) ||
 		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v4, ops) !=
-		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v5, ops));
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v5, ops) ||
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v5, ops) !=
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v6, ops));
 	/* the ops field is at the same spot for all versions, so set in v1 */
 	cmd.v1.ops = cpu_to_le32(IWL_PER_CHAIN_OFFSET_SET_TABLES);
 
@@ -865,33 +881,38 @@ static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 	 * element name is misleading, as it doesn't contain the table
 	 * revision number, but whether the South Korea variation
 	 * should be used.
-	 * This must be done after calling iwl_sar_geo_init().
 	 */
-	if (cmd_ver == 5) {
+	if (cmd_ver == 6) {
+		len = sizeof(cmd.v6);
+		n_bands = ARRAY_SIZE(cmd.v6.table[0]);
+		cmd.v6.bios_hdr.table_revision = sk;
+		cmd.v6.bios_hdr.table_source = xvt->fwrt.geo_bios_source;
+		n_profiles = BIOS_GEO_MAX_PROFILE_NUM;
+	} else if (cmd_ver == 5) {
 		len = sizeof(cmd.v5);
 		n_bands = ARRAY_SIZE(cmd.v5.table[0]);
 		cmd.v5.table_revision = cpu_to_le32(sk);
-		n_profiles = ACPI_NUM_GEO_PROFILES_REV3;
+		n_profiles = BIOS_GEO_MAX_PROFILE_NUM;
 	} else if (cmd_ver == 4) {
 		len = sizeof(cmd.v4);
 		n_bands = ARRAY_SIZE(cmd.v4.table[0]);
 		cmd.v4.table_revision = cpu_to_le32(sk);
-		n_profiles = ACPI_NUM_GEO_PROFILES_REV3;
+		n_profiles = BIOS_GEO_MAX_PROFILE_NUM;
 	} else if (cmd_ver == 3) {
 		len = sizeof(cmd.v3);
 		n_bands = ARRAY_SIZE(cmd.v3.table[0]);
 		cmd.v3.table_revision = cpu_to_le32(sk);
-		n_profiles = ACPI_NUM_GEO_PROFILES;
+		n_profiles = BIOS_GEO_MIN_PROFILE_NUM;
 	} else if (fw_has_api(&xvt->fwrt.fw->ucode_capa,
 			      IWL_UCODE_TLV_API_SAR_TABLE_VER)) {
 		len =  sizeof(cmd.v2);
 		n_bands = ARRAY_SIZE(cmd.v2.table[0]);
 		cmd.v2.table_revision = cpu_to_le32(sk);
-		n_profiles = ACPI_NUM_GEO_PROFILES;
+		n_profiles = BIOS_GEO_MIN_PROFILE_NUM;
 	} else {
 		len = sizeof(cmd.v1);
 		n_bands = ARRAY_SIZE(cmd.v1.table[0]);
-		n_profiles = ACPI_NUM_GEO_PROFILES;
+		n_profiles = BIOS_GEO_MIN_PROFILE_NUM;
 	}
 
 	BUILD_BUG_ON(offsetof(struct iwl_geo_tx_power_profiles_cmd_v1, table) !=
@@ -901,10 +922,12 @@ static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v3, table) !=
 		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v4, table) ||
 		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v4, table) !=
-		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v5, table));
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v5, table) ||
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v5, table) !=
+		     offsetof(struct iwl_geo_tx_power_profiles_cmd_v6, table));
 	/* the table is at the same position for all versions, so set use v1 */
-	ret = iwl_sar_geo_init(&xvt->fwrt, &cmd.v1.table[0][0],
-			       n_bands, n_profiles);
+	ret = iwl_sar_geo_fill_table(&xvt->fwrt, &cmd.v1.table[0][0],
+				     n_bands, n_profiles);
 
 	/*
 	 * It is a valid scenario to not support SAR, or miss wgds table,
@@ -915,60 +938,322 @@ static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 
 	return iwl_xvt_send_cmd_pdu(xvt, cmd_id, 0, len, &cmd);
 }
+
+static size_t iwl_xvt_get_lari_config_cmd_size(u8 cmd_ver)
+{
+	size_t cmd_size;
+
+	switch (cmd_ver) {
+	case 13:
+		cmd_size = sizeof(struct iwl_lari_config_change_cmd);
+		break;
+	case 12:
+		cmd_size = offsetof(struct iwl_lari_config_change_cmd,
+				    oem_11bn_allow_bitmap);
+		break;
+	case 8:
+		cmd_size = sizeof(struct iwl_lari_config_change_cmd_v8);
+		break;
+	case 6:
+		cmd_size = sizeof(struct iwl_lari_config_change_cmd_v6);
+		break;
+	default:
+		cmd_size = sizeof(struct iwl_lari_config_change_cmd_v1);
+		break;
+	}
+	return cmd_size;
+}
+
+static __le32 iwl_xvt_get_lari_config_bitmap(struct iwl_fw_runtime *fwrt)
+{
+	int ret;
+	u32 val;
+	__le32 config_bitmap = 0;
+
+	switch (CSR_HW_RFID_TYPE(fwrt->trans->info.hw_rf_id)) {
+	case IWL_CFG_RF_TYPE_HR1:
+	case IWL_CFG_RF_TYPE_HR2:
+	case IWL_CFG_RF_TYPE_JF1:
+	case IWL_CFG_RF_TYPE_JF2:
+		ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ENABLE_INDONESIA_5G2,
+				       &val);
+
+		if (!ret && val == DSM_VALUE_INDONESIA_ENABLE)
+			config_bitmap |=
+			    cpu_to_le32(LARI_CONFIG_ENABLE_5G2_IN_INDONESIA_MSK);
+		break;
+	default:
+		break;
+	}
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_DISABLE_SRD, &val);
+	if (!ret) {
+		if (val == DSM_VALUE_SRD_PASSIVE)
+			config_bitmap |=
+				cpu_to_le32(LARI_CONFIG_CHANGE_ETSI_TO_PASSIVE_MSK);
+		else if (val == DSM_VALUE_SRD_DISABLE)
+			config_bitmap |=
+				cpu_to_le32(LARI_CONFIG_CHANGE_ETSI_TO_DISABLED_MSK);
+	}
+
+	if (fw_has_capa(&fwrt->fw->ucode_capa,
+			IWL_UCODE_TLV_CAPA_CHINA_22_REG_SUPPORT)) {
+		ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_REGULATORY_CONFIG,
+				       &val);
+		/*
+		 * China 2022 enable if the BIOS object does not exist or
+		 * if it is enabled in BIOS.
+		 */
+		if (ret < 0 || val & DSM_MASK_CHINA_22_REG)
+			config_bitmap |=
+				cpu_to_le32(LARI_CONFIG_ENABLE_CHINA_22_REG_SUPPORT_MSK);
+	}
+
+	return config_bitmap;
+}
+
+static int iwl_xvt_fill_lari_config(struct iwl_fw_runtime *fwrt,
+				    struct iwl_lari_config_change_cmd *cmd,
+				    size_t *cmd_size)
+{
+	int ret;
+	u32 value;
+	bool has_raw_dsm_capa = fw_has_capa(&fwrt->fw->ucode_capa,
+					    IWL_UCODE_TLV_CAPA_FW_ACCEPTS_RAW_DSM_TABLE);
+	u8 cmd_ver = iwl_fw_lookup_cmd_ver(fwrt->fw,
+					   WIDE_ID(REGULATORY_AND_NVM_GROUP,
+						   LARI_CONFIG_CHANGE), 1);
+
+	memset(cmd, 0, sizeof(*cmd));
+	*cmd_size = iwl_xvt_get_lari_config_cmd_size(cmd_ver);
+
+	cmd->config_bitmap = iwl_xvt_get_lari_config_bitmap(fwrt);
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_11AX_ENABLEMENT, &value);
+	if (!ret) {
+		if (!has_raw_dsm_capa)
+			value &= DSM_11AX_ALLOW_BITMAP;
+		cmd->oem_11ax_allow_bitmap = cpu_to_le32(value);
+	}
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ENABLE_UNII4_CHAN, &value);
+	if (!ret) {
+		if (!has_raw_dsm_capa)
+			value &= DSM_UNII4_ALLOW_BITMAP;
+
+		/* Since version 12, bits 4 and 5 are supported
+		 * regardless of this capability, By pass this masking
+		 * if firmware has capability of accepting raw DSM table.
+		 */
+		if (!has_raw_dsm_capa && cmd_ver < 12 &&
+		    !fw_has_capa(&fwrt->fw->ucode_capa,
+				 IWL_UCODE_TLV_CAPA_BIOS_OVERRIDE_5G9_FOR_CA))
+			value &= ~(DSM_VALUE_UNII4_CANADA_OVERRIDE_MSK |
+				   DSM_VALUE_UNII4_CANADA_EN_MSK);
+
+		cmd->oem_unii4_allow_bitmap = cpu_to_le32(value);
+	}
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ACTIVATE_CHANNEL, &value);
+	if (!ret) {
+		if (!has_raw_dsm_capa)
+			value &= CHAN_STATE_ACTIVE_BITMAP_CMD_V12;
+
+		if (!has_raw_dsm_capa && cmd_ver < 8)
+			value &= ~ACTIVATE_5G2_IN_WW_MASK;
+
+		/* Since version 12, bits 5 and 6 are supported
+		 * regardless of this capability, By pass this masking
+		 * if firmware has capability of accepting raw DSM table.
+		 */
+		if (!has_raw_dsm_capa && cmd_ver < 12 &&
+		    !fw_has_capa(&fwrt->fw->ucode_capa,
+				 IWL_UCODE_TLV_CAPA_BIOS_OVERRIDE_UNII4_US_CA))
+			value &= CHAN_STATE_ACTIVE_BITMAP_CMD_V8;
+
+		cmd->chan_state_active_bitmap = cpu_to_le32(value);
+	}
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ENABLE_6E, &value);
+	if (!ret)
+		cmd->oem_uhb_allow_bitmap = cpu_to_le32(value);
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_FORCE_DISABLE_CHANNELS, &value);
+	if (!ret) {
+		if (!has_raw_dsm_capa)
+			value &= DSM_FORCE_DISABLE_CHANNELS_ALLOWED_BITMAP;
+		cmd->force_disable_channels_bitmap = cpu_to_le32(value);
+	}
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ENERGY_DETECTION_THRESHOLD,
+			       &value);
+	if (!ret) {
+		if (!has_raw_dsm_capa)
+			value &= DSM_EDT_ALLOWED_BITMAP;
+		cmd->edt_bitmap = cpu_to_le32(value);
+	}
+
+	ret = iwl_bios_get_wbem(fwrt, &value);
+	if (!ret)
+		cmd->oem_320mhz_allow_bitmap = cpu_to_le32(value);
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ENABLE_11BE, &value);
+	if (!ret)
+		cmd->oem_11be_allow_bitmap = cpu_to_le32(value);
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ENABLE_11BN, &value);
+	if (!ret)
+		cmd->oem_11bn_allow_bitmap = cpu_to_le32(value);
+
+	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ENABLE_UNII_9, &value);
+	if (!ret)
+		cmd->oem_unii9_enable = cpu_to_le32(value);
+
+	cmd->bios_hdr.table_source = fwrt->dsm_source;
+	cmd->bios_hdr.table_revision = fwrt->dsm_revision;
+
+	if (cmd->config_bitmap ||
+	    cmd->oem_uhb_allow_bitmap ||
+	    cmd->oem_11ax_allow_bitmap ||
+	    cmd->oem_unii4_allow_bitmap ||
+	    cmd->chan_state_active_bitmap ||
+	    cmd->force_disable_channels_bitmap ||
+	    cmd->edt_bitmap ||
+	    cmd->oem_320mhz_allow_bitmap ||
+	    cmd->oem_11be_allow_bitmap ||
+	    cmd->oem_11bn_allow_bitmap ||
+	    cmd->oem_unii9_enable) {
+		IWL_DEBUG_RADIO(fwrt,
+				"sending LARI_CONFIG_CHANGE, config_bitmap=0x%x, oem_11ax_allow_bitmap=0x%x\n",
+				le32_to_cpu(cmd->config_bitmap),
+				le32_to_cpu(cmd->oem_11ax_allow_bitmap));
+		IWL_DEBUG_RADIO(fwrt,
+				"sending LARI_CONFIG_CHANGE, oem_unii4_allow_bitmap=0x%x, chan_state_active_bitmap=0x%x, cmd_ver=%d\n",
+				le32_to_cpu(cmd->oem_unii4_allow_bitmap),
+				le32_to_cpu(cmd->chan_state_active_bitmap),
+				cmd_ver);
+		IWL_DEBUG_RADIO(fwrt,
+				"sending LARI_CONFIG_CHANGE, oem_uhb_allow_bitmap=0x%x, force_disable_channels_bitmap=0x%x\n",
+				le32_to_cpu(cmd->oem_uhb_allow_bitmap),
+				le32_to_cpu(cmd->force_disable_channels_bitmap));
+		IWL_DEBUG_RADIO(fwrt,
+				"sending LARI_CONFIG_CHANGE, edt_bitmap=0x%x, oem_320mhz_allow_bitmap=0x%x\n",
+				le32_to_cpu(cmd->edt_bitmap),
+				le32_to_cpu(cmd->oem_320mhz_allow_bitmap));
+		IWL_DEBUG_RADIO(fwrt,
+				"sending LARI_CONFIG_CHANGE, oem_11be_allow_bitmap=0x%x\n",
+				le32_to_cpu(cmd->oem_11be_allow_bitmap));
+		IWL_DEBUG_RADIO(fwrt,
+				"sending LARI_CONFIG_CHANGE, oem_11bn_allow_bitmap=0x%x\n",
+				le32_to_cpu(cmd->oem_11bn_allow_bitmap));
+		IWL_DEBUG_RADIO(fwrt,
+				"sending LARI_CONFIG_CHANGE, oem_unii9_enable=0x%x\n",
+				le32_to_cpu(cmd->oem_unii9_enable));
+	} else {
+		return 1;
+	}
+
+	return 0;
+}
+
+void iwl_xvt_lari_cfg(struct iwl_xvt *xvt)
+{
+	struct iwl_lari_config_change_cmd cmd;
+	size_t cmd_size;
+	int ret;
+
+	ret = iwl_xvt_fill_lari_config(&xvt->fwrt, &cmd, &cmd_size);
+	if (!ret) {
+		ret = iwl_xvt_send_cmd_pdu(xvt,
+					   WIDE_ID(REGULATORY_AND_NVM_GROUP,
+						   LARI_CONFIG_CHANGE),
+					0, cmd_size, &cmd);
+
+		if (ret < 0)
+			IWL_DEBUG_RADIO(xvt, "Failed to send LARI_CONFIG_CHANGE (%d)\n",
+					ret);
+	}
+}
 #else /* CONFIG_ACPI */
 static int iwl_xvt_sar_geo_init(struct iwl_xvt *xvt)
 {
 	return 0;
+}
+
+void iwl_xvt_lari_cfg(struct iwl_xvt *xvt)
+{
 }
 #endif /* CONFIG_ACPI */
 
 int iwl_xvt_sar_select_profile(struct iwl_xvt *xvt, int prof_a, int prof_b)
 {
 	u32 cmd_id = REDUCE_TX_POWER_CMD;
+	struct iwl_dev_tx_power_cmd_v3_v8 old_cmd = {
+		.common.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_CHAINS),
+	};
 	struct iwl_dev_tx_power_cmd cmd = {
 		.common.set_mode = cpu_to_le32(IWL_TX_POWER_MODE_SET_CHAINS),
 	};
+
 	__le16 *per_chain;
 	u16 len = 0;
 	u32 n_subbands;
-	u8 cmd_ver = iwl_fw_lookup_cmd_ver(xvt->fw, cmd_id,
-					   IWL_FW_CMD_VER_UNKNOWN);
-	if (cmd_ver == 6) {
-		len = sizeof(cmd.v6);
+	u8 cmd_ver = iwl_fw_lookup_cmd_ver(xvt->fw, cmd_id, 3);
+	void *cmd_data = &old_cmd;
+
+	if (cmd_ver == 11) {
+		len = sizeof(cmd.v11);
+		n_subbands = IWL_NUM_SUB_BANDS_V3;
+		per_chain = &cmd.v11.per_chain[0][0][0];
+	} else if (cmd_ver == 10) {
+		len = sizeof(cmd.v10);
 		n_subbands = IWL_NUM_SUB_BANDS_V2;
-		per_chain = cmd.v6.per_chain[0][0];
+		per_chain = &cmd.v10.per_chain[0][0][0];
+	} else if (cmd_ver == 9) {
+		len = sizeof(cmd.v9);
+		n_subbands = IWL_NUM_SUB_BANDS_V1;
+		per_chain = &cmd.v9.per_chain[0][0];
+	} else if (cmd_ver == 8) {
+		len = sizeof(old_cmd.v8);
+		n_subbands = IWL_NUM_SUB_BANDS_V2;
+		per_chain = old_cmd.v8.per_chain[0][0];
 	} else if (fw_has_api(&xvt->fw->ucode_capa,
 			      IWL_UCODE_TLV_API_REDUCE_TX_POWER)) {
-		len = sizeof(cmd.v5);
+		len = sizeof(old_cmd.v5);
 		n_subbands = IWL_NUM_SUB_BANDS_V1;
-		per_chain = cmd.v5.per_chain[0][0];
+		per_chain = old_cmd.v5.per_chain[0][0];
 	} else if (fw_has_capa(&xvt->fw->ucode_capa,
 			       IWL_UCODE_TLV_CAPA_TX_POWER_ACK)) {
-		len = sizeof(cmd.v4);
+		len = sizeof(old_cmd.v4);
 		n_subbands = IWL_NUM_SUB_BANDS_V1;
-		per_chain = cmd.v4.per_chain[0][0];
+		per_chain = old_cmd.v4.per_chain[0][0];
 	} else {
-		len = sizeof(cmd.v3);
+		len = sizeof(old_cmd.v3);
 		n_subbands = IWL_NUM_SUB_BANDS_V1;
-		per_chain = cmd.v3.per_chain[0][0];
+		per_chain = old_cmd.v3.per_chain[0][0];
 	}
 
-	/* all structs have the same common part, add it */
-	len += sizeof(cmd.common);
+	/* all structs have the same common part, add its length */
+	len += sizeof(old_cmd.common);
 
-	if (iwl_sar_select_profile(&xvt->fwrt, per_chain, IWL_NUM_CHAIN_TABLES,
-				   n_subbands, prof_a, prof_b))
+	if (cmd_ver < 9)
+		len += sizeof(old_cmd.per_band);
+	else
+		cmd_data = &cmd;
+
+	if (iwl_sar_fill_profile(&xvt->fwrt, per_chain, IWL_NUM_CHAIN_TABLES,
+				 n_subbands, prof_a, prof_b))
 		return -ENOENT;
 
 	IWL_DEBUG_RADIO(xvt, "Sending REDUCE_TX_POWER_CMD per chain\n");
-	return iwl_xvt_send_cmd_pdu(xvt, cmd_id, 0, len, &cmd);
+	return iwl_xvt_send_cmd_pdu(xvt, cmd_id, 0, len, cmd_data);
 }
 
 static int iwl_xvt_sar_init(struct iwl_xvt *xvt)
 {
 	int ret;
 
-	ret = iwl_sar_get_wrds_table(&xvt->fwrt);
+	ret = iwl_bios_get_wrds_table(&xvt->fwrt);
 	if (ret < 0) {
 		IWL_DEBUG_RADIO(xvt,
 				"WRDS SAR BIOS table invalid or unavailable. (%d)\n",
@@ -976,7 +1261,7 @@ static int iwl_xvt_sar_init(struct iwl_xvt *xvt)
 		/*
 		 * If not available, don't fail and don't bother with EWRD and
 		 * WGDS */
-		if (!iwl_sar_get_wgds_table(&xvt->fwrt)) {
+		if (!iwl_bios_get_wgds_table(&xvt->fwrt)) {
 			/*
 			 * If basic SAR is not available, we check for WGDS,
 			 * which should *not* be available either.  If it is
@@ -986,7 +1271,7 @@ static int iwl_xvt_sar_init(struct iwl_xvt *xvt)
 			IWL_ERR(xvt, "BIOS contains WGDS but no WRDS\n");
 		}
 	} else {
-		ret = iwl_sar_get_ewrd_table(&xvt->fwrt);
+		ret = iwl_bios_get_ewrd_table(&xvt->fwrt);
 		/* if EWRD is not available, we can still use
 		 * WRDS, so don't fail */
 		if (ret < 0)
@@ -996,7 +1281,7 @@ static int iwl_xvt_sar_init(struct iwl_xvt *xvt)
 
 		/* read geo SAR table */
 		if (iwl_sar_geo_support(&xvt->fwrt)) {
-			ret = iwl_sar_get_wgds_table(&xvt->fwrt);
+			ret = iwl_bios_get_wgds_table(&xvt->fwrt);
 			if (ret < 0)
 				IWL_DEBUG_RADIO(xvt,
 						"Geo SAR BIOS table invalid or unavailable. (%d)\n",
@@ -1025,7 +1310,7 @@ int iwl_xvt_init_sar_tables(struct iwl_xvt *xvt)
 
 	if (ret == 0) {
 		ret = iwl_xvt_sar_geo_init(xvt);
-	} else if (ret > 0 && !iwl_sar_get_wgds_table(&xvt->fwrt)) {
+	} else if (ret > 0 && !iwl_bios_get_wgds_table(&xvt->fwrt)) {
 		/*
 		 * If basic SAR is not available, we check for WGDS,
 		 * which should *not* be available either.  If it is
@@ -1038,14 +1323,150 @@ int iwl_xvt_init_sar_tables(struct iwl_xvt *xvt)
 	return ret;
 }
 
+static bool iwl_xvt_ppag_value_valid(struct iwl_fw_runtime *fwrt, int chain,
+				     int subband)
+{
+	s8 ppag_val = fwrt->ppag_chains[chain].subbands[subband];
+
+	if ((subband == 0 &&
+	     (ppag_val > IWL_PPAG_MAX_LB || ppag_val < IWL_PPAG_MIN_LB)) ||
+	    (subband != 0 &&
+	     (ppag_val > IWL_PPAG_MAX_HB || ppag_val < IWL_PPAG_MIN_HB))) {
+		IWL_DEBUG_RADIO(fwrt, "Invalid PPAG value: %d\n", ppag_val);
+		return false;
+	}
+	return true;
+}
+
+static int iwl_xvt_fill_ppag_table(struct iwl_fw_runtime *fwrt,
+				   union iwl_ppag_table_cmd *cmd,
+				   int *cmd_size)
+{
+	u8 cmd_ver;
+	int i, j, num_sub_bands;
+	s8 *gain;
+	bool send_ppag_always;
+
+	/* many firmware images for JF lie about this */
+	if (CSR_HW_RFID_TYPE(fwrt->trans->info.hw_rf_id) ==
+	    CSR_HW_RFID_TYPE(CSR_HW_RF_ID_TYPE_JF))
+		return -EOPNOTSUPP;
+
+	if (!fw_has_capa(&fwrt->fw->ucode_capa, IWL_UCODE_TLV_CAPA_SET_PPAG)) {
+		IWL_DEBUG_RADIO(fwrt,
+				"PPAG capability not supported by FW, command not sent.\n");
+		return -EINVAL;
+	}
+
+	cmd_ver = iwl_fw_lookup_cmd_ver(fwrt->fw,
+					WIDE_ID(PHY_OPS_GROUP,
+						PER_PLATFORM_ANT_GAIN_CMD), 1);
+	/*
+	 * Starting from ver 4, driver needs to send the PPAG CMD regardless
+	 * if PPAG is enabled/disabled or valid/invalid.
+	 */
+	send_ppag_always = cmd_ver > 3;
+
+	/* Don't send PPAG if it is disabled */
+	if (!send_ppag_always && !fwrt->ppag_flags) {
+		IWL_DEBUG_RADIO(fwrt, "PPAG not enabled, command not sent.\n");
+		return -EINVAL;
+	}
+
+	IWL_DEBUG_RADIO(fwrt, "PPAG cmd ver is %d\n", cmd_ver);
+	if (cmd_ver == 1) {
+		num_sub_bands = IWL_NUM_SUB_BANDS_V1;
+		gain = cmd->v1.gain[0];
+		*cmd_size = sizeof(cmd->v1);
+		cmd->v1.flags =
+			cpu_to_le32(fwrt->ppag_flags & IWL_PPAG_CMD_V1_MASK);
+		if (fwrt->ppag_bios_rev >= 1) {
+			/* in this case FW supports revision 0 */
+			IWL_DEBUG_RADIO(fwrt,
+					"PPAG table rev is %d, send truncated table\n",
+					fwrt->ppag_bios_rev);
+		}
+	} else if (cmd_ver == 5) {
+		num_sub_bands = IWL_NUM_SUB_BANDS_V2;
+		gain = cmd->v5.gain[0];
+		*cmd_size = sizeof(cmd->v5);
+		cmd->v5.flags =
+			cpu_to_le32(fwrt->ppag_flags & IWL_PPAG_CMD_V5_MASK);
+		if (fwrt->ppag_bios_rev == 0) {
+			/* in this case FW supports revisions 1,2 or 3 */
+			IWL_DEBUG_RADIO(fwrt,
+					"PPAG table rev is 0, send padded table\n");
+		}
+	} else if (cmd_ver == 7) {
+		num_sub_bands = IWL_NUM_SUB_BANDS_V2;
+		gain = cmd->v7.gain[0];
+		*cmd_size = sizeof(cmd->v7);
+		cmd->v7.ppag_config_info.hdr.table_source =
+			fwrt->ppag_bios_source;
+		cmd->v7.ppag_config_info.hdr.table_revision =
+			fwrt->ppag_bios_rev;
+		cmd->v7.ppag_config_info.value = cpu_to_le32(fwrt->ppag_flags);
+	} else if (cmd_ver == 8) {
+		num_sub_bands = IWL_NUM_SUB_BANDS_V3;
+		gain = cmd->v8.gain[0];
+		*cmd_size = sizeof(cmd->v8);
+		cmd->v8.ppag_config_info.hdr.table_source =
+			fwrt->ppag_bios_source;
+		cmd->v8.ppag_config_info.hdr.table_revision =
+			fwrt->ppag_bios_rev;
+		cmd->v8.ppag_config_info.value = cpu_to_le32(fwrt->ppag_flags);
+	} else {
+		IWL_DEBUG_RADIO(fwrt, "Unsupported PPAG command version\n");
+		return -EINVAL;
+	}
+
+	/* ppag mode */
+	IWL_DEBUG_RADIO(fwrt,
+			"PPAG MODE bits were read from bios: %d\n",
+			fwrt->ppag_flags);
+
+	if (cmd_ver == 1 &&
+	    !fw_has_capa(&fwrt->fw->ucode_capa,
+			 IWL_UCODE_TLV_CAPA_PPAG_CHINA_BIOS_SUPPORT)) {
+		cmd->v1.flags &= cpu_to_le32(IWL_PPAG_ETSI_MASK);
+		IWL_DEBUG_RADIO(fwrt, "masking ppag China bit\n");
+	} else {
+		IWL_DEBUG_RADIO(fwrt, "isn't masking ppag China bit\n");
+	}
+
+	/* The 'flags' field is the same in v1 and v5 so we can just
+	 * use v1 to access it.
+	 */
+	IWL_DEBUG_RADIO(fwrt,
+			"PPAG MODE bits going to be sent: %d\n",
+			(cmd_ver < 7) ? le32_to_cpu(cmd->v1.flags) :
+					le32_to_cpu(cmd->v7.ppag_config_info.value));
+
+	for (i = 0; i < IWL_NUM_CHAIN_LIMITS; i++) {
+		for (j = 0; j < num_sub_bands; j++) {
+			if (!send_ppag_always &&
+			    !iwl_xvt_ppag_value_valid(fwrt, i, j))
+				return -EINVAL;
+
+			gain[i * num_sub_bands + j] =
+				fwrt->ppag_chains[i].subbands[j];
+			IWL_DEBUG_RADIO(fwrt,
+					"PPAG table: chain[%d] band[%d]: gain = %d\n",
+					i, j, gain[i * num_sub_bands + j]);
+		}
+	}
+
+	return 0;
+}
+
 static int iwl_xvt_ppag_send_cmd(struct iwl_xvt *xvt)
 {
 	union iwl_ppag_table_cmd cmd;
 	int ret, cmd_size;
 
-	ret = iwl_read_ppag_table(&xvt->fwrt, &cmd, &cmd_size);
+	ret = iwl_xvt_fill_ppag_table(&xvt->fwrt, &cmd, &cmd_size);
 	if (ret < 0)
-		return ret;
+		return 0;
 
 	IWL_DEBUG_RADIO(xvt, "Sending PER_PLATFORM_ANT_GAIN_CMD\n");
 	ret = iwl_xvt_send_cmd_pdu(xvt, WIDE_ID(PHY_OPS_GROUP,
@@ -1062,14 +1483,15 @@ int iwl_xvt_init_ppag_tables(struct iwl_xvt *xvt)
 {
 	int ret;
 
-	ret = iwl_acpi_get_ppag_table(&xvt->fwrt);
+	ret = iwl_bios_get_ppag_table(&xvt->fwrt);
 	if (ret < 0) {
 		IWL_DEBUG_RADIO(xvt,
 				"PPAG BIOS table invalid or unavailable. (%d)\n",
 				ret);
+		return 0;
 	}
 
-	if (!(iwl_acpi_is_ppag_approved(&xvt->fwrt)))
+	if (!(iwl_is_ppag_approved(&xvt->fwrt)))
 		return 0;
 
 	return iwl_xvt_ppag_send_cmd(xvt);

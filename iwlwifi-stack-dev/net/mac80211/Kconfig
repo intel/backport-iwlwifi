@@ -58,6 +58,17 @@ endif
 comment "Some wireless drivers require a rate control algorithm"
 	depends on MAC80211 && MAC80211_HAS_RC=n
 
+config MAC80211_KUNIT_TEST
+	tristate "KUnit tests for mac80211" if !KUNIT_ALL_TESTS
+	depends on KUNIT
+	depends on MAC80211
+	default KUNIT_ALL_TESTS || IWLWIFI_SIMULATION
+	depends on !KERNEL_6_3
+	help
+	  Enable this option to test mac80211 internals with kunit.
+
+	  If unsure, say N.
+
 config MAC80211_MESH
 	bool "Enable mac80211 mesh networking support"
 	depends on MAC80211
@@ -78,7 +89,7 @@ config MAC80211_LEDS
 
 config MAC80211_DEBUGFS
 	bool "Export mac80211 internals in DebugFS"
-	depends on MAC80211 && DEBUG_FS
+	depends on MAC80211 && CFG80211_DEBUGFS
 	help
 	  Select this to see extensive information about
 	  the internal state of mac80211 in debugfs.
@@ -87,7 +98,7 @@ config MAC80211_DEBUGFS
 
 config MAC80211_MESSAGE_TRACING
 	bool "Trace all mac80211 debug messages"
-	depends on MAC80211
+	depends on MAC80211 && TRACING
 	help
 	  Select this option to have mac80211 register the
 	  mac80211_msg trace subsystem with tracepoints to
@@ -305,13 +316,3 @@ config MAC80211_STA_HASH_MAX_SIZE
 	  connect more stations than the number selected here.)
 
 	  If unsure, leave the default of 0.
-
-config IWL_TIMEOUT_FACTOR
-	int "Factor to multiply timeouts by"
-	range 1 2500
-	default 1
-
-config IWL_DELAY_FACTOR
-	int "Factor to multiply delays by"
-	range 1 50
-	default 1

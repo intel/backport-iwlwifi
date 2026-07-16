@@ -1,0 +1,4 @@
+@@
+@@
+-struct cfg80211_rx_assoc_resp_data
++struct cfg80211_rx_assoc_resp

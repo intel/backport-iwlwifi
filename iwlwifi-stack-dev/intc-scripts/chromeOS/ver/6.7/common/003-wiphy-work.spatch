@@ -1,0 +1,57 @@
+@@
+@@
+struct ieee80211_local {
+...
++       struct work_struct wiphy_work;
++       struct list_head wiphy_work_list;
++       spinlock_t wiphy_work_lock;
+        bool rx_mcast_action_reg;
+...
+};
+
+@@
+@@
++void wiphy_work_setup(struct ieee80211_local *local);
++void wiphy_work_teardown(struct ieee80211_local *local);
++
+ void ieee80211_init_frag_cache(struct ieee80211_fragment_cache *cache);
+
+@@
+@@
+ieee80211_alloc_hw_nm(...)
+{
+...
+local = wiphy_priv(wiphy);
++
++wiphy_work_setup(local);
+...
+}
+
+@@
+@@
+ieee80211_free_hw(...)
+{
+...
++wiphy_work_teardown(local);
++
+wiphy_free(local->hw.wiphy);
+...
+}
+
+@@
+@@
+ieee80211_suspend(...)
+{
++wiphy_work_flush(wiphy, NULL);
+...
+}
+
+@@
+@@
+ieee80211_resume(...)
+{
++       struct ieee80211_local *local = hw_to_local(wiphy_priv(wiphy));
++
++       schedule_work(&local->wiphy_work);
+        return __ieee80211_resume(wiphy_priv(wiphy));
+}

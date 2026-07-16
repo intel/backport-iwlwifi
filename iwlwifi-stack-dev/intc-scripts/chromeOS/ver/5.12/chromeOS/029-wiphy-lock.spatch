@@ -1,0 +1,76 @@
+@ifdef_only@
+identifier fn =~ "iwl_mvm_d3_test_open|iwl_mvm_d3_test_release|iwl_mvm_start_get_nvm|reset_write|ieee80211_open|ieee80211_stop|ieee80211_remove_interfaces|ieee80211_restart_work|ieee80211_register_hw|ieee80211_unregister_hw|ieee80211_ifa_changed|ieee80211_get_stats|ieee80211_change_mac";
+@@
+fn(...)
+{
+...
+}
+
+@@
+identifier ifdef_only.fn;
+expression wiphy;
+@@
+fn (...)
+{
+<...
+-	wiphy_lock(wiphy);
+...>
+}
+
+@@
+identifier ifdef_only.fn;
+expression wiphy;
+@@
+fn (...)
+{
+<...
+-	wiphy_unlock(wiphy);
+...>
+}
+
+@change_to_rtnl@
+identifier fn =~ "ieee80211_set_ringparam|ieee80211_get_ringparam|ieee80211_dfs_radar_detected_work|format_devstat_counter|ieee80211_if_read_sdata|ieee80211_if_write_sdata|ieee80211_if_read_link|ieee80211_if_write_link|sta_agg_status_write|aql_txq_limit_write";
+@@
+fn(...)
+{
+...
+}
+
+@@
+identifier change_to_rtnl.fn;
+expression wiphy;
+@@
+fn (...)
+{
+<...
+-	wiphy_lock(wiphy);
++	rtnl_lock();
+...>
+}
+
+@@
+identifier change_to_rtnl.fn;
+expression wiphy;
+@@
+fn (...)
+{
+<...
+-	wiphy_unlock(wiphy);
++	rtnl_unlock();
+...>
+}
+
+@@
+identifier local;
+@@
+drv_get_antenna(...)
+{
+...
+-lockdep_assert_wiphy(local->hw.wiphy);
+...
+}
+
+@@
+@@
+-mutex_lock_nested(&local->hw.wiphy->mtx, 1);
+-__acquire(&local->hw.wiphy->mtx);

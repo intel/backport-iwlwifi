@@ -1,0 +1,117 @@
+# SPDX-License-Identifier: GPL-2.0
+
+cfg80211-element-defragmentation:
+    defragment_0:
+        requirements:
+            - WIFI-265082
+        testsets:
+            - WIFI-293722
+    defragment_1:
+        requirements:
+            - WIFI-265082
+        testsets:
+            - WIFI-293722
+    defragment_2:
+        requirements:
+            - WIFI-265082
+        testsets:
+            - WIFI-293722
+
+cfg80211-ie-generation:
+    test_gen_new_ie:
+        requirements:
+            - WIFI-266096
+            - WIFI-265082
+            - WIFI-266100
+            - WIFI-352898
+            - WIFI-352896
+            - WIFI-352894
+            - WIFI-352872 # A TID-to-link mapping element is not special
+        testsets:
+            - WIFI-293722
+            - WIFI-352593
+    test_gen_new_ie_malformed:
+        requirements:
+            - WIFI-266096
+            - WIFI-265082
+            - WIFI-266100
+        testsets:
+            - WIFI-293722
+
+cfg80211-inform-bss:
+    test_inform_bss_ml_sta:
+        requirements:
+            - WIFI-266106
+            - WIFI-265082
+            - WIFI-266178
+            - WIFI-266180
+            - WIFI-266182
+            - WIFI-266080
+            - WIFI-266087
+            - WIFI-352894
+            - WIFI-352870
+            - WIFI-266082 # non-primary NSTR link has cannot_use_reasons set
+        testsets:
+            - WIFI-293722
+
+cfg80211-scan-6ghz:
+    test_cfg80211_parse_colocated_ap:
+        testsets:
+            - WIFI-352593
+        requirements:
+            - WIFI-350643
+
+mac80211-element-parsing:
+    mle_defrag:
+        requirements:
+            - WIFI-265082
+            - WIFI-266178
+            - WIFI-266180
+            - WIFI-266182
+        testsets:
+            - WIFI-293722
+
+mac80211-mfp:
+    accept_mfp:
+        requirements:
+            - WIFI-283316
+            - WIFI-283320
+            - WIFI-262238
+            - WIFI-262255
+        testsets:
+            - WIFI-297207
+
+mac80211-mlme-chan-mode:
+    test_determine_chan_mode:
+        requirements:
+            - WIFI-264765
+
+iwlmld-valid-rfi-link-pair:
+    test_rfi_valid_link_pair:
+        requirements:
+            - WIFI-378480
+
+iwlmld-link-selection-tests:
+    test_link_grading:
+        requirements:
+            - WIFI-371607
+            # this tests also the channel load retrieval
+            - WIFI-415189
+iwlmld_link_pair_allows_emlsr:
+    test_iwl_mld_link_pair_allows_emlsr:
+        requirements:
+            - WIFI-423705
+            - WIFI-423707
+            - WIFI-423734
+            - WIFI-387636
+            - WIFI-387613
+            - WIFI-586247
+iwlwifi-nvm_flags:
+    test_nvm_flags:
+        requirements:
+            - WIFI-632421
+
+iwl_mld_chan_load_threshold_tests:
+    test_chan_load_thresholds:
+        requirements:
+            - WIFI-793427

@@ -1,0 +1,8 @@
+@@
+@@
+ieee80211_mgd_assoc(...)
+{
+<...
+-req->links[i].error = err;
+...>
+}

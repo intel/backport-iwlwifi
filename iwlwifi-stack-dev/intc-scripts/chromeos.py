@@ -25,27 +25,45 @@ class Version(object):
     """
     Version container object
     """
-    def __init__(self, kbranch, branches=['release/core45', 'release/core4[7-9]*', 'release/core[5-9]*'], wifiver=''):
+    def __init__(self, kbranch, branches=['release/core9[4-9]*', 'release/core[1-9][0-9][0-9]*']):
         self.kbranch = kbranch
-        self.wifiversion = wifiver
         self.branches = branches[:]
 
-# list the relevant chromeos versions, with their WIFIVERSION
+# list the relevant chromeos versions
 VERSIONS = [
-    Version('chromeos-4.4'),
-    Version('chromeos-4.14'),
-    Version('chromeos-4.19'),
-    Version('chromeos-5.4', ['release/core49', 'release/core[5-9]*']),
-    Version('chromeos-5.10', ['release/core59', 'release/core[6-9]*']),
-    Version('chromeos-5.15', ['release/core66', 'release/core6[6-9]*', 'release/core[7-9]*']),
+    Version('chromeos-5.4'),
+    Version('chromeos-5.10'),
+    Version('chromeos-5.15'),
+    Version('chromeos-6.1'),
+    Version('chromeos-6.6'),
+    Version('chromeos-6.12'),
 ]
 
-def _create_chrome_driver(config, version):
+def _create_chrome_driver(config, version, outer_nix):
     with Tempdir() as scratch_root:
         scripts_dir = os.path.join(scratch_root, 'scripts')
+        nix_dir = os.path.join(scratch_root, 'nix')
 
         # make a copy of the scripts - we're going to delete them next
-        shutil.copytree(os.path.join(config.input_tree, 'intc-scripts', 'chromeOS'), scripts_dir)
+        shutil.copytree(os.path.join(config.input_tree, 'intc-scripts', 'chromeOS'),
+                        scripts_dir, symlinks=False)
+
+        # check which version (and nix) we need to use
+        if os.path.exists(os.path.join(config.input_tree, 'intc-scripts/chromeOS/copy-internal.sh')):
+            # copy all the nix dependencies if used
+            shutil.copytree(os.path.join(config.input_tree, 'nix'), nix_dir)
+            shutil.copy(os.path.join(config.input_tree, 'shell.nix'), scratch_root)
+            def nix_run(args):
+                ret = ['nix-shell', '--pure', '--run']
+                ret.append(' '.join(args))
+                return ret
+            create_script = './scripts/copy-internal.sh'
+        else:
+            def nix_run(args):
+                ret = ['nix-shell', outer_nix, '--pure', '--run']
+                ret.append(' '.join(args))
+                return ret
+            create_script = './scripts/copy-code.sh'
 
         # prune the original
         defconfig = None
@@ -60,7 +78,7 @@ def _create_chrome_driver(config, version):
             sys.stdout.write('cannot find defconfig, fix the script. aborting!\n')
             sys.stdout.flush()
             raise Abort()
-        prune = subprocess.Popen(["./intc-scripts/prune.py", defconfig],
+        prune = subprocess.Popen(nix_run(['./intc-scripts/prune.py', defconfig]),
                                  cwd=config.input_tree)
         prune.wait()
         if prune.returncode != 0:
@@ -70,11 +88,9 @@ def _create_chrome_driver(config, version):
 
         # copy as iwl7000 driver to outdir
         env = os.environ.copy()
-        if version.wifiversion:
-            env['WIFIVERSION'] = version.wifiversion
         null = open('/dev/null', 'r')
-        copy = subprocess.Popen(['./copy-code.sh', config.input_tree, config.output_tree],
-                                cwd=scripts_dir, env=env, stdin=null,
+        copy = subprocess.Popen(nix_run([create_script, config.input_tree, config.output_tree]),
+                                cwd=scratch_root, env=env, stdin=null,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         stdout = copy.communicate()[0]
         copy.wait()
@@ -106,6 +122,8 @@ def _filter_message(msg):
     subj = re.sub(r'\s*\[[^\]\[]*\]\s*', '', subj)
     subj = re.sub(r'^wifi:\s*', '', subj)
     subj = re.sub(r'^iwlwifi:\s*', '', subj)
+    subj = re.sub(r'^chromeOS:\s*', '', subj, flags=re.IGNORECASE)
+    subj = re.sub(r'^android:\s*', '', subj, flags=re.IGNORECASE)
     subj = 'CHROMIUM: iwl7000: ' + subj
 
     # - remove our metadata
@@ -128,6 +146,8 @@ def _filter_message(msg):
             'tested-by',
             'reviewed-by',
             'automatic-review',
+            'perci-ready',
+            'tested',
         ]
         isgerrit = False
         for tag in gerrit:
@@ -169,6 +189,8 @@ def main():
 
     success = True
 
+    outer_nix = os.path.join(os.getcwd(), 'shell.nix')
+
     with Tempdir() as tmpdir:
         output_tree_copy = os.path.join(tmpdir, 'out-pull')
         input_tree_copy = os.path.join(tmpdir, 'input')
@@ -181,7 +203,8 @@ def main():
 
         for version in VERSIONS:
             mirror = GitMirror(input_tree_copy, OUTPUT_TREE, version.branches,
-                               lambda config, ver=version: _create_chrome_driver(config, ver),
+                               lambda config, ver=version: _create_chrome_driver(config, ver,
+                                                                                 outer_nix),
                                'iwl7000-tree')
             mirror.output_branch_name = lambda x, ver=version: '%s__%s' % (ver.kbranch, x)
             mirror.git_name = 'Intel ChromeOS bot'

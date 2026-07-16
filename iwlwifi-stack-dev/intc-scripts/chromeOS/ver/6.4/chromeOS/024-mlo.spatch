@@ -1,0 +1,19 @@
+@@
+identifier link_id, resp, assoc_data;
+@@
+ieee80211_rx_mgmt_assoc_resp(...)
+{
++#if LINUX_VERSION_IS_GEQ(6,0,0) && LINUX_VERSION_IS_LESS(6,5,7)
++	u8 link_addrs[IEEE80211_MLD_MAX_NUM_LINKS][ETH_ALEN];
++#endif
+<+...
++#if LINUX_VERSION_IS_GEQ(6,0,0) && LINUX_VERSION_IS_LESS(6,5,7)
++	ether_addr_copy(link_addrs[link_id],
++			assoc_data->link[link_id].addr);
++	resp.links[link_id].addr = link_addrs[link_id];
++#else
+	ether_addr_copy(resp.links[link_id].addr,
+			assoc_data->link[link_id].addr);
++#endif
+...+>
+}

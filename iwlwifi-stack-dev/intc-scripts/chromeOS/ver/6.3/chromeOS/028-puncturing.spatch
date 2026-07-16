@@ -1,0 +1,26 @@
+@@
+@@
+static int __ieee80211_channel_switch(...)
+{
+...
+-if (params->punct_bitmap && !sdata->vif.bss_conf.eht_support)
+-	goto out;
+...
+-sdata->vif.bss_conf.csa_punct_bitmap = params->punct_bitmap;
+...
+}
+
+@@
+@@
+static int ieee80211_start_ap(...)
+{
+...
+	if (...) {
+...
+-	link_conf->eht_puncturing = params->punct_bitmap;
+...
+	} else {
+...
+	}
+...
+}

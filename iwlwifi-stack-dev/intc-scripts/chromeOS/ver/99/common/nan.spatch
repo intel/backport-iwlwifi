@@ -1,0 +1,263 @@
+@@
+expression wiphy, E;
+@@
+-wiphy->nan_capa.flags = E;
+
+@@
+expression wiphy;
+@@
+-wiphy->nan_capa.flags
++0
+
+@nan_sched@
+identifier ops;
+identifier fn;
+identifier cb = { nan_set_local_sched, nan_set_peer_sched };
+@@
+struct cfg80211_ops ops = {
+...,
+-       .cb = fn,
+...
+};
+
+@@
+identifier nan_sched.fn;
+@@
+-fn(...) { ... }
+
+@@
+@@
+-int ieee80211_nan_set_local_sched(...);
+
+@@
+identifier fn = ieee80211_change_station;
+expression E;
+@@
+fn(...)
+{...
+switch (E) {
+-case NL80211_IFTYPE_NAN:
+-...
+-case NL80211_IFTYPE_NAN_DATA:
+-...
+default:
+}
+...}
+
+@@
+identifier fn = iwl_mld_vif_fw_id_valid;
+expression E;
+@@
+fn(...)
+{
+...
+switch (E) {
+- case NL80211_IFTYPE_NAN_DATA:
+- return false;
+}
+...
+}
+
+@@
+expression E;
+@@
+switch (E) {
+- case NL80211_IFTYPE_NAN_DATA:
++ /* case NL80211_IFTYPE_NAN_DATA */
+}
+
+/* exact matching so we don't accidentally match other "type == NL80211_IFTYPE_NAN" code */
+@@
+expression sdata, local;
+@@
+-if (sdata->vif.type == NL80211_IFTYPE_NAN) {
+-	own_ht_cap = &local->hw.wiphy->nan_capa.phy.ht;
+-	own_vht_cap = &local->hw.wiphy->nan_capa.phy.vht;
+-	own_he_cap = &local->hw.wiphy->nan_capa.phy.he;
+-} else {
+...
+-}
+
+/* exact matching so we don't accidentally match other "type == NL80211_IFTYPE_NAN" code */
+@@
+expression sdata, link_sta;
+@@
+-if (sdata->vif.type == NL80211_IFTYPE_NAN) {
+-	static const u8 all_ofdm_rates[] = {
+-		0x0c, 0x12, 0x18, 0x24, 0x30, 0x48, 0x60, 0x6c
+-	};
+-	for (int i = 0; i < NUM_NL80211_BANDS; i++) {...}
+-}
+
+@@
+expression type;
+@@
+-type == NL80211_IFTYPE_NAN_DATA
++0
+
+@@
+expression type;
+@@
+-type != NL80211_IFTYPE_NAN_DATA
++1
+
+@@
+expression params;
+@@
+-if (params->nmi_mac) {
+-...
+-}
+
+@@
+expression statype, sta, params;
+@@
+-if (statype == CFG80211_STA_NAN_DATA &&
+-    sta->deflink.pub->ht_cap.ht_supported &&
+-    (params->link_sta_params.ht_capa ||
+-     params->link_sta_params.vht_capa ||
+-     params->link_sta_params.he_capa))
+-	return -EINVAL;
+
+@@
+@@
+-int ieee80211_nan_set_peer_sched(...);
+
+@@
+@@
+-void ieee80211_nan_free_peer_sched(...);
+
+@@
+expression E;
+@@
+-ieee80211_nan_free_peer_sched(E);
+
+@@
+@@
+-void ieee80211_nan_update_ndi_carrier(...);
+
+@@
+expression E;
+@@
+-ieee80211_nan_update_ndi_carrier(E);
+
+@@
+@@
+ieee80211_nan_cluster_joined(...)
+{
+-...
+}
+
+@@
+@@
+-memcpy(hdr.addr3, nmi->u.nan.conf.cluster_id, ETH_ALEN);
+
+@@
+identifier sdata;
+@@
+-!ether_addr_equal(sdata->u.nan.conf.cluster_id, ...)
++true
+
+@@
+identifier sdata;
+@@
+-ether_addr_equal(sdata->u.nan.conf.cluster_id, ...)
++false
+
+@@
+type T;
+identifier stypes;
+@@
+T stypes[...] = {
+-[NL80211_IFTYPE_NAN_DATA] = { ... },
+};
+
+@@
+expression vif;
+@@
+-vif->type == NL80211_IFTYPE_NAN_DATA
++0
+
+@@
+@@
+-static void iwl_mld_hw_set_nan(...) {...}
+
+@@
+@@
+-static void iwl_mld_config_tlc_nan(...) {...}
+
+@@
+@@
+-iwl_mld_config_tlc_nan(...);
+
+@@
+@@
+static const struct ieee80211_iface_combination
+iwl_mld_iface_combinations[] = {
+-...
++{
++.num_different_channels = 2,
++.max_interfaces = 4,
++.limits = iwl_mld_limits,
++.n_limits = ARRAY_SIZE(iwl_mld_limits),
++},
++{
++.num_different_channels = 1,
++.max_interfaces = 4,
++.limits = iwl_mld_limits_ap,
++.n_limits = ARRAY_SIZE(iwl_mld_limits_ap),
++},
+};
+
+@@
+@@
+static const struct ieee80211_iface_limit iwl_mld_limits_nan[] = {
+-...
+};
+
+@@
+@@
+-iwl_mld_hw_set_nan(...);
+
+@@
+expression dst, src;
+@@
+-ether_addr_copy(dst->cluster_id, src->cluster_id);
++ether_addr_copy((void *)dst->cluster_id, src->cluster_id);
+
+@@
+type T;
+identifier func =~ "iwl_mld_nan_(use_nan_stations)";
+@@
+T func(...)
+{
+-...
++return false;
+}
+
+@@
+identifier func =~ "iwl_mld_nan_set_mcast_data_links";
+@@
+void func(...)
+{
+-...
+}
+
+@@
+@@
+-struct ieee80211_nan_channel * ieee80211_nan_find_evac_chan(...);
+
+@@
+@@
+void ieee80211_nan_evacuate_channel(...);
+
+@@
+@@
+ieee80211_try_nan_chan_evacuation(...)
+{
+-...
++return -EINVAL;
+}
+
+@@
+@@
+-ieee80211_nan_evac_chanctx_filter(...){...}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2021-2022 Intel Corporation
+ * Copyright (C) 2021-2024 Intel Corporation
  */
 
 #include <linux/etherdevice.h>
@@ -35,8 +35,7 @@ MODULE_LICENSE("GPL");
 #define MEI_WLAN_UUID UUID_LE(0x13280904, 0x7792, 0x4fcb, \
 			      0xa1, 0xaa, 0x5e, 0x70, 0xcb, 0xb1, 0xe8, 0x65)
 
-/*
- * After CSME takes ownership, it won't release it for 60 seconds to avoid
+/* After CSME takes ownership, it won't release it for 60 seconds to avoid
  * frequent ownership transitions.
  */
 #define MEI_OWNERSHIP_RETAKE_TIMEOUT_MS	msecs_to_jiffies(60000)
@@ -63,7 +62,6 @@ bool iwl_mei_is_connected(void)
 }
 EXPORT_SYMBOL_GPL(iwl_mei_is_connected);
 
-#define SAP_VERSION	3
 #define SAP_CONTROL_BLOCK_ID 0x21504153 /* SAP! in ASCII */
 
 struct iwl_sap_q_ctrl_blk {
@@ -115,16 +113,19 @@ struct iwl_sap_shared_mem_ctrl_blk {
 
 #define SAP_H2M_DATA_Q_SZ	48256
 #define SAP_M2H_DATA_Q_SZ	24128
-#define SAP_H2M_NOTIF_Q_SZ	2240
+#define SAP_H2M_NOTIF_Q_SZ_VER3	2240
+#define SAP_H2M_NOTIF_Q_SZ_VER4	32768
 #define SAP_M2H_NOTIF_Q_SZ	62720
 
-#define _IWL_MEI_SAP_SHARED_MEM_SZ \
+#define _IWL_MEI_SAP_SHARED_MEM_SZ_VER3 \
 	(sizeof(struct iwl_sap_shared_mem_ctrl_blk) + \
-	 SAP_H2M_DATA_Q_SZ + SAP_H2M_NOTIF_Q_SZ + \
+	 SAP_H2M_DATA_Q_SZ + SAP_H2M_NOTIF_Q_SZ_VER3 + \
 	 SAP_M2H_DATA_Q_SZ + SAP_M2H_NOTIF_Q_SZ + 4)
 
-#define IWL_MEI_SAP_SHARED_MEM_SZ \
-	(roundup(_IWL_MEI_SAP_SHARED_MEM_SZ, PAGE_SIZE))
+#define _IWL_MEI_SAP_SHARED_MEM_SZ_VER4 \
+	(sizeof(struct iwl_sap_shared_mem_ctrl_blk) + \
+	 SAP_H2M_DATA_Q_SZ + SAP_H2M_NOTIF_Q_SZ_VER4 + \
+	 SAP_M2H_DATA_Q_SZ + SAP_M2H_NOTIF_Q_SZ + 4)
 
 struct iwl_mei_shared_mem_ptrs {
 	struct iwl_sap_shared_mem_ctrl_blk *ctrl;
@@ -211,6 +212,7 @@ struct iwl_mei {
  * @mac_address: interface MAC address.
  * @nvm_address: NVM MAC address.
  * @priv: A pointer to iwlwifi.
+ * @sap_version: The SAP version to use. enum iwl_mei_sap_version.
  *
  * This used to cache the configurations coming from iwlwifi's way. The data
  * is cached here so that we can buffer the configuration even if we don't have
@@ -225,6 +227,7 @@ struct iwl_mei_cache {
 	u16 mcc;
 	u8 mac_address[6];
 	u8 nvm_address[6];
+	enum iwl_mei_sap_version sap_version;
 	void *priv;
 };
 
@@ -243,14 +246,17 @@ static void iwl_mei_free_shared_mem(struct mei_cl_device *cldev)
 
 #define HBM_DMA_BUF_ID_WLAN 1
 
-static int iwl_mei_alloc_shared_mem(struct mei_cl_device *cldev)
+static int iwl_mei_alloc_mem_for_version(struct mei_cl_device *cldev,
+					 enum iwl_mei_sap_version version)
 {
 	struct iwl_mei *mei = mei_cldev_get_drvdata(cldev);
 	struct iwl_mei_shared_mem_ptrs *mem = &mei->shared_mem;
+	u32 mem_size = roundup(version == IWL_MEI_SAP_VERSION_4 ?
+			       _IWL_MEI_SAP_SHARED_MEM_SZ_VER4 :
+			       _IWL_MEI_SAP_SHARED_MEM_SZ_VER3, PAGE_SIZE);
 
-	mem->ctrl = mei_cldev_dma_map(cldev, HBM_DMA_BUF_ID_WLAN,
-				       IWL_MEI_SAP_SHARED_MEM_SZ);
-
+	iwl_mei_cache.sap_version = version;
+	mem->ctrl = mei_cldev_dma_map(cldev, HBM_DMA_BUF_ID_WLAN, mem_size);
 	if (IS_ERR(mem->ctrl)) {
 		int ret = PTR_ERR(mem->ctrl);
 
@@ -259,9 +265,28 @@ static int iwl_mei_alloc_shared_mem(struct mei_cl_device *cldev)
 		return ret;
 	}
 
-	memset(mem->ctrl, 0, IWL_MEI_SAP_SHARED_MEM_SZ);
+	memset(mem->ctrl, 0, mem_size);
 
 	return 0;
+}
+
+static int iwl_mei_alloc_shared_mem(struct mei_cl_device *cldev)
+{
+	int ret;
+
+	/*
+	 * SAP version 4 uses a larger Host to MEI notif queue.
+	 * Since it is unknown at this stage which SAP version is used by the
+	 * CSME firmware on this platform, try to allocate the version 4 first.
+	 * If the CSME firmware uses version 3, this allocation is expected to
+	 * fail because the CSME firmware allocated less memory for our driver.
+	 */
+	ret = iwl_mei_alloc_mem_for_version(cldev, IWL_MEI_SAP_VERSION_4);
+	if (ret)
+		ret = iwl_mei_alloc_mem_for_version(cldev,
+						    IWL_MEI_SAP_VERSION_3);
+
+	return ret;
 }
 
 static void iwl_mei_init_shared_mem(struct iwl_mei *mei)
@@ -282,7 +307,9 @@ static void iwl_mei_init_shared_mem(struct iwl_mei *mei)
 	h2m->q_ctrl_blk[SAP_QUEUE_IDX_DATA].size =
 		cpu_to_le32(SAP_H2M_DATA_Q_SZ);
 	h2m->q_ctrl_blk[SAP_QUEUE_IDX_NOTIF].size =
-		cpu_to_le32(SAP_H2M_NOTIF_Q_SZ);
+		iwl_mei_cache.sap_version == IWL_MEI_SAP_VERSION_3 ?
+		cpu_to_le32(SAP_H2M_NOTIF_Q_SZ_VER3) :
+		cpu_to_le32(SAP_H2M_NOTIF_Q_SZ_VER4);
 	m2h->q_ctrl_blk[SAP_QUEUE_IDX_DATA].size =
 		cpu_to_le32(SAP_M2H_DATA_Q_SZ);
 	m2h->q_ctrl_blk[SAP_QUEUE_IDX_NOTIF].size =
@@ -652,7 +679,7 @@ iwl_mei_handle_rx_start_ok(struct mei_cl_device *cldev,
 		return;
 	}
 
-	if (rsp->supported_version != SAP_VERSION) {
+	if (rsp->supported_version != iwl_mei_cache.sap_version) {
 		dev_err(&cldev->dev,
 			"didn't get the expected version: got %d\n",
 			rsp->supported_version);
@@ -679,7 +706,7 @@ static void iwl_mei_handle_csme_filters(struct mei_cl_device *cldev,
 		rcu_dereference_protected(mei->filters,
 					  lockdep_is_held(&iwl_mei_mutex));
 
-	new_filters = kzalloc(sizeof(*new_filters), GFP_KERNEL);
+	new_filters = kzalloc_obj(*new_filters);
 	if (!new_filters)
 		return;
 
@@ -779,9 +806,13 @@ static void iwl_mei_set_init_conf(struct iwl_mei *mei)
 		iwl_mei_send_sap_msg_payload(mei->cldev, &sar_msg.hdr);
 	}
 
-	ether_addr_copy(nic_info_msg.mac_address, iwl_mei_cache.mac_address);
-	ether_addr_copy(nic_info_msg.nvm_address, iwl_mei_cache.nvm_address);
-	iwl_mei_send_sap_msg_payload(mei->cldev, &nic_info_msg.hdr);
+	if (is_valid_ether_addr(iwl_mei_cache.mac_address)) {
+		ether_addr_copy(nic_info_msg.mac_address,
+				iwl_mei_cache.mac_address);
+		ether_addr_copy(nic_info_msg.nvm_address,
+				iwl_mei_cache.nvm_address);
+		iwl_mei_send_sap_msg_payload(mei->cldev, &nic_info_msg.hdr);
+	}
 
 	iwl_mei_send_sap_msg_payload(mei->cldev, &rfkill_msg.hdr);
 }
@@ -855,11 +886,10 @@ static void iwl_mei_handle_nvm(struct mei_cl_device *cldev,
 			       const struct iwl_sap_nvm *sap_nvm)
 {
 	struct iwl_mei *mei = mei_cldev_get_drvdata(cldev);
-	const struct iwl_mei_nvm *mei_nvm = (const void *)sap_nvm;
 	int i;
 
 	kfree(mei->nvm);
-	mei->nvm = kzalloc(sizeof(*mei_nvm), GFP_KERNEL);
+	mei->nvm = kzalloc_obj(*mei->nvm);
 	if (!mei->nvm)
 		return;
 
@@ -1282,7 +1312,7 @@ static int iwl_mei_send_start(struct mei_cl_device *cldev)
 		.hdr.type = cpu_to_le32(SAP_ME_MSG_START),
 		.hdr.seq_num = cpu_to_le32(atomic_inc_return(&mei->seq_no)),
 		.hdr.len = cpu_to_le32(sizeof(msg)),
-		.supported_versions[0] = SAP_VERSION,
+		.supported_versions[0] = iwl_mei_cache.sap_version,
 		.init_data_seq_num = cpu_to_le16(0x100),
 		.init_notif_seq_num = cpu_to_le16(0x800),
 	};
@@ -1537,7 +1567,7 @@ void iwl_mei_host_associated(const struct iwl_mei_conn_info *conn_info,
 
 	mei = mei_cldev_get_drvdata(iwl_mei_global_cldev);
 
-	if (!mei && !mei->amt_enabled)
+	if (!mei || !mei->amt_enabled)
 		goto out;
 
 	iwl_mei_send_sap_msg_payload(mei->cldev, &msg.hdr);
@@ -1566,7 +1596,7 @@ void iwl_mei_host_disassociated(void)
 
 	mei = mei_cldev_get_drvdata(iwl_mei_global_cldev);
 
-	if (!mei && !mei->amt_enabled)
+	if (!mei || !mei->amt_enabled)
 		goto out;
 
 	iwl_mei_send_sap_msg_payload(mei->cldev, &msg.hdr);
@@ -1602,7 +1632,7 @@ void iwl_mei_set_rfkill_state(bool hw_rfkill, bool sw_rfkill)
 
 	mei = mei_cldev_get_drvdata(iwl_mei_global_cldev);
 
-	if (!mei && !mei->amt_enabled)
+	if (!mei || !mei->amt_enabled)
 		goto out;
 
 	iwl_mei_send_sap_msg_payload(mei->cldev, &msg.hdr);
@@ -1631,7 +1661,7 @@ void iwl_mei_set_nic_info(const u8 *mac_address, const u8 *nvm_address)
 
 	mei = mei_cldev_get_drvdata(iwl_mei_global_cldev);
 
-	if (!mei && !mei->amt_enabled)
+	if (!mei || !mei->amt_enabled)
 		goto out;
 
 	iwl_mei_send_sap_msg_payload(mei->cldev, &msg.hdr);
@@ -1659,7 +1689,7 @@ void iwl_mei_set_country_code(u16 mcc)
 
 	mei = mei_cldev_get_drvdata(iwl_mei_global_cldev);
 
-	if (!mei && !mei->amt_enabled)
+	if (!mei || !mei->amt_enabled)
 		goto out;
 
 	iwl_mei_send_sap_msg_payload(mei->cldev, &msg.hdr);
@@ -1685,7 +1715,7 @@ void iwl_mei_set_power_limit(const __le16 *power_limit)
 
 	mei = mei_cldev_get_drvdata(iwl_mei_global_cldev);
 
-	if (!mei && !mei->amt_enabled)
+	if (!mei || !mei->amt_enabled)
 		goto out;
 
 	memcpy(msg.sar_chain_info_table, power_limit, sizeof(msg.sar_chain_info_table));
@@ -1837,7 +1867,9 @@ void iwl_mei_unregister_complete(void)
 		struct iwl_mei *mei =
 			mei_cldev_get_drvdata(iwl_mei_global_cldev);
 
-		iwl_mei_send_sap_msg(mei->cldev, SAP_MSG_NOTIF_WIFIDR_DOWN);
+		if (mei->amt_enabled)
+			iwl_mei_send_sap_msg(mei->cldev,
+					     SAP_MSG_NOTIF_WIFIDR_DOWN);
 		mei->got_ownership = false;
 	}
 
@@ -1893,7 +1925,7 @@ static void iwl_mei_dbgfs_register(struct iwl_mei *mei)
 {
 	mei->dbgfs_dir = debugfs_create_dir(KBUILD_MODNAME, NULL);
 
-	if (!mei->dbgfs_dir)
+	if (IS_ERR(mei->dbgfs_dir))
 		return;
 
 	debugfs_create_ulong("status", S_IRUSR,
@@ -2075,32 +2107,28 @@ static void iwl_mei_remove(struct mei_cl_device *cldev)
 
 	mutex_lock(&iwl_mei_mutex);
 
-	if (mei->amt_enabled) {
-		/*
-		 * Tell CSME that we are going down so that it won't access the
-		 * memory anymore, make sure this message goes through immediately.
-		 */
-		mei->csa_throttled = false;
-		iwl_mei_send_sap_msg(mei->cldev,
-				     SAP_MSG_NOTIF_HOST_GOES_DOWN);
+	/* Tell CSME that we are going down so that it won't access the
+	 * memory anymore, make sure this message goes through immediately.
+	 */
+	mei->csa_throttled = false;
+	iwl_mei_send_sap_msg(mei->cldev,
+			     SAP_MSG_NOTIF_HOST_GOES_DOWN);
 
-		for (i = 0; i < SEND_SAP_MAX_WAIT_ITERATION; i++) {
-			if (!iwl_mei_host_to_me_data_pending(mei))
-				break;
+	for (i = 0; i < SEND_SAP_MAX_WAIT_ITERATION; i++) {
+		if (!iwl_mei_host_to_me_data_pending(mei))
+			break;
 
-			msleep(20);
-		}
-
-		/*
-		 * If we couldn't make sure that CSME saw the HOST_GOES_DOWN
-		 * message, it means that it will probably keep reading memory
-		 * that we are going to unmap and free, expect IOMMU error
-		 * messages.
-		 */
-		if (i == SEND_SAP_MAX_WAIT_ITERATION)
-			dev_err(&mei->cldev->dev,
-				"Couldn't get ACK from CSME on HOST_GOES_DOWN message\n");
+		msleep(20);
 	}
+
+	/* If we couldn't make sure that CSME saw the HOST_GOES_DOWN
+	 * message, it means that it will probably keep reading memory
+	 * that we are going to unmap and free, expect IOMMU error
+	 * messages.
+	 */
+	if (i == SEND_SAP_MAX_WAIT_ITERATION)
+		dev_err(&mei->cldev->dev,
+			"Couldn't get ACK from CSME on HOST_GOES_DOWN message\n");
 
 	mutex_unlock(&iwl_mei_mutex);
 

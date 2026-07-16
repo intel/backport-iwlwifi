@@ -1,0 +1,136 @@
+@@
+identifier data;
+@@
+struct ieee80211_sband_iftype_data data[] = {
+...,
+	{
+-		.eht_cap = { ... },
+	},
+...
+};
+
+@@
+expression obj, E, I;
+identifier F, G, H, FF;
+assignment operator op;
+@@
+(
+-obj->eht_cap.F op E;
+|
+-obj->eht_cap.F.G.H.FF op E;
+|
+-memset(&obj->eht_cap.F.G.H, ...);
+|
+-obj->eht_cap.F.G[I] op E;
+|
+-obj->eht_cap.F[I] op E;
+)
+@@
+expression obj, val;
+@@
+-obj->eht_cap.has_eht = val;
+
+@@
+@@
+-iwl_mvm_get_optimal_ppe_info(...) { ... }
+
+@@
+expression obj;
+statement S, T;
+expression E;
+@@
+(
+-if (obj->eht_cap.has_eht) { ... }
+|
+-if (obj->eht_cap.has_eht && ...) { ... }
+|
+-if (obj->eht_cap.has_eht) { ... }
+|
+-if (obj->eht_cap.has_eht) { ... } else
+ S
+|
+-if (!obj->eht_cap.has_eht)
++/* no EHT support */
+ S
+|
+-obj->eht_cap.has_eht
++false /* no EHT */
+)
+
+/* remove slow-PCIe code since it modified non-existent EHT capabilities */
+@@
+@@
+-bool slow_pcie = ...;
+<...
+-if (slow_pcie) { ... }
+...>
+
+@@
+expression obj;
+identifier f;
+@@
+(
+-&obj->eht_cap.f
++NULL
+|
+-obj->eht_cap.f
++NULL
+)
+
+@@
+identifier mvm, rx_status, eht;
+@@
+static void iwl_mvm_decode_eht_ru(struct iwl_mvm *mvm,
+				  struct ieee80211_rx_status *rx_status,
+				  struct ieee80211_radiotap_eht *eht)
+{
+-...
+}
+
+@@
+identifier chandef;
+type u8;
+@@
+static u8
+iwl_mvm_chandef_get_primary_80(struct cfg80211_chan_def *chandef)
+{
++return 0;
+-...
+}
+
+@@
+expression field_name;
+identifier bin =~ "eht_";
+@@
+-IWL_COPY_BIN(bin, field_name);
+
+@@
+expression field_name;
+identifier bin =~ "eht_";
+statement S;
+@@
+-if (IWL_COPY_BIN(bin, field_name)) S
+
+@@
+identifier params;
+@@
+static int ieee80211_start_ap(...)
+{
+...
+-if (params->eht_cap) { ... } else {
+...
+-}
+...
+}
+
+@@
+{ struct link_station_parameters *, struct station_parameters *} params;
+@@
+-params->he_6ghz_capa
++NULL
+
+@@
+{ struct link_station_parameters *, struct station_parameters *} params;
+expression E;
+@@
+-if (E && params->eht_capa) { ... }

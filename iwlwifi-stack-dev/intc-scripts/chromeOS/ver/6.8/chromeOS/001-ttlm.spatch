@@ -1,0 +1,14 @@
+@set_ttlm@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.set_ttlm = fn,
+...
+};
+
+@@
+identifier set_ttlm.fn;
+@@
+-fn(...) { ... }

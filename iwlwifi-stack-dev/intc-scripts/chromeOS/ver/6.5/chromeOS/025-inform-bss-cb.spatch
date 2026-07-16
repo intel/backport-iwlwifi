@@ -1,0 +1,63 @@
+@inform_bss_ops@
+identifier ops;
+identifier fn;
+@@
+ struct cfg80211_ops ops = {
+ ...,
+- 	.inform_bss = fn,
+ ...
+ };
+
+@inform_bss_impl@
+identifier fn =~ "ieee80211_inform_bss";
+identifier cbss;
+identifier wiphy;
+identifier ies;
+identifier data;
+@@
+ void fn(struct wiphy *wiphy, struct cfg80211_bss *cbss,
+ 	 const struct cfg80211_bss_ies *ies,
+ 	 void *data)
+ {
+ ...
+ }
+
+@@
+identifier inform_bss_impl.fn;
+identifier cbss;
+identifier bss_meta;
+expression wiphy;
+expression inform_bss_data;
+expression E;
+statement S;
+iterator name list_for_each_entry;
+@@
+ {
+...
+ 	struct cfg80211_inform_bss bss_meta = {
+ ...,
+- 		.drv_data = inform_bss_data,
+ ...
+ 	};
+ ...
+ 	if (E)
+ 		S
+ 	else
+ 		cbss = cfg80211_inform_bss_frame_data(wiphy, ...);
++	if (cbss) {
++		struct cfg80211_bss *non_tx_cbss;
++		rcu_read_lock();
++		fn(wiphy, cbss, rcu_dereference(cbss->ies),
++		   inform_bss_data);
++
++#if LINUX_VERSION_IS_GEQ(5,1,0)
++		list_for_each_entry(non_tx_cbss, &cbss->nontrans_list,
++				    nontrans_list)
++			fn(wiphy, non_tx_cbss,
++			   rcu_dereference(non_tx_cbss->ies),
++			   inform_bss_data);
++#endif
++		rcu_read_unlock();
++	}
+ ...
+ }

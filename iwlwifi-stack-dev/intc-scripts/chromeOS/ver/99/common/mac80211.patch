@@ -1,0 +1,27 @@
+--- a/net/mac80211/Makefile
++++ b/net/mac80211/Makefile
+@@ -1,5 +1,5 @@
+ # SPDX-License-Identifier: GPL-2.0
+-obj-$(CPTCFG_MAC80211) += mac80211.o
++obj-$(CPTCFG_MAC80211) += iwl7000_mac80211.o
+ 
+ ifeq ($(CPTCFG_IWLWIFI_SIMULATION),y)
+ UBSAN_SANITIZE := y
+@@ -62,6 +62,9 @@ mac80211-$(CONFIG_PM) += pm.o
+ CFLAGS_trace.o := -I$(src)
+ subdir-ccflags-y += $(call cc-option,-Wimplicit-fallthrough)
+ 
++CFLAGS_tx.o += -include "hdrs/iwl-tx.h"
++CFLAGS_debugfs.o += -include "hdrs/net/fq.h"
++
+ rc80211_minstrel-y := \
+ 	rc80211_minstrel_ht.o
+ 
+@@ -75,3 +78,7 @@ obj-y += tests/
+ mac80211-y += wbrf.o
+ 
+ ccflags-y += -DDEBUG
++
++mac80211-y += backports.o
++
++iwl7000_mac80211-objs := $(mac80211-objs) $(mac80211-y)

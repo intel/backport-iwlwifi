@@ -1,0 +1,8 @@
+@@
+@@
+struct ieee80211_local {
+...
+-bool probe_req_reg;
++unsigned int probe_req_reg;
+...
+}

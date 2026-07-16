@@ -65,8 +65,8 @@ def parse(input):
         if line.startswith('#if') or line.startswith('#el') or line.startswith('#end'):
             output.append([line,])
             continuation = line.rstrip().endswith('\\')
-        elif re.match(r'EXPORT_SYMBOL(_GPL)?\(([^)]*)\).*', line):
-            out = re.sub(r'EXPORT_SYMBOL(_GPL)?\(([^)]*)\).*',
+        elif re.match(r'EXPORT_SYMBOL(_GPL|_IF\w*_KUNIT)?\(([^)]*)\).*', line):
+            out = re.sub(r'EXPORT_SYMBOL(_GPL|_IF\w*_KUNIT)?\(([^)]*)\).*',
                          r'#define \2 __iwl7000_\2',
                          line)
             output.append([out,])

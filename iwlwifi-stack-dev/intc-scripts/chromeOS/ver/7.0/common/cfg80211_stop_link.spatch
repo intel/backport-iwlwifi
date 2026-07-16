@@ -1,0 +1,5 @@
+@@
+expression A, B, link_id, C;
+@@
+-cfg80211_stop_link(A, B, link_id, C);
++cfg80211_stop_iface(A, B, C);

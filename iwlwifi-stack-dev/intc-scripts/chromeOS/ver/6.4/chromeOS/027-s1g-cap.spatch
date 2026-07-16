@@ -1,0 +1,13 @@
+@@
+@@
+-static int ieee80211_put_s1g_cap(...) { ... }
+
+@@
+identifier band;
+@@
+static int ieee80211_put_preq_ies_band(...)
+{
+...
+-if (band == NL80211_BAND_S1GHZ) { ... }
+...
+}

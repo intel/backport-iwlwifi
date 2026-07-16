@@ -13,4 +13,10 @@
 #endif
 #endif
 
+#ifdef CPTCFG_IWLWIFI_PRE_SILICON_SUPPORT
+extern unsigned int iwl_timeout_factor;
+extern unsigned int iwl_delay_factor;
+extern unsigned int iwl_pre_si_fpga;
+#endif
+
 #endif /* __BACKPORT_H */

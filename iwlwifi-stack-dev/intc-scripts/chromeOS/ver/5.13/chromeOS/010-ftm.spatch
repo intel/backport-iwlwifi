@@ -1,0 +1,5 @@
+@@
+struct cfg80211_pmsr_request_peer *peer;
+@@
+-peer->ftm.lmr_feedback
++0

@@ -1,0 +1,4 @@
+@@
+@@
+-cfg80211_wdev_channel_allowed(...)
++true

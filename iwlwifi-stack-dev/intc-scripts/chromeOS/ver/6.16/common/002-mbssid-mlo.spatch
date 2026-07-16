@@ -1,0 +1,31 @@
+@@
+struct cfg80211_mbssid_config *params;
+@@
+-params->tx_link_id
++0
+
+@@
+struct station_parameters *params;
+@@
+-params->eml_cap_present
++false
+
+@@
+struct station_parameters *params;
+@@
+-params->eml_cap
++0
+
+@@
+@@
+ieee80211_apvlan_link_setup(...)
+{
+-...
+}
+
+@@
+@@
+ieee80211_apvlan_link_clear(...)
+{
+-...
+}

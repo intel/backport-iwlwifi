@@ -2,6 +2,7 @@
 /*
  * S1G handling
  * Copyright(c) 2020 Adapt-IP
+ * Copyright (C) 2023, 2026 Intel Corporation
  */
 #include <linux/ieee80211.h>
 #include <net/mac80211.h>
@@ -26,14 +27,14 @@ bool ieee80211_s1g_is_twt_setup(struct sk_buff *skb)
 	if (likely(mgmt->u.action.category != WLAN_CATEGORY_S1G))
 		return false;
 
-	return mgmt->u.action.u.s1g.action_code == WLAN_S1G_TWT_SETUP;
+	return mgmt->u.action.action_code == WLAN_S1G_TWT_SETUP;
 }
 
 static void
 ieee80211_s1g_send_twt_setup(struct ieee80211_sub_if_data *sdata, const u8 *da,
 			     const u8 *bssid, struct ieee80211_twt_setup *twt)
 {
-	int len = IEEE80211_MIN_ACTION_SIZE + 4 + twt->length;
+	int len = IEEE80211_MIN_ACTION_SIZE(s1g) + 3 + twt->length;
 	struct ieee80211_local *local = sdata->local;
 	struct ieee80211_mgmt *mgmt;
 	struct sk_buff *skb;
@@ -51,8 +52,8 @@ ieee80211_s1g_send_twt_setup(struct ieee80211_sub_if_data *sdata, const u8 *da,
 	memcpy(mgmt->bssid, bssid, ETH_ALEN);
 
 	mgmt->u.action.category = WLAN_CATEGORY_S1G;
-	mgmt->u.action.u.s1g.action_code = WLAN_S1G_TWT_SETUP;
-	memcpy(mgmt->u.action.u.s1g.variable, twt, 3 + twt->length);
+	mgmt->u.action.action_code = WLAN_S1G_TWT_SETUP;
+	memcpy(mgmt->u.action.s1g.variable, twt, 3 + twt->length);
 
 	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT |
 					IEEE80211_TX_INTFL_MLME_CONN_TX |
@@ -70,12 +71,12 @@ ieee80211_s1g_send_twt_teardown(struct ieee80211_sub_if_data *sdata,
 	u8 *id;
 
 	skb = dev_alloc_skb(local->hw.extra_tx_headroom +
-			    IEEE80211_MIN_ACTION_SIZE + 2);
+			    IEEE80211_MIN_ACTION_SIZE(s1g) + 1);
 	if (!skb)
 		return;
 
 	skb_reserve(skb, local->hw.extra_tx_headroom);
-	mgmt = skb_put_zero(skb, IEEE80211_MIN_ACTION_SIZE + 2);
+	mgmt = skb_put_zero(skb, IEEE80211_MIN_ACTION_SIZE(s1g) + 1);
 	mgmt->frame_control = cpu_to_le16(IEEE80211_FTYPE_MGMT |
 					  IEEE80211_STYPE_ACTION);
 	memcpy(mgmt->da, da, ETH_ALEN);
@@ -83,8 +84,8 @@ ieee80211_s1g_send_twt_teardown(struct ieee80211_sub_if_data *sdata,
 	memcpy(mgmt->bssid, bssid, ETH_ALEN);
 
 	mgmt->u.action.category = WLAN_CATEGORY_S1G;
-	mgmt->u.action.u.s1g.action_code = WLAN_S1G_TWT_TEARDOWN;
-	id = (u8 *)mgmt->u.action.u.s1g.variable;
+	mgmt->u.action.action_code = WLAN_S1G_TWT_TEARDOWN;
+	id = (u8 *)mgmt->u.action.s1g.variable;
 	*id = flowid;
 
 	IEEE80211_SKB_CB(skb)->flags |= IEEE80211_TX_INTFL_DONT_ENCRYPT |
@@ -97,7 +98,7 @@ ieee80211_s1g_rx_twt_setup(struct ieee80211_sub_if_data *sdata,
 			   struct sta_info *sta, struct sk_buff *skb)
 {
 	struct ieee80211_mgmt *mgmt = (void *)skb->data;
-	struct ieee80211_twt_setup *twt = (void *)mgmt->u.action.u.s1g.variable;
+	struct ieee80211_twt_setup *twt = (void *)mgmt->u.action.s1g.variable;
 	struct ieee80211_twt_params *twt_agrt = (void *)twt->params;
 
 	twt_agrt->req_type &= cpu_to_le16(~IEEE80211_TWT_REQTYPE_REQUEST);
@@ -112,6 +113,9 @@ ieee80211_s1g_rx_twt_setup(struct ieee80211_sub_if_data *sdata,
 		goto out;
 	}
 
+	/* TWT Information not supported yet */
+	twt->control |= IEEE80211_TWT_CONTROL_RX_DISABLED;
+
 	drv_add_twt_setup(sdata->local, sdata, &sta->sta, twt);
 out:
 	ieee80211_s1g_send_twt_setup(sdata, mgmt->sa, sdata->vif.addr, twt);
@@ -124,7 +128,7 @@ ieee80211_s1g_rx_twt_teardown(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *)skb->data;
 
 	drv_twt_teardown_request(sdata->local, sdata, &sta->sta,
-				 mgmt->u.action.u.s1g.variable[0]);
+				 mgmt->u.action.s1g.variable[0]);
 }
 
 static void
@@ -132,7 +136,7 @@ ieee80211_s1g_tx_twt_setup_fail(struct ieee80211_sub_if_data *sdata,
 				struct sta_info *sta, struct sk_buff *skb)
 {
 	struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *)skb->data;
-	struct ieee80211_twt_setup *twt = (void *)mgmt->u.action.u.s1g.variable;
+	struct ieee80211_twt_setup *twt = (void *)mgmt->u.action.s1g.variable;
 	struct ieee80211_twt_params *twt_agrt = (void *)twt->params;
 	u8 flowid = le16_get_bits(twt_agrt->req_type,
 				  IEEE80211_TWT_REQTYPE_FLOWID);
@@ -150,13 +154,13 @@ void ieee80211_s1g_rx_twt_action(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_local *local = sdata->local;
 	struct sta_info *sta;
 
-	mutex_lock(&local->sta_mtx);
+	lockdep_assert_wiphy(local->hw.wiphy);
 
 	sta = sta_info_get_bss(sdata, mgmt->sa);
 	if (!sta)
-		goto out;
+		return;
 
-	switch (mgmt->u.action.u.s1g.action_code) {
+	switch (mgmt->u.action.action_code) {
 	case WLAN_S1G_TWT_SETUP:
 		ieee80211_s1g_rx_twt_setup(sdata, sta, skb);
 		break;
@@ -166,9 +170,6 @@ void ieee80211_s1g_rx_twt_action(struct ieee80211_sub_if_data *sdata,
 	default:
 		break;
 	}
-
-out:
-	mutex_unlock(&local->sta_mtx);
 }
 
 void ieee80211_s1g_status_twt_action(struct ieee80211_sub_if_data *sdata,
@@ -178,13 +179,13 @@ void ieee80211_s1g_status_twt_action(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_local *local = sdata->local;
 	struct sta_info *sta;
 
-	mutex_lock(&local->sta_mtx);
+	lockdep_assert_wiphy(local->hw.wiphy);
 
 	sta = sta_info_get_bss(sdata, mgmt->da);
 	if (!sta)
-		goto out;
+		return;
 
-	switch (mgmt->u.action.u.s1g.action_code) {
+	switch (mgmt->u.action.action_code) {
 	case WLAN_S1G_TWT_SETUP:
 		/* process failed twt setup frames */
 		ieee80211_s1g_tx_twt_setup_fail(sdata, sta, skb);
@@ -192,7 +193,30 @@ void ieee80211_s1g_status_twt_action(struct ieee80211_sub_if_data *sdata,
 	default:
 		break;
 	}
+}
 
-out:
-	mutex_unlock(&local->sta_mtx);
+void ieee80211_s1g_cap_to_sta_s1g_cap(struct ieee80211_sub_if_data *sdata,
+				      const struct ieee80211_s1g_cap *s1g_cap_ie,
+				      struct link_sta_info *link_sta)
+{
+	struct ieee80211_sta_s1g_cap *s1g_cap = &link_sta->pub->s1g_cap;
+
+	memset(s1g_cap, 0, sizeof(*s1g_cap));
+
+	memcpy(s1g_cap->cap, s1g_cap_ie->capab_info, sizeof(s1g_cap->cap));
+	memcpy(s1g_cap->nss_mcs, s1g_cap_ie->supp_mcs_nss,
+	       sizeof(s1g_cap->nss_mcs));
+
+	s1g_cap->s1g = true;
+
+	/* Maximum MPDU length is 1 bit for S1G */
+	if (s1g_cap->cap[3] & S1G_CAP3_MAX_MPDU_LEN) {
+		link_sta->pub->agg.max_amsdu_len =
+			IEEE80211_MAX_MPDU_LEN_VHT_7991;
+	} else {
+		link_sta->pub->agg.max_amsdu_len =
+			IEEE80211_MAX_MPDU_LEN_VHT_3895;
+	}
+
+	ieee80211_sta_recalc_aggregates(&link_sta->sta->sta);
 }

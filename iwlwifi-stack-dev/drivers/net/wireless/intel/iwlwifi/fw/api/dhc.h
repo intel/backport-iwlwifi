@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2022 Intel Corporation
+ * Copyright (C) 2018-2025 Intel Corporation
  */
 #ifndef __iwl_fw_api_dhc_h__
 #define __iwl_fw_api_dhc_h__
@@ -21,11 +21,11 @@ enum iwl_dhc_table_id {
 	 * @DHC_TABLE_INTEGRATION: select the integration table
 	 */
 	DHC_TABLE_INTEGRATION	= 2 << DHC_TABLE_MASK_POS,
-#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	/**
 	 * @DHC_TABLE_TOOLS: select the tools table
 	 */
 	DHC_TABLE_TOOLS		= 0,
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	/**
 	 * @DHC_TABLE_AUTOMATION: select the automation table
 	 */
@@ -43,6 +43,15 @@ enum iwl_dhc_table_id {
 	 */
 	DHC_TABLE_MAX		= DHC_TABLE_UT,
 #endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
+};
+
+/**
+ * enum iwl_dhc_umac_tools_table - tools operations
+ * @DHC_TOOLS_UMAC_GET_TAS_STATUS: Get TAS status.
+ *	See @struct iwl_dhc_tas_status_resp
+ */
+enum iwl_dhc_umac_tools_table {
+	DHC_TOOLS_UMAC_GET_TAS_STATUS = 0,
 };
 
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
@@ -100,6 +109,15 @@ enum iwl_dhc_umac_automation_table {
 	DHC_AUTO_UMAC_POWER_SAVE_TESTS_RES = 18,
 	DHC_MAX_AUTO_UMAC_REQUEST = 19,
 };
+
+/**
+ * enum iwl_dhc_umac_development_table - development operations
+ * @DHC_DEV_UMAC_INFRA_FW_SECURITY_STATE: security state info command.
+ *	See @struct iwl_dhc_security_state_resp
+ */
+enum iwl_dhc_umac_development_table {
+	DHC_DEV_UMAC_INFRA_FW_SECURITY_STATE = 1,
+};
 #endif
 
 /**
@@ -147,11 +165,13 @@ enum iwl_dhc_umac_integration_table {
 	 * @DHC_INT_TX_ANT_CONFIG: Get valid Tx antennas
 	 */
 	DHC_INT_TX_ANT_CONFIG = 9,
-#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
+#endif
+#ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	/**
 	 * @DHC_INT_UMAC_TWT_CONTROL: TWT hooks (like disable internal TWT triggers)
 	 */
 	DHC_INT_UMAC_TWT_CONTROL = 10,
+#endif /* CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES */
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	/**
 	 * @DHC_DP_TAS_CONFIG: config TAS
@@ -173,6 +193,18 @@ enum iwl_dhc_umac_integration_table {
 	 * @DHC_INT_UMAC_SEND_TWT_INFO: send a TWT info
 	 */
 	DHC_INT_UMAC_SEND_TWT_INFO = 15,
+	/**
+	 * @DHC_INT_UMAC_CLIENT_LEAVE_MEDIUM: send leave-medium command
+	 */
+	DHC_INT_UMAC_CLIENT_LEAVE_MEDIUM = 19,
+	/**
+	 * @DHC_INT_UMAC_EMLSR_CONFIG: EMLSR configuration
+	 */
+	DHC_INT_UMAC_EMLSR_CONFIG = 20,
+	/**
+	 * @DHC_INT_UMAC_RX_CTRL_CONFIG: SMPS/RLC configuration
+	 */
+	DHC_INT_UMAC_RX_CTRL_CONFIG = 23,
 #endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 	/**
 	 * @DHC_INTEGRATION_MAX: Maximum UMAC integration table entries
@@ -180,9 +212,11 @@ enum iwl_dhc_umac_integration_table {
 	DHC_INTEGRATION_MAX
 };
 
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+#define DHC_TARGET_LMAC1 0
+#define DHC_TARGET_LMAC2 BIT(26)
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 #define DHC_TARGET_UMAC BIT(27)
-#define DHC_ADWELL_SCAN_CHANNEL_DWELL_INDEX 2
-#define DHC_ADWELL_SCAN_FINE_TUNE_INDEX 3
 
 /**
  * struct iwl_dhc_cmd - debug host command
@@ -202,10 +236,71 @@ enum iwl_dhc_umac_integration_table {
 struct iwl_dhc_cmd {
 	__le32 length;
 	__le32 index_and_mask;
-	__le32 data[0];
+	__le32 data[];
 } __packed; /* DHC_CMD_API_S */
 
-#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+/**
+ * struct iwl_dhc_payload_hdr - DHC payload header
+ * @version: a version of a payload
+ * @reserved: reserved for alignment
+ */
+struct iwl_dhc_payload_hdr {
+	u8 version;
+	u8 reserved[3];
+} __packed; /* DHC_PAYLOAD_HDR_API_S_VER_1 */
+
+/**
+ * struct iwl_dhc_tas_status_per_radio - TAS status per radio
+ * @band: &PHY_BAND_5 for high band, PHY_BAND_24 for low band and
+ *	&PHY_BAND_6 for ultra high band.
+ * @static_status: TAS statically enabled or disabled
+ * @static_disable_reason: TAS static disable reason, uses
+ *	&enum iwl_tas_statically_disabled_reason
+ * @near_disconnection: is TAS currently near disconnection per radio
+ * @dynamic_status_ant_a: Antenna A current TAS status.
+ *	uses &enum iwl_tas_dyna_status
+ * @dynamic_status_ant_b: Antenna B current TAS status.
+ *	uses &enum iwl_tas_dyna_status
+ * @max_reg_pwr_limit_ant_a: Antenna A regulatory power limits in dBm
+ * @max_reg_pwr_limit_ant_b: Antenna B regulatory power limits in dBm
+ * @sar_limit_ant_a: Antenna A SAR limit per radio in dBm
+ * @sar_limit_ant_b: Antenna B SAR limit per radio in dBm
+ * @reserved: reserved for alignment
+ */
+struct iwl_dhc_tas_status_per_radio {
+	u8 band;
+	u8 static_status;
+	u8 static_disable_reason;
+	u8 near_disconnection;
+	u8 dynamic_status_ant_a;
+	u8 dynamic_status_ant_b;
+	__le16 max_reg_pwr_limit_ant_a;
+	__le16 max_reg_pwr_limit_ant_b;
+	__le16 sar_limit_ant_a;
+	__le16 sar_limit_ant_b;
+	u8 reserved[2];
+} __packed; /* DHC_TAS_STATUS_PER_RADIO_S_VER_1 */
+
+/**
+ * struct iwl_dhc_tas_status_resp - Response to DHC_TOOLS_UMAC_GET_TAS_STATUS
+ * @header: DHC payload header, uses &struct iwl_dhc_payload_hdr
+ * @tas_config_info: see @struct bios_value_u32
+ * @mcc_block_list: block listed country codes
+ * @tas_status_radio: TAS status, uses &struct iwl_dhc_tas_status_per_radio
+ * @curr_mcc: current mcc
+ * @valid_radio_mask: represent entry in tas_status_per_radio is valid.
+ * @reserved: reserved for alignment
+ */
+struct iwl_dhc_tas_status_resp {
+	struct iwl_dhc_payload_hdr header;
+	struct bios_value_u32 tas_config_info;
+	__le16 mcc_block_list[IWL_WTAS_BLACK_LIST_MAX];
+	struct iwl_dhc_tas_status_per_radio tas_status_radio[2];
+	__le16 curr_mcc;
+	u8 valid_radio_mask;
+	u8 reserved;
+} __packed; /* DHC_TAS_STATUS_RSP_API_S_VER_1 */
+
 /**
  * struct iwl_dhc_cmd_resp_v1 - debug host command response
  * @status: status of the command
@@ -213,7 +308,7 @@ struct iwl_dhc_cmd {
  */
 struct iwl_dhc_cmd_resp_v1 {
 	__le32 status;
-	__le32 data[0];
+	__le32 data[];
 } __packed; /* DHC_RESP_API_S_VER_1 */
 
 /**
@@ -225,8 +320,25 @@ struct iwl_dhc_cmd_resp_v1 {
 struct iwl_dhc_cmd_resp {
 	__le32 status;
 	__le32 descriptor;
-	__le32 data[0];
+	__le32 data[];
 } __packed; /* DHC_RESP_API_S_VER_2 and DHC_RESP_API_S_VER_3 */
+
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+/**
+ * struct iwl_dhc_security_state_resp - Response to DHC_DEV_UMAC_INFRA_FW_SECURITY_STATE
+ * @is_signing_required: Signing required or not
+ * @is_pre_signed_iml_in_use: Pre signed IML is in use or not
+ * @platform_id: Platform ID
+ * @mac_addr: Mac address
+ * @reserved: reserved for alignment
+ */
+struct iwl_dhc_security_state_resp {
+	__le32 is_signing_required;
+	__le32 is_pre_signed_iml_in_use;
+	__le64 platform_id;
+	u8 mac_addr[ETH_ALEN];
+	u8 reserved[2];
+} __packed; /* DHC_INFRA_FW_SECURITY_STATE_RSP_API_S_VER_1 */
 
 /**
  * struct iwl_dhc_profile_cmd - profiling command.
@@ -414,7 +526,7 @@ struct iwl_profiling_umac_cpu_usage {
 } __packed; /* PROFILING_UMAC_CPU_USAGE_API_S */
 
 /**
- * struct iwl_profiling_umac_general_paging
+ * struct iwl_profiling_umac_general_paging - paging profiling data
  * @num_of_page_faults:  Total number of PF since last metrics reset
  * @inter_page_fault_time_bucket1:  Time Between Page Faults Histogram Number of
  *	page faults that occurred 0-5 microseconds from the end of the previous
@@ -449,7 +561,7 @@ struct iwl_profiling_umac_general_paging {
 } __packed; /* PROFILING_UMAC_GENERAL_PAGING_API_S */
 
 /**
- * struct iwl_profiling_umac_flow_timing
+ * struct iwl_profiling_umac_flow_timing - paging flow timing data
  * @flow_id: Identifier of the flow for which the following information is
  *	provided should be in &enum iwl_profiling_flow_id
  * @num_of_runs: Number of times this flow occurred
@@ -466,7 +578,7 @@ struct iwl_profiling_umac_flow_timing {
 } __packed; /* PROFILING_UMAC_FLOW_TIMING_API_S */
 
 /**
- * struct iwl_profiling_umac_critical_section
+ * struct iwl_profiling_umac_critical_section - critical section info
  * @max_critical_section_time: Maximal length of time of all critical sections
  */
 struct iwl_profiling_umac_critical_section {
@@ -474,7 +586,7 @@ struct iwl_profiling_umac_critical_section {
 } __packed; /* PROFILING_UMAC_CRITICAL_SECTION_API_S */
 
 /**
- * struct iwl_profiling_umac_memory_pools {
+ * struct iwl_profiling_umac_memory_pools - profiling memory pools
  * @pool_id: Identifier of the memory pool for which the following information
  *	is provided should be in &enum iwl_profiling_pool_id
  * @min_free_space: Minimum number of blocks or bytes (depending on the pool
@@ -489,7 +601,7 @@ struct iwl_profiling_umac_memory_pools {
 } __packed; /* PROFILING_UMAC_MEMORY_POOLS_API_S */
 
 /**
- * struct iwl_profiling_umac_fifos
+ * struct iwl_profiling_umac_fifos - FIFO profiling data
  * @fifo_id: Identifier of the FIFO for which the following information is
  *	provided should be in &enum iwl_profiling_fifo_id
  * @min_free_bytes: Min number of bytes that were available since last metrics
@@ -501,7 +613,7 @@ struct iwl_profiling_umac_fifos {
 } __packed; /* PROFILING_UMAC_FIFOS_API_S */
 
 /**
- * struct iwl_profiling_umac_metrics_report
+ * struct iwl_profiling_umac_metrics_report - profiling metrics report
  * @configuration: configuration of the following
  *	metric report
  * @umac_cpu_usage_ctx: UMAC CPU Usage per context
@@ -523,7 +635,7 @@ struct iwl_profiling_umac_metrics_report {
 } __packed; /* PROFILING_UMAC_METRICS_REPORT_API_S */
 
 /**
- * struct iwl_ltr_statistic_report
+ * struct iwl_ltr_statistics_report - LTR statistics
  * @tx_active_time: time during which ltr was in tx active state
  * @rx_active_time: time during which ltr was in rx active state
  * @rx_listen_time: time during which ltr was in rx listen state
@@ -539,7 +651,7 @@ struct iwl_ltr_statistics_report {
 } __packed; /* LTR_STATISTICS_REPORT_API_S */
 
 /**
- * struct iwl_ps_report {
+ * struct iwl_ps_report - powersave report
  * @total_sleep_counter: number of times NIC actually go to PD [cnt]
  * @total_sleep_duration: total sleep duration of sleep-master CPU [usec]
  * @report_duration: time since current statistics collection began [usec]
@@ -602,21 +714,7 @@ struct iwl_ps_report {
 } __packed; /* PS_REPORT_API_S_VER_7 */
 
 /**
- * struct iwl_ps_config {
- * @pwr_flags: power flags - description @ POWER_TABLE_CMD_FLAG in FW / pwr.h
- * @pwr_flags_msk: power flag masks - description @ POWER_TABLE_CMD_FLAG in
- *                 FW / pwr.h. in case mask bit is 1 - the flag should be
- *                 processed.
- * @param1: generic param1 - usage according to flags
- */
-struct iwl_ps_config {
-	__le32 pwr_flags;
-	__le32 pwr_flags_msk;
-	__le32 param1;
-} __packed; /* DHC_PS_CONFIG_API_S */
-
-/**
- * struct iwl_ps_test_req {
+ * struct iwl_ps_test_req - powersave test request
  * @flags:      ps test flags
  * @test_case:   ps test case to run
  * @test_param1: generic test param 1
@@ -634,7 +732,7 @@ struct iwl_ps_test_req {
 } __packed; /* PS_TEST_REQ_API_S */
 
 /**
- * struct iwl_ps_test_res {
+ * struct iwl_ps_test_res - powersave test response
  * @test_res1: generic test result 1
  * @test_res2: generic test result 2
  * @test_res3: generic test result 3
@@ -695,7 +793,7 @@ struct iwl_channel_dwell_report {
 } __packed; /* SCAN_CHANNEL_DWELL_REPORT_API_S */
 
 /**
- * struct iwl_adwell_fine_tune_metrics_report
+ * struct iwl_adwell_fine_tune_metrics_report - adwell metrics
  *
  * This DHN (Debug Host Notification) raised at the end of the scan
  * and contains the following table:
@@ -713,7 +811,7 @@ struct iwl_adwell_fine_tune_metrics_report {
 } __packed; /* ADAPTIVE_DWELL_SCAN_FINE_TUNE_METRICS_REPORT_API_S */
 
 /**
- * enum iwl_dhc_quota_enforce_type
+ * enum iwl_dhc_quota_enforce_type - quota enforcement type
  *
  * @QUOTA_ENFORCE_TYPE_RESERVATION: Enforce minimum quota.
  * @QUOTA_ENFORCE_TYPE_LIMITATION: Enforce maximum quota.
@@ -724,7 +822,7 @@ enum iwl_dhc_quota_enforce_type {
 }; /* DHC_QUOTA_ENFORCE_TYPE_API_E */
 
 /**
- * struct iwl_quota_enforce - Enforce quota percent
+ * struct iwl_dhc_quota_enforce - Enforce quota percent
  *
  * @macs: bitmask of MAC IDs relevant here
  * @quota_enforce_type: &enum iwl_dhc_quota_enforce_type
@@ -737,6 +835,60 @@ struct iwl_dhc_quota_enforce {
 	__le16 reserved;
 	__le32 quota_percentage[MAC_INDEX_AUX];
 } __packed; /* DHC_QUOTA_ENFORCE_API_S */
+
+struct iwl_dhc_emlsr_config {
+	u8 mac_id;
+	u8 ps_during_emlsr_hs;
+	u8 silent_esr_active;
+	u8 reserved;
+} __packed; /* DHC_EMLSR_CONFIG_API_S_VER_1 */
+
+/**
+ * enum iwl_rlm_mode - Operating modes for the Rx Link Mediator (RLM)
+ *
+ * @IWL_RLM_MODE_SYSTEM: RLC/SMPS decisions are controlled by the firmware
+ * @IWL_RLM_MODE_FORCED_MODE: RLC/SMPS decisions are controlled by the driver
+ */
+enum iwl_rlm_mode {
+	IWL_RLM_MODE_SYSTEM,
+	IWL_RLM_MODE_FORCED_MODE
+};
+
+/**
+ * enum iwl_rlm_force_mode - SMPS modes when in forced mode
+ *
+ * @IWL_RLM_FORCE_MODE_DSMPS: Force IEEE80211_SMPS_DYNAMIC
+ * @IWL_RLM_FORCE_MODE_STATIC_SMPS: Force IEEE80211_SMPS_STATIC
+ * @IWL_RLM_FORCE_MODE_FORCED_MIMO: Force IEEE80211_SMPS_OFF
+ * @IWL_RLM_FORCE_MODE_FORCED_SISO_ANTA: Force SISO ant A (not used)
+ * @IWL_RLM_FORCE_MODE_FORCED_SISO_ANTB: Force SISO ant B (not used)
+ */
+enum iwl_rlm_force_mode {
+	IWL_RLM_FORCE_MODE_DSMPS,
+	IWL_RLM_FORCE_MODE_STATIC_SMPS,
+	IWL_RLM_FORCE_MODE_FORCED_MIMO,
+	IWL_RLM_FORCE_MODE_FORCED_SISO_ANTA,
+	IWL_RLM_FORCE_MODE_FORCED_SISO_ANTB,
+}; /* RLM_FORCE_MODE_E_VER_1 */
+
+/**
+ * struct iwl_dhc_rx_controller_config - Configuration for SMPS control
+ *
+ * This structure is used with %DHC_INT_UMAC_RX_CTRL_CONFIG to allow the driver
+ * to control the SMPS mode for testing purposes, overriding the default
+ * firmware management of RLC/SMPS. It also allows the control to be returned
+ * to the firmware when necessary.
+ *
+ * @rlm_mode: &enum iwl_rlm_mode
+ * @force_mode: &enum iwl_rlm_force_mode (used when setting rlm_mode to
+ *	RLM_MODE_FORCED_MODE)
+ * @reserved: reserved for alignment
+ */
+struct iwl_dhc_rx_controller_config {
+	u8 rlm_mode;
+	u8 force_mode;
+	u8 reserved[2];
+}; /* DHC_RX_CONTROLLER_CONFIG_S_VER_1; */
 #endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 /**
@@ -812,16 +964,22 @@ struct iwl_dhc_twt_operation {
  * struct iwl_dhc_htc_omi - send QoS NULL with HE HTC OM Control
  *
  * @operating_mode: the OM control as defined in 11ax D3.0 9.2.4.6a.2
- * @mac_id: the mac ID on which to send the frame
+ * @link_id: the link ID on which to send the frame
+ * @flags: unused
+ * @eht_op_mode: extends each Operating Mode Indication field by one bit in
+ *	accordance with 9.2.4.7.8 EHT OM Control in the 802.11be D2.2 spec
  * @reserved: reserved
  */
 struct iwl_dhc_htc_omi {
 	__le32 operating_mode;
-	u8 mac_id;
-	u8 reserved[3];
+	u8 link_id;
+	u8 flags;
+	u8 eht_op_mode;
+	u8 reserved;
 }; /* DHC_OMI_OPERATION_API_S */
 #endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
+#ifdef CPTCFG_IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 /**
  * struct iwl_dhc_twt_control - control TWT behavior
  *
@@ -832,5 +990,6 @@ struct iwl_dhc_twt_control {
 	u8 twt_test_mode;
 	u8 reserved[3];
 }; /* DHC_TWT_CONTROL_API_S_VER_1 */
+#endif
 
 #endif /* __iwl_fw_api_dhc_h__ */

@@ -1,0 +1,97 @@
+@@
+identifier dev, cfg;
+@@
+struct ieee80211_regdomain *
+iwl_parse_nvm_mcc_info(struct iwl_trans *trans,
++                       struct iwl_nvm_data *nvm_data,
+...);
+
+@@
+identifier dev, cfg;
+@@
+struct ieee80211_regdomain *
+iwl_parse_nvm_mcc_info(struct iwl_trans *trans,
++                       struct iwl_nvm_data *nvm_data,
+...)
+{
+...
+}
+
+@@
+identifier reg_rule_flags;
+@@
+iwl_parse_nvm_mcc_info(...)
+{
+...
+	for (ch_idx = 0; ch_idx < num_of_ch; ch_idx++) {
++		struct ieee80211_channel *chan = &nvm_data->channels[ch_idx];
+		band = iwl_nl80211_band_from_channel_idx(ch_idx);
+...
+		reg_rule_flags = iwl_nvm_get_regdom_bw_flags(...);
++
++		if (band == NL80211_BAND_6GHZ) {
++			chan->flags |= IEEE80211_CHAN_NO_6GHZ_VLP_CLIENT |
++				       IEEE80211_CHAN_NO_6GHZ_AFC_CLIENT;
++			if (ch_flags & NVM_CHANNEL_AFC)
++				chan->flags &= ~IEEE80211_CHAN_NO_6GHZ_AFC_CLIENT;
++			if (ch_flags & NVM_CHANNEL_VLP)
++				chan->flags &= ~IEEE80211_CHAN_NO_6GHZ_VLP_CLIENT;
++		}
+...
+		reg_query_regdb_wmm(regd->alpha2, center_freq, rule);
+	}
+...
+}
+
+@@
+identifier cbss;
+@@
+ieee80211_bss_info_update(...)
+{
+...
+	rcu_read_unlock();
++
++	if (!ieee80211_uhb_power_type_valid(mgmt, len, channel))
++		cbss = NULL;
++	else
+		cbss = cfg80211_inform_bss_frame_data(...);
+...
+}
+
+@@
+identifier regd;
+@@
+struct ieee80211_regdomain *iwl_mvm_get_regdomain(struct wiphy *wiphy,
+                                                  const char *alpha2,
+                                                  enum iwl_mcc_source src_id,
+                                                  bool *changed)
+{
+...
+	regd = iwl_parse_nvm_mcc_info(mvm->trans,
++				      mvm->nvm_data,
+				      __le32_to_cpu(resp->n_channels),
+				      resp->channels,
+				      __le16_to_cpu(resp->mcc),
+				      __le16_to_cpu(resp->geo_info),
+				      le32_to_cpu(resp->cap), resp_ver)
+...
+}
+
+@@
+identifier regd;
+@@
+struct ieee80211_regdomain *iwl_mld_get_regdomain(struct iwl_mld *mld,
+                                                  const char *alpha2,
+                                                  enum iwl_mcc_source src_id,
+                                                  bool *changed)
+{
+...
+	regd = iwl_parse_nvm_mcc_info(mld->trans,
++				      mld->nvm_data,
+				      __le32_to_cpu(resp->n_channels),
+				      resp->channels,
+				      __le16_to_cpu(resp->mcc),
+				      __le16_to_cpu(resp->geo_info),
+				      le32_to_cpu(resp->cap), resp_ver)
+...
+}

@@ -1,0 +1,8 @@
+@@
+expression A, B;
+@@
++#if LINUX_VERSION_IS_GEQ(5,19,0)
+ cfg80211_obss_color_collision_notify(A, B, GFP_ATOMIC);
++#else
+ cfg80211_obss_color_collision_notify(A, B);
++#endif

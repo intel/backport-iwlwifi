@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2026 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
 #include "api/commands.h"
 #include "debugfs.h"
 #include "dbg.h"
+#include <linux/hex.h>
 #include <linux/seq_file.h>
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 #include "api/dhc.h"
-#include "dhc-priv.h"
+#include "dhc-utils.h"
 #endif
 #include "api/rs.h"
 
@@ -128,27 +129,23 @@ static const struct file_operations iwl_dbgfs_##name##_ops = {		\
 #define FWRT_DEBUGFS_ADD_FILE(name, parent, mode) \
 	FWRT_DEBUGFS_ADD_FILE_ALIAS(#name, name, parent, mode)
 
-static int iwl_fw_send_timestamp_marker_cmd(struct iwl_fw_runtime *fwrt)
+static ssize_t iwl_dbgfs_fw_dbg_collect_write(struct iwl_fw_runtime *fwrt,
+					      char *buf, size_t count)
 {
-	struct iwl_mvm_marker marker = {
-		.dw_len = sizeof(struct iwl_mvm_marker) / 4,
-		.marker_id = MARKER_ID_SYNC_CLOCK,
+	if (count == 0)
+		return 0;
 
-		/* the real timestamp is taken from the ftrace clock
-		 * this is for finding the match between fw and kernel logs
-		 */
-		.timestamp = cpu_to_le64(fwrt->timestamp.seq++),
-	};
+	if (!iwl_trans_fw_running(fwrt->trans))
+		return count;
 
-	struct iwl_host_cmd hcmd = {
-		.id = MARKER_CMD,
-		.flags = CMD_ASYNC,
-		.data[0] = &marker,
-		.len[0] = sizeof(marker),
-	};
+	iwl_dbg_tlv_time_point(fwrt, IWL_FW_INI_TIME_POINT_USER_TRIGGER, NULL);
 
-	return iwl_trans_send_cmd(fwrt->trans, &hcmd);
+	iwl_fw_dbg_collect(fwrt, FW_DBG_TRIGGER_USER, buf, (count - 1), NULL);
+
+	return count;
 }
+
+FWRT_DEBUGFS_WRITE_FILE_OPS(fw_dbg_collect, 16);
 
 static int iwl_dbgfs_enabled_severities_write(struct iwl_fw_runtime *fwrt,
 					      char *buf, size_t count)
@@ -168,7 +165,11 @@ static int iwl_dbgfs_enabled_severities_write(struct iwl_fw_runtime *fwrt,
 
 	event_cfg.enabled_severities = cpu_to_le32(enabled_severities);
 
-	ret = iwl_trans_send_cmd(fwrt->trans, &hcmd);
+	if (fwrt->ops && fwrt->ops->send_hcmd)
+		ret = fwrt->ops->send_hcmd(fwrt->ops_ctx, &hcmd);
+	else
+		ret = -EPERM;
+
 	IWL_INFO(fwrt,
 		 "sent host event cfg with enabled_severities: %u, ret: %d\n",
 		 enabled_severities, ret);
@@ -203,7 +204,7 @@ void iwl_fw_trigger_timestamp(struct iwl_fw_runtime *fwrt, u32 delay)
 
 	iwl_fw_cancel_timestamp(fwrt);
 
-	fwrt->timestamp.delay = msecs_to_jiffies(delay * 1000);
+	fwrt->timestamp.delay = secs_to_jiffies(delay);
 
 	schedule_delayed_work(&fwrt->timestamp.wk,
 			      round_jiffies_relative(fwrt->timestamp.delay));
@@ -279,16 +280,19 @@ static ssize_t iwl_dbgfs_send_hcmd_write(struct iwl_fw_runtime *fwrt, char *buf,
 		goto out;
 	}
 
+	/* ignore this flag, we cannot use the response */
+	hcmd.flags &= ~CMD_WANT_SKB;
+	/* reject flags other than async, they cannot be used this way */
+	if (hcmd.flags & ~CMD_ASYNC) {
+		ret = -EINVAL;
+		goto out;
+	}
+
 	if (fwrt->ops && fwrt->ops->send_hcmd)
 		ret = fwrt->ops->send_hcmd(fwrt->ops_ctx, &hcmd);
 	else
 		ret = -EPERM;
 
-	if (ret < 0)
-		goto out;
-
-	if (hcmd.flags & CMD_WANT_SKB)
-		iwl_free_resp(&hcmd);
 out:
 	kfree(data);
 	return ret ?: count;
@@ -300,7 +304,7 @@ FWRT_DEBUGFS_WRITE_FILE_OPS(send_hcmd, 512);
 struct iwl_dhc_write_data {
 	__be32 length;
 	__be32 index_and_mask;
-	__be32 data[0];
+	__be32 data[];
 } __packed;
 
 static ssize_t iwl_dbgfs_send_dhc_write(struct iwl_fw_runtime *fwrt,
@@ -403,7 +407,11 @@ static ssize_t iwl_dbgfs_tpc_enable_write(struct iwl_fw_runtime *fwrt,
 	iwl_fw_build_dhc_tlc_cmd(&dhc_cmd, IWL_TLC_DEBUG_TPC_ENABLED,
 				 enabled);
 
-	ret = iwl_trans_send_cmd(fwrt->trans, &hcmd);
+	if (fwrt->ops && fwrt->ops->send_hcmd)
+		ret = fwrt->ops->send_hcmd(fwrt->ops_ctx, &hcmd);
+	else
+		ret = -EPERM;
+
 	if (ret) {
 		IWL_ERR(fwrt, "Failed to send TLC Debug command: %d\n", ret);
 		return ret;
@@ -440,7 +448,11 @@ static ssize_t iwl_dbgfs_tpc_stats_read(struct iwl_fw_runtime *fwrt,
 
 	iwl_fw_build_dhc_tlc_cmd(&dhc_cmd, IWL_TLC_DEBUG_TPC_STATS, 0);
 
-	ret = iwl_trans_send_cmd(fwrt->trans, &hcmd);
+	if (fwrt->ops && fwrt->ops->send_hcmd)
+		ret = fwrt->ops->send_hcmd(fwrt->ops_ctx, &hcmd);
+	else
+		ret = -EPERM;
+
 	if (ret) {
 		IWL_ERR(fwrt, "Failed to send TLC Debug command: %d\n", ret);
 		goto err;
@@ -469,13 +481,28 @@ static ssize_t iwl_dbgfs_tpc_stats_read(struct iwl_fw_runtime *fwrt,
 	}
 
 	return scnprintf(buf, size,
-			 "tpc stats: no-tpc %u, step1 %u, step2 %u, step3 %u, step4 %u, step5 %u\n",
+			 "tpc stats: no-tpc %u, step1 %u, step2 %u, step3 %u, step4 %u, step5 %u\n"
+			 "step6 %u, step7 %u, step8 %u, step9 %u, step10 %u\n"
+			 "step11 %u,step12 %u, step13 %u, step14 %u, step15 %u\n"
+			 "step16 %u, step17 %u\n",
 			 le32_to_cpu(stats->no_tpc),
 			 le32_to_cpu(stats->step[0]),
 			 le32_to_cpu(stats->step[1]),
 			 le32_to_cpu(stats->step[2]),
 			 le32_to_cpu(stats->step[3]),
-			 le32_to_cpu(stats->step[4]));
+			 le32_to_cpu(stats->step[4]),
+			 le32_to_cpu(stats->step[5]),
+			 le32_to_cpu(stats->step[6]),
+			 le32_to_cpu(stats->step[7]),
+			 le32_to_cpu(stats->step[8]),
+			 le32_to_cpu(stats->step[9]),
+			 le32_to_cpu(stats->step[10]),
+			 le32_to_cpu(stats->step[11]),
+			 le32_to_cpu(stats->step[12]),
+			 le32_to_cpu(stats->step[13]),
+			 le32_to_cpu(stats->step[14]),
+			 le32_to_cpu(stats->step[15]),
+			 le32_to_cpu(stats->step[16]));
 
 err:
 	return ret ?: -EIO;
@@ -542,7 +569,11 @@ static ssize_t iwl_dbgfs_ps_report_read(struct iwl_fw_runtime *fwrt,
 	u32 status;
 	unsigned int report_size = 0;
 
-	ret = iwl_trans_send_cmd(fwrt->trans, &hcmd);
+	if (fwrt->ops && fwrt->ops->send_hcmd)
+		ret = fwrt->ops->send_hcmd(fwrt->ops_ctx, &hcmd);
+	else
+		ret = -EPERM;
+
 	if (ret) {
 		IWL_ERR(fwrt,
 			"Failed to send power-save report command: %d\n", ret);
@@ -629,18 +660,19 @@ static ssize_t iwl_dbgfs_send_ps_test_write(struct iwl_fw_runtime *fwrt,
 	hcmd.len[0] = sizeof(*ps_test_req) + sizeof(*dhc_cmd);
 	hcmd.data[0] = dhc_cmd;
 
-	ret_val = iwl_trans_send_cmd(fwrt->trans, &hcmd);
+	if (fwrt->ops && fwrt->ops->send_hcmd)
+		ret_val = fwrt->ops->send_hcmd(fwrt->ops_ctx, &hcmd);
+	else
+		ret_val = -EPERM;
 
 	if (ret_val) {
 		IWL_ERR(fwrt,
 			"Failed to send power-save tests request command: %d\n", ret_val);
-		goto err;
+		return -EIO;
 	}
 
 	return ret_val;
 
-err:
-	return ret_val ?: -EIO;
 }
 
 static ssize_t iwl_dbgfs_ps_test_req_write(struct iwl_fw_runtime *fwrt,
@@ -690,7 +722,11 @@ static ssize_t iwl_dbgfs_ps_test_response_read
 		.len = { sizeof(cmd), sizeof(cmd_data) },
 	};
 
-	ret = iwl_trans_send_cmd(fwrt->trans, &hcmd);
+	if (fwrt->ops && fwrt->ops->send_hcmd)
+		ret = fwrt->ops->send_hcmd(fwrt->ops_ctx, &hcmd);
+	else
+		ret = -EPERM;
+
 	if (ret) {
 		IWL_ERR(fwrt,
 			"Failed to send power-save test response command: %d\n", ret);
@@ -761,6 +797,26 @@ static ssize_t iwl_dbgfs_fw_dbg_domain_read(struct iwl_fw_runtime *fwrt,
 
 FWRT_DEBUGFS_READ_FILE_OPS(fw_dbg_domain, 20);
 
+static ssize_t iwl_dbgfs_fw_ver_read(struct iwl_fw_runtime *fwrt,
+				     size_t size, char *buf)
+{
+	char *pos = buf;
+	char *endpos = buf + size;
+
+	pos += scnprintf(pos, endpos - pos, "FW id: %s\n",
+			 fwrt->fw->fw_version);
+	pos += scnprintf(pos, endpos - pos, "FW: %s\n",
+			 fwrt->fw->human_readable);
+	pos += scnprintf(pos, endpos - pos, "Device: %s\n",
+			 fwrt->trans->info.name);
+	pos += scnprintf(pos, endpos - pos, "Bus: %s\n",
+			 fwrt->dev->bus->name);
+
+	return pos - buf;
+}
+
+FWRT_DEBUGFS_READ_FILE_OPS(fw_ver, 1024);
+
 struct iwl_dbgfs_fw_info_priv {
 	struct iwl_fw_runtime *fwrt;
 };
@@ -777,8 +833,10 @@ static void *iwl_dbgfs_fw_info_seq_next(struct seq_file *seq,
 	const struct iwl_fw *fw = priv->fwrt->fw;
 
 	*pos = ++state->pos;
-	if (*pos >= fw->ucode_capa.n_cmd_versions)
+	if (*pos >= fw->ucode_capa.n_cmd_versions) {
+		kfree(state);
 		return NULL;
+	}
 
 	return state;
 }
@@ -798,7 +856,7 @@ static void *iwl_dbgfs_fw_info_seq_start(struct seq_file *seq, loff_t *pos)
 	if (*pos >= fw->ucode_capa.n_cmd_versions)
 		return NULL;
 
-	state = kzalloc(sizeof(*state), GFP_KERNEL);
+	state = kzalloc_obj(*state);
 	if (!state)
 		return NULL;
 	state->pos = *pos;
@@ -812,9 +870,30 @@ static int iwl_dbgfs_fw_info_seq_show(struct seq_file *seq, void *v)
 	const struct iwl_fw *fw = priv->fwrt->fw;
 	const struct iwl_fw_cmd_version *ver;
 	u32 cmd_id;
+	int has_capa;
 
-	if (!state->pos)
+	if (!state->pos) {
+		seq_puts(seq, "fw_capa:\n");
+		has_capa = fw_has_capa(&fw->ucode_capa,
+				       IWL_UCODE_TLV_CAPA_PPAG_CHINA_BIOS_SUPPORT) ? 1 : 0;
+		seq_printf(seq,
+			   "    %d: %d\n",
+			   IWL_UCODE_TLV_CAPA_PPAG_CHINA_BIOS_SUPPORT,
+			   has_capa);
+		has_capa = fw_has_capa(&fw->ucode_capa,
+				       IWL_UCODE_TLV_CAPA_CHINA_22_REG_SUPPORT) ? 1 : 0;
+		seq_printf(seq,
+			   "    %d: %d\n",
+			   IWL_UCODE_TLV_CAPA_CHINA_22_REG_SUPPORT,
+			   has_capa);
+		has_capa = fw_has_capa(&fw->ucode_capa,
+				       IWL_UCODE_TLV_CAPA_FW_ACCEPTS_RAW_DSM_TABLE) ? 1 : 0;
+		seq_printf(seq,
+			   "    %d: %d\n",
+			   IWL_UCODE_TLV_CAPA_FW_ACCEPTS_RAW_DSM_TABLE,
+			   has_capa);
 		seq_puts(seq, "fw_api_ver:\n");
+	}
 
 	ver = &fw->ucode_capa.cmd_versions[state->pos];
 
@@ -865,7 +944,9 @@ void iwl_fwrt_dbgfs_register(struct iwl_fw_runtime *fwrt,
 	FWRT_DEBUGFS_ADD_FILE(fw_info, dbgfs_dir, 0200);
 	FWRT_DEBUGFS_ADD_FILE(send_hcmd, dbgfs_dir, 0200);
 	FWRT_DEBUGFS_ADD_FILE(enabled_severities, dbgfs_dir, 0200);
+	FWRT_DEBUGFS_ADD_FILE(fw_dbg_collect, dbgfs_dir, 0200);
 	FWRT_DEBUGFS_ADD_FILE(fw_dbg_domain, dbgfs_dir, 0400);
+	FWRT_DEBUGFS_ADD_FILE(fw_ver, dbgfs_dir, 0400);
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 	if (fw_has_capa(&fwrt->fw->ucode_capa,
 			IWL_UCODE_TLV_CAPA_TLC_OFFLOAD)) {

@@ -1,0 +1,32 @@
+@@
+struct cfg80211_scan_request *req;
+expression E;
+@@
+-E & BIT(req->tsf_report_link_id)
++false
+
+@@
+/* tsf_report_link_id is sufficiently specific,
+ * unfortunately matching the type does not work because we use __free(kfree)
+ */
+identifier req;
+expression E;
+@@
+-req->tsf_report_link_id = E;
+
+@@
+struct cfg80211_scan_request *req;
+statement S;
+@@
+(
+-if (... && req->tsf_report_link_id >= 0 && ...) S
+|
+-req->tsf_report_link_id
++ -1
+)
+
+@@
+identifier local;
+expression E;
+@@
+-local->hw_scan_req->req.tsf_report_link_id = E;

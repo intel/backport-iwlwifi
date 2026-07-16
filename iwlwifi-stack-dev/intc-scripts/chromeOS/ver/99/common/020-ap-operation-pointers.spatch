@@ -1,0 +1,17 @@
+@@
+identifier params;
+@@
+-params->beacon.he_oper
++params->he_oper
+
+@@
+identifier params;
+@@
+-params->beacon.eht_oper
++params->eht_oper
+
+@@
+identifier params;
+@@
+-params->beacon.uhr_oper
++params->uhr_oper

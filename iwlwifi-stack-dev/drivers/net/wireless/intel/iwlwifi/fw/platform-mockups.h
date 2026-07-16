@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2021-2022 Intel Corporation
+ * Copyright (C) 2021-2022, 2024 Intel Corporation
  */
 #ifndef __iwl_fw_platform_mockups__
 #define __iwl_fw_platform_mockups__
@@ -92,7 +92,7 @@ struct mockup_efi_var {
 		efi_guid_t   VendorGuid;
 	} __packed key;
 
-	unsigned int size;
+	unsigned long size;
 	u8 data[];
 };
 
@@ -110,6 +110,16 @@ static inline acpi_handle _acpi_handle(struct device *dev)
 
 #undef ACPI_HANDLE
 #define ACPI_HANDLE(dev) _acpi_handle(dev)
+
+static inline bool
+_acpi_check_dsm(acpi_handle handle, const guid_t *guid, u64 rev, u64 funcs)
+{
+	if (iwlwifi_mod_params.enable_acpi_mockups)
+		return false;
+	return acpi_check_dsm(handle, guid, rev, funcs);
+}
+
+#define acpi_check_dsm _acpi_check_dsm
 
 static inline void _acpi_free(void *p)
 {

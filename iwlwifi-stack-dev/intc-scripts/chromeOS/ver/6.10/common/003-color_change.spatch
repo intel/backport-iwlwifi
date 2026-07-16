@@ -1,0 +1,25 @@
+@@
+expression A, B, C;
+identifier fn =~ "cfg80211_obss_color_collision_notify|cfg80211_color_change_started_notify";
+@@
+-fn(A, B, C);
++fn(A, B);
+
+@@
+expression A, B;
+identifier fn =~ "cfg80211_color_change_notify|cfg80211_color_change_aborted_notify";
+@@
+-fn(A, B);
++fn(A);
+
+@@
+identifier link_id;
+expression exp;
+@@
+static int ieee80211_color_change(...)
+{
+<...
+-u8 link_id = exp;
++u8 link_id = 0;
+...>
+}

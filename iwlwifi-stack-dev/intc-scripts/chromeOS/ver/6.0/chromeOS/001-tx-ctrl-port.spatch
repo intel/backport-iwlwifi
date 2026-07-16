@@ -1,0 +1,19 @@
+@@
+type u64;
+@@
+ieee80211_tx_control_port(...
+-, int link_id
+ , u64 *cookie
+ )
+{
++	int link_id = -1;
+...
+}
+
+@@
+type u64;
+@@
+int ieee80211_tx_control_port(...
+-, int link_id
+ , u64 *cookie
+ );

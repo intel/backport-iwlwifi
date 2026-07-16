@@ -1,0 +1,61 @@
+@@
+expression wdev, link_id;
+@@
+(
+-wdev->links[link_id].cac_started
++wdev->cac_started
+|
+-wdev.links[link_id].cac_started
++wdev.cac_started
+)
+
+@@
+expression dev, chandef, link_id, event, gfp;
+@@
+-cfg80211_cac_event(dev, chandef, event, gfp, link_id);
++cfg80211_cac_event(dev, chandef, event, gfp);
+
+@start_radar_detection@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.start_radar_detection = fn,
+...
+};
+
+@@
+identifier start_radar_detection .fn;
+identifier wiphy, dev, chandef, cac_time_ms, link_id;
+type u32;
+@@
+int fn(struct wiphy *wiphy, struct net_device *dev, struct cfg80211_chan_def *chandef, u32 cac_time_ms
+-, int link_id
+ )
+{
++	unsigned int link_id = 0;
+...
+}
+
+@end_cac@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.end_cac = fn,
+...
+};
+
+@@
+identifier end_cac.fn;
+identifier wiphy, dev, link_id;
+@@
+void fn(struct wiphy *wiphy, struct net_device *dev
+-, unsigned int link_id
+ )
+{
++	unsigned int link_id = 0;
+...
+}
