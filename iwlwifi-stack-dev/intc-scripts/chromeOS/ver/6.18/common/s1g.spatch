@@ -1,0 +1,43 @@
+@@
+identifier rx_khz, pri_khz;
+@@
+ieee80211_rx_beacon_freq_valid(...)
+{
+-u32 pri_2mhz_khz;
+-struct ieee80211_channel *s1g_sibling_1mhz;
+...
+
+	if (rx_khz == pri_khz)
+		return true;
+-...
++return false;
+}
+
+@@
+identifier chandef;
+@@
+ieee80211_determine_ap_chan(...)
+{
+<...
+-chandef->s1g_primary_2mhz = ...;
+...>
+}
+
+@@
+identifier local;
+@@
+ieee80211_scan_state_set_channel(...)
+{
+<...
+-local->scan_chandef.s1g_primary_2mhz = false;
+...>}
+
+@@
+identifier chandef;
+@@
+ieee80211_chandef_s1g_oper(...)
+{
+<...
+-chandef->s1g_primary_2mhz = ...;
+...>
+}

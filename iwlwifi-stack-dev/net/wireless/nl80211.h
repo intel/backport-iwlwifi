@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Portions of this file
- * Copyright (C) 2018, 2020-2022 Intel Corporation
+ * Copyright (C) 2018, 2020-2026 Intel Corporation
  */
 #ifndef __NET_WIRELESS_NL80211_H
 #define __NET_WIRELESS_NL80211_H
@@ -23,8 +23,10 @@ static inline u64 wdev_id(struct wireless_dev *wdev)
 }
 
 int nl80211_parse_chandef(struct cfg80211_registered_device *rdev,
-			  struct genl_info *info,
-			  struct cfg80211_chan_def *chandef);
+			  struct netlink_ext_ack *extack,
+			  struct nlattr **attrs,
+			  struct cfg80211_chan_def *chandef,
+			  bool npca_permitted);
 int nl80211_parse_random_mac(struct nlattr **attrs,
 			     u8 *mac_addr, u8 *mac_addr_mask);
 
@@ -60,7 +62,7 @@ void nl80211_send_rx_auth(struct cfg80211_registered_device *rdev,
 			  const u8 *buf, size_t len, gfp_t gfp);
 void nl80211_send_rx_assoc(struct cfg80211_registered_device *rdev,
 			   struct net_device *netdev,
-			   struct cfg80211_rx_assoc_resp *data);
+			   const struct cfg80211_rx_assoc_resp_data *data);
 void nl80211_send_deauth(struct cfg80211_registered_device *rdev,
 			 struct net_device *netdev,
 			 const u8 *buf, size_t len,
@@ -82,8 +84,12 @@ void nl80211_send_connect_result(struct cfg80211_registered_device *rdev,
 void nl80211_send_roamed(struct cfg80211_registered_device *rdev,
 			 struct net_device *netdev,
 			 struct cfg80211_roam_info *info, gfp_t gfp);
+/* For STA/GC, indicate port authorized with AP/GO bssid.
+ * For GO/AP, use peer GC/STA mac_addr.
+ */
 void nl80211_send_port_authorized(struct cfg80211_registered_device *rdev,
-				  struct net_device *netdev, const u8 *bssid);
+				  struct net_device *netdev, const u8 *peer_addr,
+				  const u8 *td_bitmap, u8 td_bitmap_len);
 void nl80211_send_disconnected(struct cfg80211_registered_device *rdev,
 			       struct net_device *netdev, u16 reason,
 			       const u8 *ie, size_t ie_len, bool from_ap);
@@ -113,12 +119,14 @@ nl80211_radar_notify(struct cfg80211_registered_device *rdev,
 		     enum nl80211_radar_event event,
 		     struct net_device *netdev, gfp_t gfp);
 
-void nl80211_send_ap_stopped(struct wireless_dev *wdev);
+void nl80211_send_ap_stopped(struct wireless_dev *wdev, unsigned int link_id);
 
-void cfg80211_rdev_free_coalesce(struct cfg80211_registered_device *rdev);
+void cfg80211_free_coalesce(struct cfg80211_coalesce *coalesce);
 
 /* peer measurement */
 int nl80211_pmsr_start(struct sk_buff *skb, struct genl_info *info);
-int nl80211_pmsr_dump_results(struct sk_buff *skb, struct netlink_callback *cb);
+
+void nl80211_mlo_reconf_add_done(struct net_device *dev,
+				 struct cfg80211_mlo_reconf_done_data *data);
 
 #endif /* __NET_WIRELESS_NL80211_H */

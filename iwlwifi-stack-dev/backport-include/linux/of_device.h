@@ -11,11 +11,8 @@ static inline int backport_of_dma_configure(struct device *dev,
 #if LINUX_VERSION_IS_GEQ(4,15,0)
 	dev->bus->force_dma = force_dma;
 	return of_dma_configure(dev, np);
-#elif LINUX_VERSION_IS_GEQ(4,12,0)
-	return of_dma_configure(dev, np);
 #else
-	of_dma_configure(dev, np);
-	return 0;
+	return of_dma_configure(dev, np);
 #endif
 }
 #define of_dma_configure LINUX_BACKPORT(of_dma_configure)

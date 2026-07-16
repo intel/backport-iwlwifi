@@ -38,3 +38,22 @@ index 91352a3a447b..6076ea6a33aa 100644
  	}
  }
  
+diff --git a/evaluate.c b/evaluate.c
+index fe716f631987..5dfe123e733f 100644
+--- a/evaluate.c
++++ b/evaluate.c
+@@ -2920,8 +2920,13 @@ static int cast_flags(struct expression *expr, struct expression *old)
+ 		 * As another extension, treat integer constant
+ 		 * expressions (in contrast to literals) cast to
+ 		 * pointer type as address constants.
++		 *
++		 * As yet another extension, treat an incoming ACE
++		 * cast to pointer type as an address constant, so
++		 * round-trips through (uintptr_t) don't lose that
++		 * information.
+ 		 */
+-		if (old->flags & (CEF_ICE | CEF_ADDR))
++		if (old->flags & (CEF_ICE | CEF_ADDR | CEF_ACE))
+ 			flags = CEF_ADDR;
+ 	}
+ 

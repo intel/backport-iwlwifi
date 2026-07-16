@@ -1,0 +1,9 @@
+@@
+struct cfg80211_fils_discovery *params;
+@@
+-if (!params->update) return 0;
+
+@@
+struct cfg80211_unsol_bcast_probe_resp *params;
+@@
+-if (!params->update) return 0;

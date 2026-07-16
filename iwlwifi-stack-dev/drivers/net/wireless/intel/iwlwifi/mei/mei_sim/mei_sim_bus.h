@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (C) 2022 Intel Corporation
+ * Copyright (C) 2022-2023 Intel Corporation
  */
 
 #ifndef __mei_sim_h__
@@ -10,6 +10,7 @@
 #include <os.h>
 #include <irq_kern.h>
 #include <linux/uuid.h>
+#include <uapi/linux/uuid.h>
 
 #define MEI_CL_VERSION_ANY 0xff
 #define MEI_CL_NAME_SIZE 32

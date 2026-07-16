@@ -1,0 +1,5 @@
+@@
+struct cfg80211_ap_settings *params;
+expression E;
+@@
+-if (E && params->he_oper) { ... }

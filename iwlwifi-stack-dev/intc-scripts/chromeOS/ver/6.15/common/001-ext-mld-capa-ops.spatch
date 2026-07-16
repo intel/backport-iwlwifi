@@ -1,0 +1,13 @@
+@@
+struct cfg80211_assoc_request *req;
+expression E;
+@@
+-cpu_to_le16(req->ext_mld_capa_ops | E)
++0
+
+@@
+struct cfg80211_ml_reconf_req *req;
+expression E;
+@@
+-cpu_to_le16(req->ext_mld_capa_ops | E)
++0

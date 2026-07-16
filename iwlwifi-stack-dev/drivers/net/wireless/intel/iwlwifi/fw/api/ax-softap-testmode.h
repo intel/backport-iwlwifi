@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
  * Copyright (C) 2017 Intel Deutschland GmbH
+ * Copyright (C) 2022, 2025 Intel Corporation
  */
 #ifndef __fw_api_ax_softap_testmode_h__
 #define __fw_api_ax_softap_testmode_h__
@@ -8,7 +9,7 @@
 #include "mac.h"
 
 /**
- * struct trig_frame_common_softap_testmode
+ * struct trig_frame_common_softap_testmode_v1 - testmode common data
  *
  * all the configurable common trigger frame fields that can be set
  * for this mode.
@@ -26,7 +27,7 @@
  * @cmn_res_he_sig_a: HE-SIG-A Reserved
  * @reserved: reserved for DW alignment
  */
-struct trig_frame_common_softap_testmode {
+struct trig_frame_common_softap_testmode_v1 {
 	__le16 cmn_lsig_len;
 	u8 cmn_cascade_indication;
 	u8 cmn_carrier_sense_req;
@@ -42,7 +43,43 @@ struct trig_frame_common_softap_testmode {
 } __packed; /* TRIG_FRAME_COMMON_SOFTAP_TESTMODE_API_S_VER_1 */
 
 /**
- * struct trig_frame_user_softap_testmode
+ * struct trig_frame_common_softap_testmode_v2 - testmode common data
+ *
+ * all the configurable common trigger frame fields that can be set
+ * for this mode.
+ *
+ * @cmn_lsig_len: L-SIG Length
+ * @cmn_more_trig_frames: more trigger frames indication
+ * @cmn_carrier_sense_req: CS Required
+ * @cmn_gi_ltf: GI And LTF
+ * @cmn_mu_mimo_ltf: MU-MIMO LTF Mode
+ * @cmn_he_eht_ltf_num: Number Of HE-LTF Symbols
+ * @cmn_ldpc_ext_sym: LDPC Extra Symbol Segment
+ * @cmn_packet_extension: Packet Extension
+ * @cmn_spatial_reuse: Spatial Reuse
+ * @cmn_doppler: Doppler
+ * @cmn_res_he_sig_a: HE-SIG-A Reserved
+ * @cmn_he_eht_p160: indicate if solicited TB PPDU is EHT or HE-in-EHT
+ * @reserved: reserved for DW alignment
+ */
+struct trig_frame_common_softap_testmode_v2 {
+	__le16 cmn_lsig_len;
+	u8 cmn_more_trig_frames;
+	u8 cmn_carrier_sense_req;
+	u8 cmn_gi_ltf;
+	u8 cmn_mu_mimo_ltf;
+	u8 cmn_he_eht_ltf_num;
+	u8 cmn_ldpc_ext_sym;
+	u8 cmn_packet_extension;
+	u8 cmn_doppler;
+	__le16 cmn_spatial_reuse;
+	__le16 cmn_res_he_sig_a;
+	u8 cmn_he_eht_p160;
+	u8 reserved;
+} __packed; /* TRIG_FRAME_COMMON_SOFTAP_TESTMODE_API_S_VER_2 */
+
+/**
+ * struct trig_frame_user_softap_testmode_v1 - 11ax user trigger
  *
  * The struct contains all the common configurable per user trigger frame
  * fields that can be set for this mode.
@@ -55,7 +92,7 @@ struct trig_frame_common_softap_testmode {
  * @usr_ss_allocation: SS Allocation
  * @usr_target_rssi: Target RSSI
  */
-struct trig_frame_user_softap_testmode {
+struct trig_frame_user_softap_testmode_v1 {
 	__le16 usr_assoc_id;
 	u8 usr_rsrc_unit_alloc;
 	u8 usr_coding_type;
@@ -66,7 +103,35 @@ struct trig_frame_user_softap_testmode {
 } __packed; /* TRIG_FRAME_USER_SOFTAP_TESTMODE_API_S_VER_1 */
 
 /**
- * struct trig_frame_user_basic_softap_testmode
+ * struct trig_frame_user_softap_testmode_v2 - 11ax user trigger
+ *
+ * The struct contains all the common configurable per user trigger frame
+ * fields that can be set for this mode.
+ *
+ * @usr_assoc_id: AID12
+ * @usr_rsrc_unit_alloc: RU Allocation
+ * @usr_coding_type: Coding Type
+ * @usr_mcs: MCS
+ * @usr_dcm: DCM
+ * @usr_ss_allocation: SS Allocation
+ * @usr_target_rssi: Target RSSI
+ * @usr_ps_160: PS160 field if EHT/HE-in-EHT
+ * @reserved: for padding
+ */
+struct trig_frame_user_softap_testmode_v2 {
+	__le16 usr_assoc_id;
+	u8 usr_rsrc_unit_alloc;
+	u8 usr_coding_type;
+	u8 usr_mcs;
+	u8 usr_dcm;
+	u8 usr_ss_allocation;
+	u8 usr_target_rssi;
+	u8 usr_ps_160;
+	u8 reserved[3];
+} __packed; /* TRIG_FRAME_USER_SOFTAP_TESTMODE_API_S_VER_2 */
+
+/**
+ * struct trig_frame_user_basic_softap_testmode - 11ax user trigger basic data
  *
  * he struct contains all the basic configurable per user trigger frame
  * fields that can be set for this mode.
@@ -84,7 +149,7 @@ struct trig_frame_user_basic_softap_testmode {
 } __packed; /* TRIG_FRAME_USER_BASIC_SOFTAP_TESTMODE_API_S_VER_1 */
 
 /**
- * struct trig_frame_softap_testmode
+ * struct trig_frame_softap_testmode - trigger frame parameters
  *
  * The struct contains all the common configurable trigger frame params that
  * can be set for this mode.
@@ -108,7 +173,7 @@ struct trig_frame_softap_testmode {
 } __packed; /* TRIG_FRAME_SOFTAP_TESTMODE_API_S_VER_1 */
 
 /**
- * struct trig_frame_ax_softap_dl_basic
+ * struct trig_frame_ax_softap_dl_basic_v1 - basic DL config
  *
  * command to configure the 11ax softap testmode for basic DL. In this mode
  * the AP prepends 0-3 trigger frames to each aggregation so that the client
@@ -125,15 +190,40 @@ struct trig_frame_softap_testmode {
  *		    up to 3 per user sections can be configured in this mode
  *		    for each trigger frame
  */
-struct trig_frame_ax_softap_dl_basic {
+struct trig_frame_ax_softap_dl_basic_v1 {
 	struct trig_frame_softap_testmode frame_params;
-	struct trig_frame_common_softap_testmode common;
-	struct trig_frame_user_softap_testmode per_user[3];
+	struct trig_frame_common_softap_testmode_v1 common;
+	struct trig_frame_user_softap_testmode_v1 per_user[3];
 	struct trig_frame_user_basic_softap_testmode per_user_basic[3];
 } __packed; /* TRIG_FRAME_SOFTAP_TESTMODE_DL_BASIC_API_S_VER_1 */
 
 /**
- * struct ax_softap_testmode_dl_basic_cmd
+ * struct trig_frame_ax_softap_dl_basic_v2 - basic DL config
+ *
+ * command to configure the 11ax softap testmode for basic DL. In this mode
+ * the AP prepends 0-3 trigger frames to each aggregation so that the client
+ * is triggered to send a BA to the aggregation. This mode requires to enable
+ * the softap and connect an AX client to it which has been modified to send
+ * the triggered responses in HE_SU instead of HE_TRIG so that the softap
+ * hardware could receive it.
+ *
+ * @frame_params: general trigger frame params
+ * @common: content of the common trigger frame fields
+ * @per_user: content of the per user trigger frame fields - up to 3 per user
+ *	      sections can be configured in this mode for each trigger frame
+ * @per_user_basic: content of the basic type per user trigger frame fields -
+ *		    up to 3 per user sections can be configured in this mode
+ *		    for each trigger frame
+ */
+struct trig_frame_ax_softap_dl_basic_v2 {
+	struct trig_frame_softap_testmode frame_params;
+	struct trig_frame_common_softap_testmode_v2 common;
+	struct trig_frame_user_softap_testmode_v2 per_user[3];
+	struct trig_frame_user_basic_softap_testmode per_user_basic[3];
+} __packed; /* TRIG_FRAME_SOFTAP_TESTMODE_DL_BASIC_API_S_VER_2 */
+
+/**
+ * struct ax_softap_testmode_dl_basic_cmd_v1 - basic DL command
  *
  * @enable: enable or disable this test mode
  * @txop_duration_disable: bool to disable the txop duration in the HE PLCP of
@@ -145,16 +235,41 @@ struct trig_frame_ax_softap_dl_basic {
  * @frames: the trigger frames content - up to 3 trigger frames can
  *	    be configured
  */
-struct ax_softap_testmode_dl_basic_cmd {
+struct ax_softap_testmode_dl_basic_cmd_v1 {
 	u8 enable;
 	u8 txop_duration_disable;
 	u8 configured_frames_count;
 	u8 reserved;
-	struct trig_frame_ax_softap_dl_basic frames[3];
+	struct trig_frame_ax_softap_dl_basic_v1 frames[3];
 } __packed; /* AX_SOFTAP_TESTMODE_DL_BASIC_API_S_VER_1 */
 
 /**
- * struct trig_frame_bar_tid_ax_softap_testmode_dl_mu_bar
+ * struct ax_softap_testmode_dl_basic_cmd_v2 - basic DL command
+ *
+ * @enable: enable or disable this test mode
+ * @txop_duration_disable: bool to disable the txop duration in the HE PLCP of
+ *			   the agg carrying the trigger frames for this
+ *			   test mode
+ * @configured_frames_count: number of trigger frames configured for the
+ *			     test mode - max 3 trigger frames
+ * @eht_var_trigger: trigger is EHT variant
+ * @link_id: link ID for ESR to send trigger on
+ * @reserved: reserved for DW alignment
+ * @frames: the trigger frames content - up to 3 trigger frames can
+ *	    be configured
+ */
+struct ax_softap_testmode_dl_basic_cmd_v2 {
+	u8 enable;
+	u8 txop_duration_disable;
+	u8 configured_frames_count;
+	u8 eht_var_trigger;
+	u8 link_id;
+	u8 reserved[3];
+	struct trig_frame_ax_softap_dl_basic_v2 frames[3];
+} __packed; /* AX_SOFTAP_TESTMODE_DL_BASIC_API_S_VER_2 */
+
+/**
+ * struct trig_frame_bar_tid_ax_softap_testmode_dl_mu_bar - MU BAR config
  *
  * The struct contains all the configurable bar per tid trigger frame
  * fields that can be set for this mode.
@@ -170,7 +285,7 @@ struct trig_frame_bar_tid_ax_softap_testmode_dl_mu_bar {
 } __packed; /* TRIG_FRAME_BAR_TID_SOFTAP_TESTMODE_DL_MU_BAR_API_S_VER_1 */
 
 /**
- * struct trig_frame_bar_ax_softap_testmode_dl_mu_bar
+ * struct trig_frame_bar_ax_softap_testmode_dl_mu_bar - MUR BAR config
  *
  * The struct contains all the configurable bar trigger frame fields that
  * can be set for this mode.
@@ -191,7 +306,7 @@ struct trig_frame_bar_ax_softap_testmode_dl_mu_bar {
 } __packed; /* TRIG_FRAME_BAR_SOFTAP_TESTMODE_DL_MU_BAR_API_S_VER_1 */
 
 /**
- * struct trig_frame_ax_softap_dl_mu_bar
+ * struct trig_frame_ax_softap_dl_mu_bar - MU BAR DL config
  *
  * command to configure the 11ax softap testmode for MU Bar DL. In this mode
  * the AP sends a trigger frame after each aggregation so that the client is
@@ -209,13 +324,13 @@ struct trig_frame_bar_ax_softap_testmode_dl_mu_bar {
  */
 struct trig_frame_ax_softap_dl_mu_bar {
 	struct trig_frame_softap_testmode frame_params;
-	struct trig_frame_common_softap_testmode common;
-	struct trig_frame_user_softap_testmode per_user[3];
+	struct trig_frame_common_softap_testmode_v1 common;
+	struct trig_frame_user_softap_testmode_v1 per_user[3];
 	struct trig_frame_bar_ax_softap_testmode_dl_mu_bar bar[3];
 } __packed; /* TRIG_FRAME_SOFTAP_TESTMODE_DL_MU_BAR_API_S_VER_1 */
 
 /**
- * struct ax_softap_testmode_dl_mu_bar_cmd
+ * struct ax_softap_testmode_dl_mu_bar_cmd - MU BAR command
  *
  * @enable: enable or disable this test mode
  * @reserved1: reserved for DW alignment
@@ -232,7 +347,7 @@ struct ax_softap_testmode_dl_mu_bar_cmd {
 } __packed; /* AX_SOFTAP_TESTMODE_DL_MU_BAR_API_S_VER_1 */
 
 /**
- * struct per_trig_params_ax_softap_ul
+ * struct per_trig_params_ax_softap_ul - UL config
  *
  * @assoc_id: assoc id of the configured trig frame per user section
  *	      override (only for the first per user section in the frame
@@ -251,7 +366,7 @@ struct per_trig_params_ax_softap_ul {
 } __packed; /* PER_TRIG_PARAMS_SOFTAP_TESTMODE_UL_API_S_VER_1 */
 
 /**
- * struct trig_frame_ax_softap_ul
+ * struct trig_frame_ax_softap_ul - UL command data
  *
  * command to configure the 11ax softap testmode for UL In this mode the
  * AP sends a trigger frame periodically with a timer so that the client
@@ -270,13 +385,13 @@ struct per_trig_params_ax_softap_ul {
  */
 struct trig_frame_ax_softap_ul {
 	struct trig_frame_softap_testmode frame_params;
-	struct trig_frame_common_softap_testmode common;
-	struct trig_frame_user_softap_testmode per_user[3];
+	struct trig_frame_common_softap_testmode_v1 common;
+	struct trig_frame_user_softap_testmode_v1 per_user[3];
 	struct trig_frame_user_basic_softap_testmode per_user_basic[3];
 } __packed; /* TRIG_FRAME_SOFTAP_TESTMODE_UL_API_S_VER_1 */
 
 /**
- * struct ax_softap_testmode_ul_cmd
+ * struct ax_softap_testmode_ul_cmd - UL command
  *
  * @enable: enable or disable this test mode
  * @trig_frame_periodic_msec: the time timer interval in msecs for sending the
@@ -296,7 +411,7 @@ struct ax_softap_testmode_ul_cmd {
 } __packed; /* AX_SOFTAP_TESTMODE_UL_API_S_VER_2 */
 
 /**
- * struct ax_softap_client_testmode_cmd
+ * struct ax_softap_client_testmode_cmd - testmode enablement command
  *
  * @enable: enable or disable this test mode
  * @reserved1: reserved for DW alignment

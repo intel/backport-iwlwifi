@@ -1,0 +1,12 @@
+@func@
+identifier fn = ieee80211_parse_cfg_selectors;
+@@
+-void fn(...) { ... }
+
+@@
+identifier func.fn;
+expression out_sel, req_sel, req_sel_len;
+@@
+-fn(out_sel, req_sel, req_sel_len);
++/* Assume userspace supports SAE_H2E */
++set_bit(BSS_MEMBERSHIP_SELECTOR_SAE_H2E, out_sel);

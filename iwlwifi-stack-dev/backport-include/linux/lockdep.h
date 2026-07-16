@@ -30,4 +30,12 @@ int lockdep_is_held(const void *);
 #endif /* CONFIG_LOCKDEP */
 #endif /* lockdep_assert_not_held */
 
+#if LINUX_VERSION_IS_LESS(5,15,0)
+#ifdef CONFIG_LOCKDEP
+#define lockdep_assert(cond) \
+	do { WARN_ON(debug_locks && !(cond)); } while (0)
+#else
+#define lockdep_assert(cond) do {} while (0)
+#endif /* CONFIG_LOCKDEP */
+#endif /* LINUX_VERSION_IS_LESS(5,15,0) */
 #endif /* __BACKPORT_LINUX_LOCKDEP_H */

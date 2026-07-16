@@ -1,0 +1,10 @@
+@@
+statement S;
+@@
+ieee80211_start_ap(...)
+{
+<+...
+-params->beacon.he_bss_color
++params->he_bss_color
+...+>
+}

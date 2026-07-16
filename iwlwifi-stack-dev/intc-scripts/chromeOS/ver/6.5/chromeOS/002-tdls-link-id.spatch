@@ -1,0 +1,17 @@
+@@
+identifier link_id;
+@@
+int ieee80211_tdls_mgmt(...,
+-                       int link_id,
+                        ...)
+{
++	int link_id = -1;
+...
+}
+
+@@
+identifier link_id;
+@@
+int ieee80211_tdls_mgmt(...,
+-                       int link_id,
+                        ...);

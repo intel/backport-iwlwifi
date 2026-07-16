@@ -1,0 +1,10 @@
+@@
+@@
+static int ieee80211_get_tx_power(...
+-, unsigned int link_id
+ , int *dbm
+ )
+{
++	unsigned int link_id = 0;
+...
+}

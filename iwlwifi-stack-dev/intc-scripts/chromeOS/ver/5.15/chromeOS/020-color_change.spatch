@@ -1,0 +1,96 @@
+@color_change@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.color_change = fn,
+...
+};
+
+@@
+identifier color_change.fn;
+@@
+-fn(...) {...}
+
+@@
+expression sdata, resp, resp_len, csa, c, link;
+@@
+-ieee80211_set_probe_resp(sdata, resp, resp_len, csa, c, link);
++ieee80211_set_probe_resp(sdata, resp, resp_len, csa);
+
+@@
+expression x;
+statement s1, s2;
+@@
+if (x)
+s1
+-else if (cca)
+-s2
+
+@@
+identifier func =~ "ieee80211_color_change_abort|ieee80211_set_after_color_change_beacon|ieee80211_set_color_change_beacon";
+@@
+-func(...) {...}
+
+@@
+identifier func =~ "ieee80211_color_change_bss_config_notify|ieee80211_color_change_finalize|ieee80211_color_change_finalize_work";
+@@
+-func(...) {...}
+
+@@
+identifier vif, link_id;
+@@
++void ieee80211_color_change_finish(struct ieee80211_vif *vif, u8 link_id) {}
+-void ieee80211_color_change_finish(struct ieee80211_vif *vif, u8 link_id) {...}
+
+@@
+identifier vif, color_bitmap, link_id;
+@@
++void ieee80211_obss_color_collision_notify(struct ieee80211_vif *vif, u64 color_bitmap, u8 link_id) {}
+-void ieee80211_obss_color_collision_notify(struct ieee80211_vif *vif, u64 color_bitmap, u8 link_id) {...}
+
+@@
+expression sdata;
+@@
+-ieee80211_color_change_abort(sdata);
+
+@@
+expression work;
+@@
+-wiphy_work_init(work, ieee80211_color_change_finalize_work);
+
+@@
+@@
+struct ieee80211_link_data {
+...
+-        struct wiphy_work color_change_finalize_work;
+...
+};
+
+@@
+identifier func =~ "ieee80211_do_stop";
+expression wiphy;
+@@
+func(...)
+{
+...
+-        wiphy_work_cancel(wiphy, &sdata->deflink.color_change_finalize_work);
+...
+}
+
+
+@@
+identifier func =~ "ieee80211_link_stop";
+expression link;
+@@
+func(...)
+{
+...
+-	wiphy_work_cancel(link->sdata->local->hw.wiphy, &link->color_change_finalize_work);
+...
+}
+
+@@
+@@
+-cfg80211_obss_color_collision_notify(...);

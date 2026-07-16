@@ -1,0 +1,11 @@
+@@
+struct cfg80211_crypto_settings *crypto;
+@@
+-crypto->control_port_no_preauth
++false
+
+@@
+identifier i;
+@@
+-i->crypto.control_port_no_preauth
++false

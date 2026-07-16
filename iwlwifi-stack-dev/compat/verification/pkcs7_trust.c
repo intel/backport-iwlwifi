@@ -112,7 +112,7 @@ static int pkcs7_validate_trust_one(struct pkcs7_message *pkcs7,
 	return -ENOKEY;
 
 matched:
-	ret = public_key_verify_signature(key->public_key, sig);
+	ret = verify_signature(key, sig);
 	key_put(key);
 	if (ret < 0) {
 		if (ret == -ENOMEM)

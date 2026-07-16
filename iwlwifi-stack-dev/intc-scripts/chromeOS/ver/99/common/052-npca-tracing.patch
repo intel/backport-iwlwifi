@@ -1,0 +1,14 @@
+--- a/net/mac80211/trace.h
++++ b/net/mac80211/trace.h
+@@ -62,10 +62,7 @@
+ 			__entry->n##center_freq1 = (c) ? (c)->center_freq1 : 0;		\
+ 			__entry->n##freq1_offset = (c) ? (c)->freq1_offset : 0;		\
+ 			__entry->n##center_freq2 = (c) ? (c)->center_freq2 : 0;		\
+-			__entry->n##punctured = (c) ? (c)->punctured : 0;		\
+-			__entry->n##npca_pri_freq = (c) && (c)->npca_chan ?		\
+-				(c)->npca_chan->center_freq : 0;			\
+-			__entry->n##npca_punctured = (c) ? (c)->npca_punctured : 0;
++			__entry->n##punctured = (c) ? (c)->punctured : 0;
+ #define __CHANDEF_PR_FMT(n)								\
+ 	" " #n "(%d.%03d MHz,width:%d,center: %d.%03d/%d MHz, punct:0x%x, npca:%u, npca_punct:0x%x)"
+ #define __CHANDEF_PR_ARG(n)								\

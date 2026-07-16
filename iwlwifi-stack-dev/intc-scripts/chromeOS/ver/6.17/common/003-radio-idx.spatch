@@ -1,0 +1,144 @@
+@@
+@@
+-cfg80211_get_radio_idx_by_chan(...)
++0
+
+@@
+identifier wiphy;
+identifier radio_idx;
+statement S1, S2;
+expression E;
+@@
+static int ieee80211_set_wiphy_params(...)
+{
+...
+if (E) {
+...
+-if ((radio_idx == -1) || (radio_idx >= wiphy->n_radio))
+S1
+-else S2
+...
+}
+...
+}
+
+@@
+identifier hw;
+identifier radio_idx;
+@@
+int ieee80211_reconfig(...)
+{
+...
+-if (hw->wiphy->n_radio > 0) {...}
+-else {
+...
+-}
+...
+}
+
+@set_wiphy@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_wiphy_params = fn,
+...
+};
+
+@@
+identifier set_wiphy.fn;
+identifier wiphy, radio_idx, changed;
+@@
+int fn(struct wiphy *wiphy,
+-int radio_idx,
+u32 changed)
+{
++	int radio_idx = 0;
+...
+}
+
+@set_tx_power@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_tx_power = fn,
+...
+};
+
+@@
+identifier set_tx_power.fn;
+identifier wiphy, wdev, radio_idx, type, mbm;
+@@
+int fn(struct wiphy *wiphy, struct wireless_dev *wdev,
+-int radio_idx,
+enum nl80211_tx_power_setting type, int mbm)
+{
+...
+}
+
+@get_tx_power@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.get_tx_power = fn,
+...
+};
+
+@@
+identifier get_tx_power.fn;
+identifier wiphy, wdev, radio_idx, type, mbm;
+@@
+int fn(struct wiphy *wiphy, struct wireless_dev *wdev,
+-int radio_idx,
+unsigned int link_id, int *mbm)
+{
+...
+}
+
+@set_antenna@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_antenna = fn,
+...
+};
+
+@@
+identifier set_antenna.fn;
+identifier wiphy, radio_idx, tx_ant, rx_ant;
+@@
+int fn(struct wiphy *wiphy,
+-int radio_idx,
+u32 tx_ant, u32 rx_ant)
+{
+...
+}
+
+@get_antenna@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.get_antenna = fn,
+...
+};
+
+@@
+identifier get_antenna.fn;
+identifier wiphy, radio_idx, tx_ant, rx_ant;
+@@
+int fn(struct wiphy *wiphy,
+-int radio_idx,
+u32 *tx_ant, u32 *rx_ant)
+{
++	int radio_idx = 0;
+...
+}

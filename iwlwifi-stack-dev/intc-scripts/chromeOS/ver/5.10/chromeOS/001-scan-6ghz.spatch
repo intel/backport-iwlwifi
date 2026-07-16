@@ -1,0 +1,47 @@
+@@
+identifier local;
+expression E;
+@@
+-local->hw_scan_req->req.scan_6ghz_params = E;
+
+@@
+identifier local;
+expression E;
+@@
+-local->hw_scan_req->req.scan_6ghz = E;
+
+@@
+identifier local;
+expression E;
+@@
+-local->hw_scan_req->req.n_6ghz_params = E;
+
+@@
+@@
+-static void
+-iwl_mvm_umac_scan_fill_6g_chan_list(...)
+-{...}
+
+@@
+@@
+-iwl_mvm_umac_scan_fill_6g_chan_list(...);
+
+@@
+type u32;
+@@
+-static u32
+-iwl_mvm_umac_scan_cfg_channels_v7_6g(...)
+-{...}
+
+@@
+@@
+-iwl_mvm_umac_scan_cfg_channels_v7_6g(...)
++0
+
+@@
+identifier params;
+expression E1, E2, E3;
+@@
+-params.n_6ghz_params = E1;
+-params.scan_6ghz_params = E2;
+-params.scan_6ghz = E3;

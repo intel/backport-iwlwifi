@@ -1,0 +1,9 @@
+@@
+expression E;
+@@
+ieee80211_change_beacon(...)
+{
+...
+-        if (beacon->he_bss_color_valid && E) { ... }
+...
+}

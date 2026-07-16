@@ -1,0 +1,14 @@
+@@
+@@
+ieee80211_resume(...)
+{
+	struct ieee80211_local *local = hw_to_local(wiphy_priv(wiphy));
++       int ret = __ieee80211_resume(wiphy_priv(wiphy));
++
++       if (ret)
++               cfg80211_shutdown_all_interfaces(wiphy);
++
+...
++       return ret;
+-       return __ieee80211_resume(wiphy_priv(wiphy));
+}

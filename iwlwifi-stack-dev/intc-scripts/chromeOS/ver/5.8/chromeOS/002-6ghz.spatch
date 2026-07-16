@@ -1,0 +1,28 @@
+@@
+@@
+ieee80211_chandef_he_6ghz_oper(...)
+{
++return true;
+-...
+}
+
+@@
+@@
+iwl_init_he_6ghz_capa(...)
+{
+-...
+}
+
+@@
+struct ieee80211_sband_iftype_data *iftd;
+expression E;
+@@
+-iftd->he_6ghz_capa.capa = E;
+
+@@
+@@
+ieee80211_put_he_6ghz_cap(...)
+{
++return 0;
+-...
+}

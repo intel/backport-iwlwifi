@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2018 - 2021 Intel Corporation
+ * Copyright (C) 2018-2021, 2023-2026 Intel Corporation
  */
 #include <net/cfg80211.h>
 #include "core.h"
@@ -18,8 +18,7 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 
 	/* validate existing data */
 	if (!(rdev->wiphy.pmsr_capa->ftm.bandwidths & BIT(out->chandef.width))) {
-		NL_SET_ERR_MSG(genl_info_extack(info),
-			       "FTM: unsupported bandwidth");
+		NL_SET_ERR_MSG(info->extack, "FTM: unsupported bandwidth");
 		return -EINVAL;
 	}
 
@@ -39,14 +38,14 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 		break;
 	default:
 		if (!tb[NL80211_PMSR_FTM_REQ_ATTR_PREAMBLE]) {
-			NL_SET_ERR_MSG(genl_info_extack(info),
+			NL_SET_ERR_MSG(info->extack,
 				       "FTM: must specify preamble");
 			return -EINVAL;
 		}
 	}
 
 	if (!(capa->ftm.preambles & BIT(preamble))) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_PREAMBLE],
 				    "FTM: invalid preamble");
 		return -EINVAL;
@@ -57,18 +56,18 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 	out->ftm.burst_period = 0;
 	if (tb[NL80211_PMSR_FTM_REQ_ATTR_BURST_PERIOD])
 		out->ftm.burst_period =
-			nla_get_u32(tb[NL80211_PMSR_FTM_REQ_ATTR_BURST_PERIOD]);
+			nla_get_u16(tb[NL80211_PMSR_FTM_REQ_ATTR_BURST_PERIOD]);
 
 	out->ftm.asap = !!tb[NL80211_PMSR_FTM_REQ_ATTR_ASAP];
 	if (out->ftm.asap && !capa->ftm.asap) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_ASAP],
 				    "FTM: ASAP mode not supported");
 		return -EINVAL;
 	}
 
 	if (!out->ftm.asap && !capa->ftm.non_asap) {
-		NL_SET_ERR_MSG(genl_info_extack(info),
+		NL_SET_ERR_MSG(info->extack,
 			       "FTM: non-ASAP mode not supported");
 		return -EINVAL;
 	}
@@ -76,20 +75,15 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 	out->ftm.num_bursts_exp = 0;
 	if (tb[NL80211_PMSR_FTM_REQ_ATTR_NUM_BURSTS_EXP])
 		out->ftm.num_bursts_exp =
-			nla_get_u32(tb[NL80211_PMSR_FTM_REQ_ATTR_NUM_BURSTS_EXP]);
+			nla_get_u8(tb[NL80211_PMSR_FTM_REQ_ATTR_NUM_BURSTS_EXP]);
 
 	if (capa->ftm.max_bursts_exponent >= 0 &&
 	    out->ftm.num_bursts_exp > capa->ftm.max_bursts_exponent) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_NUM_BURSTS_EXP],
 				    "FTM: max NUM_BURSTS_EXP must be set lower than the device limit");
 		return -EINVAL;
 	}
-
-	out->ftm.burst_duration = 15;
-	if (tb[NL80211_PMSR_FTM_REQ_ATTR_BURST_DURATION])
-		out->ftm.burst_duration =
-			nla_get_u32(tb[NL80211_PMSR_FTM_REQ_ATTR_BURST_DURATION]);
 
 	out->ftm.ftms_per_burst = 0;
 	if (tb[NL80211_PMSR_FTM_REQ_ATTR_FTMS_PER_BURST])
@@ -99,7 +93,7 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 	if (capa->ftm.max_ftms_per_burst &&
 	    (out->ftm.ftms_per_burst > capa->ftm.max_ftms_per_burst ||
 	     out->ftm.ftms_per_burst == 0)) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_FTMS_PER_BURST],
 				    "FTM: FTMs per burst must be set lower than the device limit but non-zero");
 		return -EINVAL;
@@ -108,11 +102,11 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 	out->ftm.ftmr_retries = 3;
 	if (tb[NL80211_PMSR_FTM_REQ_ATTR_NUM_FTMR_RETRIES])
 		out->ftm.ftmr_retries =
-			nla_get_u32(tb[NL80211_PMSR_FTM_REQ_ATTR_NUM_FTMR_RETRIES]);
+			nla_get_u8(tb[NL80211_PMSR_FTM_REQ_ATTR_NUM_FTMR_RETRIES]);
 
 	out->ftm.request_lci = !!tb[NL80211_PMSR_FTM_REQ_ATTR_REQUEST_LCI];
 	if (out->ftm.request_lci && !capa->ftm.request_lci) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_REQUEST_LCI],
 				    "FTM: LCI request not supported");
 	}
@@ -120,7 +114,7 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 	out->ftm.request_civicloc =
 		!!tb[NL80211_PMSR_FTM_REQ_ATTR_REQUEST_CIVICLOC];
 	if (out->ftm.request_civicloc && !capa->ftm.request_civicloc) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_REQUEST_CIVICLOC],
 			    "FTM: civic location request not supported");
 	}
@@ -128,7 +122,7 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 	out->ftm.trigger_based =
 		!!tb[NL80211_PMSR_FTM_REQ_ATTR_TRIGGER_BASED];
 	if (out->ftm.trigger_based && !capa->ftm.trigger_based) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_TRIGGER_BASED],
 				    "FTM: trigger based ranging is not supported");
 		return -EINVAL;
@@ -137,31 +131,45 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 	out->ftm.non_trigger_based =
 		!!tb[NL80211_PMSR_FTM_REQ_ATTR_NON_TRIGGER_BASED];
 	if (out->ftm.non_trigger_based && !capa->ftm.non_trigger_based) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_NON_TRIGGER_BASED],
 				    "FTM: trigger based ranging is not supported");
 		return -EINVAL;
 	}
 
 	if (out->ftm.trigger_based && out->ftm.non_trigger_based) {
-		NL_SET_ERR_MSG(genl_info_extack(info),
+		NL_SET_ERR_MSG(info->extack,
 			       "FTM: can't set both trigger based and non trigger based");
 		return -EINVAL;
 	}
 
+	if (out->ftm.ftms_per_burst > 31 && !out->ftm.non_trigger_based &&
+	    !out->ftm.trigger_based) {
+		NL_SET_ERR_MSG_ATTR(info->extack,
+				    tb[NL80211_PMSR_FTM_REQ_ATTR_FTMS_PER_BURST],
+				    "FTM: FTMs per burst must be set lower than 31");
+		return -ERANGE;
+	}
+
 	if ((out->ftm.trigger_based || out->ftm.non_trigger_based) &&
 	    out->ftm.preamble != NL80211_PREAMBLE_HE) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_PREAMBLE],
 				    "FTM: non EDCA based ranging must use HE preamble");
 		return -EINVAL;
 	}
 
+	if (tb[NL80211_PMSR_FTM_REQ_ATTR_BURST_DURATION])
+		out->ftm.burst_duration =
+			nla_get_u8(tb[NL80211_PMSR_FTM_REQ_ATTR_BURST_DURATION]);
+	else if (!out->ftm.non_trigger_based && !out->ftm.trigger_based)
+		out->ftm.burst_duration = 15;
+
 	out->ftm.lmr_feedback =
 		!!tb[NL80211_PMSR_FTM_REQ_ATTR_LMR_FEEDBACK];
 	if (!out->ftm.trigger_based && !out->ftm.non_trigger_based &&
 	    out->ftm.lmr_feedback) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_FTM_REQ_ATTR_LMR_FEEDBACK],
 				    "FTM: LMR feedback set for EDCA based ranging");
 		return -EINVAL;
@@ -169,7 +177,7 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 
 	if (tb[NL80211_PMSR_FTM_REQ_ATTR_BSS_COLOR]) {
 		if (!out->ftm.non_trigger_based && !out->ftm.trigger_based) {
-			NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+			NL_SET_ERR_MSG_ATTR(info->extack,
 					    tb[NL80211_PMSR_FTM_REQ_ATTR_BSS_COLOR],
 					    "FTM: BSS color set for EDCA based ranging");
 			return -EINVAL;
@@ -177,6 +185,21 @@ static int pmsr_parse_ftm(struct cfg80211_registered_device *rdev,
 
 		out->ftm.bss_color =
 			nla_get_u8(tb[NL80211_PMSR_FTM_REQ_ATTR_BSS_COLOR]);
+	}
+
+	out->ftm.rsta = !!tb[NL80211_PMSR_FTM_REQ_ATTR_RSTA];
+	if (out->ftm.rsta && !capa->ftm.support_rsta) {
+		NL_SET_ERR_MSG_ATTR(info->extack,
+				    tb[NL80211_PMSR_FTM_REQ_ATTR_RSTA],
+				    "FTM: RSTA not supported by device");
+		return -EOPNOTSUPP;
+	}
+
+	if (out->ftm.rsta && !out->ftm.lmr_feedback) {
+		NL_SET_ERR_MSG_ATTR(info->extack,
+				    tb[NL80211_PMSR_FTM_REQ_ATTR_RSTA],
+				    "FTM: RSTA set without LMR feedback");
+		return -EINVAL;
 	}
 
 	return 0;
@@ -199,7 +222,7 @@ static int pmsr_parse_peer(struct cfg80211_registered_device *rdev,
 	if (!tb[NL80211_PMSR_PEER_ATTR_ADDR] ||
 	    !tb[NL80211_PMSR_PEER_ATTR_CHAN] ||
 	    !tb[NL80211_PMSR_PEER_ATTR_REQ]) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info), peer,
+		NL_SET_ERR_MSG_ATTR(info->extack, peer,
 				    "insufficient peer data");
 		return -EINVAL;
 	}
@@ -210,11 +233,12 @@ static int pmsr_parse_peer(struct cfg80211_registered_device *rdev,
 	memset(info->attrs, 0, sizeof(*info->attrs) * (NL80211_ATTR_MAX + 1));
 	err = nla_parse_nested_deprecated(info->attrs, NL80211_ATTR_MAX,
 					  tb[NL80211_PMSR_PEER_ATTR_CHAN],
-					  NULL, genl_info_extack(info));
+					  NULL, info->extack);
 	if (err)
 		return err;
 
-	err = nl80211_parse_chandef(rdev, info, &out->chandef);
+	err = nl80211_parse_chandef(rdev, info->extack, info->attrs,
+				    &out->chandef, false);
 	if (err)
 		return err;
 
@@ -224,7 +248,7 @@ static int pmsr_parse_peer(struct cfg80211_registered_device *rdev,
 				    NULL);
 
 	if (!req[NL80211_PMSR_REQ_ATTR_DATA]) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    tb[NL80211_PMSR_PEER_ATTR_REQ],
 				    "missing request type/data");
 		return -EINVAL;
@@ -234,7 +258,7 @@ static int pmsr_parse_peer(struct cfg80211_registered_device *rdev,
 		out->report_ap_tsf = true;
 
 	if (out->report_ap_tsf && !rdev->wiphy.pmsr_capa->report_ap_tsf) {
-		NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+		NL_SET_ERR_MSG_ATTR(info->extack,
 				    req[NL80211_PMSR_REQ_ATTR_GET_AP_TSF],
 				    "reporting AP TSF is not supported");
 		return -EINVAL;
@@ -246,7 +270,7 @@ static int pmsr_parse_peer(struct cfg80211_registered_device *rdev,
 			err = pmsr_parse_ftm(rdev, treq, out, info);
 			break;
 		default:
-			NL_SET_ERR_MSG_ATTR(genl_info_extack(info), treq,
+			NL_SET_ERR_MSG_ATTR(info->extack, treq,
 					    "unsupported measurement type");
 			err = -EINVAL;
 		}
@@ -283,22 +307,23 @@ int nl80211_pmsr_start(struct sk_buff *skb, struct genl_info *info)
 		count++;
 
 		if (count > rdev->wiphy.pmsr_capa->max_peers) {
-			NL_SET_ERR_MSG_ATTR(genl_info_extack(info), peer,
+			NL_SET_ERR_MSG_ATTR(info->extack, peer,
 					    "Too many peers used");
 			return -EINVAL;
 		}
 	}
 
-	req = kzalloc(struct_size(req, peers, count), GFP_KERNEL);
+	req = kzalloc_flex(*req, peers, count);
 	if (!req)
 		return -ENOMEM;
+	req->n_peers = count;
 
 	if (info->attrs[NL80211_ATTR_TIMEOUT])
 		req->timeout = nla_get_u32(info->attrs[NL80211_ATTR_TIMEOUT]);
 
 	if (info->attrs[NL80211_ATTR_MAC]) {
 		if (!rdev->wiphy.pmsr_capa->randomize_mac_addr) {
-			NL_SET_ERR_MSG_ATTR(genl_info_extack(info),
+			NL_SET_ERR_MSG_ATTR(info->extack,
 					    info->attrs[NL80211_ATTR_MAC],
 					    "device cannot randomize MAC address");
 			err = -EINVAL;
@@ -322,8 +347,6 @@ int nl80211_pmsr_start(struct sk_buff *skb, struct genl_info *info)
 			goto out_err;
 		idx++;
 	}
-
-	req->n_peers = count;
 	req->cookie = cfg80211_assign_cookie(rdev);
 	req->nl_portid = info->snd_portid;
 
@@ -333,7 +356,7 @@ int nl80211_pmsr_start(struct sk_buff *skb, struct genl_info *info)
 
 	list_add_tail(&req->list, &wdev->pmsr_list);
 
-	nl_set_extack_cookie_u64(genl_info_extack(info), req->cookie);
+	nl_set_extack_cookie_u64(info->extack, req->cookie);
 	return 0;
 out_err:
 	kfree(req);
@@ -447,6 +470,7 @@ static int nl80211_pmsr_send_ftm_res(struct sk_buff *msg,
 	PUT(u8, NUM_BURSTS_EXP, num_bursts_exp);
 	PUT(u8, BURST_DURATION, burst_duration);
 	PUT(u8, FTMS_PER_BURST, ftms_per_burst);
+	PUT(u16, BURST_PERIOD, burst_period);
 	PUTOPT(s32, RSSI_AVG, rssi_avg);
 	PUTOPT(s32, RSSI_SPREAD, rssi_spread);
 	if (res->ftm.tx_rate_valid &&
@@ -602,7 +626,7 @@ static void cfg80211_pmsr_process_abort(struct wireless_dev *wdev)
 	struct cfg80211_pmsr_request *req, *tmp;
 	LIST_HEAD(free_list);
 
-	lockdep_assert_held(&wdev->mtx);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	spin_lock_bh(&wdev->pmsr_lock);
 	list_for_each_entry_safe(req, tmp, &wdev->pmsr_list, list) {
@@ -624,9 +648,9 @@ void cfg80211_pmsr_free_wk(struct work_struct *work)
 	struct wireless_dev *wdev = container_of(work, struct wireless_dev,
 						 pmsr_free_wk);
 
-	wdev_lock(wdev);
+	guard(wiphy)(wdev->wiphy);
+
 	cfg80211_pmsr_process_abort(wdev);
-	wdev_unlock(wdev);
 }
 
 void cfg80211_pmsr_wdev_down(struct wireless_dev *wdev)

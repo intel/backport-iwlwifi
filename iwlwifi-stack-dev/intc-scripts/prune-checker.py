@@ -25,8 +25,6 @@ def check_prune(defconfig):
         k, v = kv
         if k == 'restriction':
             restriction = v
-    if restriction != 'nopublic':
-        return 0
 
     # if we want the top-most patch to have no public changes,
     # remember where we were
@@ -47,16 +45,22 @@ def check_prune(defconfig):
     git.reset(["-q", "--hard", commit])
     git.clean(['-fdxq'])
     # prune this one again
-    prune(defconfig, False, '.')
-    # reset to the previous prune
-    git.reset([pruned_prev])
-    # and check if anything is left:
-    if git.is_modified():
-        print("FAILURE: restriction=nopublic patch modifies prune tree")
-        subprocess.call(['git', 'diff'])
-        ret = 1
-    else:
+    try:
+        prune(defconfig, True, '.')
         ret = 0
+    except Exception as e:
+        print(e)
+        ret = 1
+    if ret == 0 and restriction == 'nopublic':
+        # reset to the previous prune
+        git.reset([pruned_prev])
+        # and check if anything is left:
+        if git.is_modified():
+            print("FAILURE: restriction=nopublic patch modifies prune tree")
+            subprocess.call(['git', 'diff'])
+            ret = 1
+        else:
+            ret = 0
     # eases development:
     git.reset(["-q", "--hard", commit])
     return ret

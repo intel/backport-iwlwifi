@@ -1,0 +1,14 @@
+@set_epcs@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.set_epcs = fn,
+...
+};
+
+@@
+identifier set_epcs.fn;
+@@
+-fn(...) { ... }

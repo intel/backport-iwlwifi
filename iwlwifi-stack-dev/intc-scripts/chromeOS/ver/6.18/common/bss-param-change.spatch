@@ -1,0 +1,8 @@
+@@
+identifier wiphy;
+expression E;
+@@
+ieee80211_alloc_hw_nm(...)
+{...
+-wiphy->bss_param_support = E;
+...}

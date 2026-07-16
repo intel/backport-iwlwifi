@@ -70,6 +70,7 @@ defconfig-%::
 	false )
 
 backport-include/backport/autoconf.h: .config Kconfig.versions Kconfig.kernel
+backport-include/backport/autoconf.h: local-symbols
 	@$(MAKE) oldconfig
 	@echo -n "Building backport-include/backport/autoconf.h ..."
 	@grep -f local-symbols .config | (				\

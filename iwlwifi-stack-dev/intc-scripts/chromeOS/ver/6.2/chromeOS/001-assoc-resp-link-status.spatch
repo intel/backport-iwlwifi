@@ -1,0 +1,10 @@
+@@
+identifier link_id, resp, assoc_data;
+@@
+ieee80211_rx_mgmt_assoc_resp(...)
+{
+<+...
+-    resp.links[link_id].status = assoc_data->link[link_id].status;
+...+>
+}
+

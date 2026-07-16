@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2005-2014, 2018-2022 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2025 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
 #ifndef __iwl_fw_api_debug_h__
 #define __iwl_fw_api_debug_h__
+#include "dbg-tlv.h"
 
 /**
  * enum iwl_debug_cmds - debug commands
@@ -30,6 +31,11 @@ enum iwl_debug_cmds {
 	 */
 	HOST_EVENT_CFG = 0x3,
 	/**
+	 * @INVALID_WR_PTR_CMD: invalid write pointer, set in the TFD
+	 *	when it's not in use
+	 */
+	INVALID_WR_PTR_CMD = 0x6,
+	/**
 	 * @DBGC_SUSPEND_RESUME:
 	 * DBGC suspend/resume commad. Uses a single dword as data:
 	 * 0 - resume DBGC recording
@@ -42,10 +48,18 @@ enum iwl_debug_cmds {
 	 * &struct iwl_buf_alloc_cmd
 	 */
 	BUFFER_ALLOCATION = 0x8,
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+	/**
+	 * @DBG_HW_REG_RD_WR_CMD:
+	 * Provide access that will allow host to read/write addresses that
+	 * are mapped to HW, uses &struct iwl_dbg_hw_reg_rd_wr_cmd
+	 */
+	DBG_HW_REG_RD_WR_CMD = 0x9,
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 	/**
 	 * @GET_TAS_STATUS:
 	 * sends command to fw to get TAS status
-	 * the response is &struct iwl_mvm_tas_status_resp
+	 * the response is &struct iwl_tas_status_resp
 	 */
 	GET_TAS_STATUS = 0xA,
 	/**
@@ -54,7 +68,19 @@ enum iwl_debug_cmds {
 	 * &struct iwl_dbg_dump_complete_cmd
 	 */
 	FW_DUMP_COMPLETE_CMD = 0xB,
+	/**
+	 * @FW_CLEAR_BUFFER:
+	 * clears the firmware's internal buffer
+	 * no payload
+	 */
+	FW_CLEAR_BUFFER = 0xD,
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+	/**
+	 * @FW_STOP_ON_ASSERT_CMD:
+	 * sends a command to the FW signaling that the driver is in xVT mode
+	 * no payload
+	 */
+	FW_STOP_ON_ASSERT_CMD = 0xE,
 	/**
 	 * @DEBUG_HOST_NTF:
 	 * &struct iwl_adwell_fine_tune_metrics_report or
@@ -386,7 +412,7 @@ struct iwl_buf_alloc_cmd {
 #define DRAM_INFO_SECOND_MAGIC_WORD 0x89ABCDEF
 
 /**
- * struct iwL_dram_info - DRAM fragments allocation struct
+ * struct iwl_dram_info - DRAM fragments allocation struct
  *
  * Driver will fill in the first 1K(+) of the pointed DRAM fragment
  *
@@ -418,7 +444,7 @@ struct iwl_dbgc1_info {
 } __packed; /* INIT_DRAM_FRAGS_ALLOCATIONS_S_VER_1 */
 
 /**
- * struct iwl_dbg_host_event_cfg_cmd
+ * struct iwl_dbg_host_event_cfg_cmd - host event config command
  * @enabled_severities: enabled severities
  */
 struct iwl_dbg_host_event_cfg_cmd {
@@ -436,25 +462,20 @@ struct iwl_dbg_dump_complete_cmd {
 	__le32 tp_data;
 } __packed; /* FW_DUMP_COMPLETE_CMD_API_S_VER_1 */
 
-#define TAS_LMAC_BAND_HB       0
-#define TAS_LMAC_BAND_LB       1
-#define TAS_LMAC_BAND_UHB      2
-#define TAS_LMAC_BAND_INVALID  3
-
 /**
- * struct iwl_mvm_tas_status_per_mac - tas status per lmac
+ * struct iwl_tas_status_per_mac - tas status per lmac
  * @static_status: tas statically enabled or disabled per lmac - TRUE/FALSE
  * @static_dis_reason: TAS static disable reason, uses
- *	&enum iwl_mvm_tas_statically_disabled_reason
+ *	&enum iwl_tas_statically_disabled_reason
  * @dynamic_status: Current TAS  status. uses
- *	&enum iwl_mvm_tas_dyna_status
+ *	&enum iwl_tas_dyna_status
  * @near_disconnection: is TAS currently near disconnection per lmac? - TRUE/FALSE
  * @max_reg_pwr_limit: Regulatory power limits in dBm
  * @sar_limit: SAR limits per lmac in dBm
  * @band: Band per lmac
  * @reserved: reserved
  */
-struct iwl_mvm_tas_status_per_mac {
+struct iwl_tas_status_per_mac {
 	u8 static_status;
 	u8 static_dis_reason;
 	u8 dynamic_status;
@@ -463,31 +484,35 @@ struct iwl_mvm_tas_status_per_mac {
 	__le16 sar_limit;
 	u8 band;
 	u8 reserved[3];
-} __packed; /*DEBUG_GET_TAS_STATUS_PER_MAC_S_VER_1*/
+} __packed; /* DEBUG_GET_TAS_STATUS_PER_MAC_S_VER_1 */
 
 /**
- * struct iwl_mvm_tas_status_resp - Response to GET_TAS_STATUS
+ * struct iwl_tas_status_resp - Response to GET_TAS_STATUS
  * @tas_fw_version: TAS FW version
  * @is_uhb_for_usa_enable: is UHB enabled in USA? - TRUE/FALSE
  * @curr_mcc: current mcc
  * @block_list: country block list
  * @tas_status_mac: TAS status per lmac, uses
- *	&struct iwl_mvm_tas_status_per_mac
+ *	&struct iwl_tas_status_per_mac
  * @in_dual_radio: is TAS in dual radio? - TRUE/FALSE
+ * @uhb_allowed_flags: see &enum iwl_tas_uhb_allowed_flags.
+ *	This member is valid only when fw has
+ *	%IWL_UCODE_TLV_CAPA_UHB_CANADA_TAS_SUPPORT capability.
  * @reserved: reserved
  */
-struct iwl_mvm_tas_status_resp {
+struct iwl_tas_status_resp {
 	u8 tas_fw_version;
 	u8 is_uhb_for_usa_enable;
 	__le16 curr_mcc;
 	__le16 block_list[16];
-	struct iwl_mvm_tas_status_per_mac tas_status_mac[2];
+	struct iwl_tas_status_per_mac tas_status_mac[2];
 	u8 in_dual_radio;
-	u8 reserved[3];
-} __packed; /*DEBUG_GET_TAS_STATUS_RSP_API_S_VER_3*/
+	u8 uhb_allowed_flags;
+	u8 reserved[2];
+} __packed; /* DEBUG_GET_TAS_STATUS_RSP_API_S_VER_3 */
 
 /**
- * enum iwl_mvm_tas_dyna_status - TAS current running status
+ * enum iwl_tas_dyna_status - TAS current running status
  * @TAS_DYNA_INACTIVE: TAS status is inactive
  * @TAS_DYNA_INACTIVE_MVM_MODE: TAS is disabled due because FW is in MVM mode
  *	or is in softap mode.
@@ -500,7 +525,7 @@ struct iwl_mvm_tas_status_resp {
  * @TAS_DYNA_ACTIVE: TAS is currently active
  * @TAS_DYNA_STATUS_MAX: TAS status max value
  */
-enum iwl_mvm_tas_dyna_status {
+enum iwl_tas_dyna_status {
 	TAS_DYNA_INACTIVE,
 	TAS_DYNA_INACTIVE_MVM_MODE,
 	TAS_DYNA_INACTIVE_TRIGGER_MODE,
@@ -509,21 +534,102 @@ enum iwl_mvm_tas_dyna_status {
 	TAS_DYNA_ACTIVE,
 
 	TAS_DYNA_STATUS_MAX,
-}; /*_TAS_DYNA_STATUS_E*/
+};
 
 /**
- * enum iwl_mvm_tas_statically_disabled_reason - TAS statically disabled reason
+ * enum iwl_tas_statically_disabled_reason - TAS statically disabled reason
  * @TAS_DISABLED_DUE_TO_BIOS: TAS is disabled because TAS is disabled in BIOS
  * @TAS_DISABLED_DUE_TO_SAR_6DBM: TAS is disabled because SAR limit is less than 6 Dbm
  * @TAS_DISABLED_REASON_INVALID: TAS disable reason is invalid
+ * @TAS_DISABLED_DUE_TO_TABLE_SOURCE_INVALID: TAS is disabled due to
+ *	table source invalid
  * @TAS_DISABLED_REASON_MAX: TAS disable reason max value
  */
-enum iwl_mvm_tas_statically_disabled_reason {
+enum iwl_tas_statically_disabled_reason {
 	TAS_DISABLED_DUE_TO_BIOS,
 	TAS_DISABLED_DUE_TO_SAR_6DBM,
 	TAS_DISABLED_REASON_INVALID,
+	TAS_DISABLED_DUE_TO_TABLE_SOURCE_INVALID,
 
 	TAS_DISABLED_REASON_MAX,
 }; /*_TAS_STATICALLY_DISABLED_REASON_E*/
+
+/**
+ * enum iwl_fw_dbg_config_cmd_type - types of FW debug config command
+ * @DEBUG_TOKEN_CONFIG_TYPE: token config type
+ */
+enum iwl_fw_dbg_config_cmd_type {
+	DEBUG_TOKEN_CONFIG_TYPE = 0x2B,
+}; /* LDBG_CFG_CMD_TYPE_API_E_VER_1 */
+
+/* this token disables debug asserts in the firmware */
+#define IWL_FW_DBG_CONFIG_TOKEN 0x00010001
+
+/**
+ * struct iwl_fw_dbg_config_cmd - configure FW debug
+ *
+ * @type: according to &enum iwl_fw_dbg_config_cmd_type
+ * @conf: FW configuration
+ */
+struct iwl_fw_dbg_config_cmd {
+	__le32 type;
+	__le32 conf;
+} __packed; /* LDBG_CFG_CMD_API_S_VER_7 */
+
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+
+/**
+ * enum iwl_debug_hw_reg_op - HW register read/write operation
+ *
+ * @IWL_DEBUG_HW_REG_OP_READ: Read operation
+ * @IWL_DEBUG_HW_REG_OP_WRITE: Write operation
+ */
+enum iwl_debug_hw_reg_op {
+	IWL_DEBUG_HW_REG_OP_READ = 0,
+	IWL_DEBUG_HW_REG_OP_WRITE = 1,
+};
+
+/**
+ * enum iwl_dbg_hw_reg_block_type - HW register block type
+ *
+ * @IWL_DBG_HW_REG_BLOCK_TYPE_PRPH: PRPH block
+ * @IWL_DBG_HW_REG_BLOCK_TYPE_CNVI: CNVI block
+ * @IWL_DBG_HW_REG_BLOCK_TYPE_CNVR: CNVR block
+ * @IWL_DBG_HW_REG_BLOCK_TYPE_WMAL: WMAL block
+ * @IWL_DBG_HW_REG_BLOCK_TYPE_WPAL: WPAL block
+ */
+enum iwl_dbg_hw_reg_block_type {
+	IWL_DBG_HW_REG_BLOCK_TYPE_PRPH = 0,
+	IWL_DBG_HW_REG_BLOCK_TYPE_CNVI = 1,
+	IWL_DBG_HW_REG_BLOCK_TYPE_CNVR = 2,
+	IWL_DBG_HW_REG_BLOCK_TYPE_WMAL = 3,
+	IWL_DBG_HW_REG_BLOCK_TYPE_WPAL = 4,
+};
+
+/**
+ * struct iwl_dbg_hw_reg_rd_wr_cmd - HW register read/write command.
+ *
+ * (DBG_HW_REG_RD_WR_CMD = 0x9)
+ * Provide access that will allow host to read/write addresses that
+ * are mapped to HW.
+ *
+ * @operation: See &iwl_debug_hw_reg_op
+ * @lmac_id: 0: lmac1, 1: lmac2
+ * @hw_block_type: See &iwl_dbg_hw_reg_block_type
+ * @address: The address to read/write
+ * @length: Number of DWs to read (max 32).
+ *  Irrelevant for write operation as only 1 DW can be written.
+ * @data: Data to write (ignored for read)
+ */
+struct iwl_dbg_hw_reg_rd_wr_cmd {
+	__le16 operation;
+	__le16 lmac_id;
+	__le32 hw_block_type;
+	__le32 address;
+	__le32 length;
+	__le32 data;
+} __packed;
+
+#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
 
 #endif /* __iwl_fw_api_debug_h__ */

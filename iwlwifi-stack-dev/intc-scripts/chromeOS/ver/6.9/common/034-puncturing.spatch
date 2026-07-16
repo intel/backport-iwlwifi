@@ -1,0 +1,93 @@
+@@
+struct cfg80211_chan_def *chandef;
+@@
+-chandef->punctured = 0;
+
+@@
+identifier chandef;
+@@
+-&chandef->punctured
++NULL
+
+@@
+identifier chandef;
+@@
+-chandef->punctured
++0
+
+@@
+identifier eht_chandef;
+expression E, COND;
+position p;
+@@
+ieee80211_determine_ap_chan(...)
+{
+...
+if (COND) {
+...
+-	eht_chandef.punctured@p = E;
++	if (E) {
++		sdata_info(sdata,
++			   "puncturing not supported, disabling EHT\n");
++		return IEEE80211_CONN_MODE_HE;
++	}
+...
+}
+...
+}
+
+@@
+identifier he_chandef;
+expression E, COND;
+position p;
+@@
+ieee80211_chandef_he_6ghz_oper(...)
+{
+...
+if (COND) {
+...
+} else {
+...
+-	he_chandef.punctured@p = E;
++	if (E)
++		return false;
+...
+}
+...
+}
+
+@assign@
+expression chandef, E;
+position p;
+@@
+chandef.punctured@p = E
+
+@@
+expression chandef;
+position p != assign.p;
+@@
+-chandef.punctured@p
++0
+
+@@
+identifier new_chandef;
+expression COND1, COND2, E, COND3;
+position p;
+@@
+ieee80211_parse_ch_switch_ie(...)
+{
+...
+if (COND1) {
+...
+-if (COND2)
+-    new_chandef.punctured@p = E;
++if (COND2 && E) {
++	if (!unprot_action)
++		sdata_info(sdata,
++			   "puncturing not supported, disconnect in CSA\n");
++	return -EINVAL;
++}
+...
+} else if (COND3) { ... }
+...
+}

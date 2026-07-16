@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2005-2014, 2018-2021 Intel Corporation
+ * Copyright (C) 2005-2014, 2018-2025 Intel Corporation
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
  */
 #include "iwl-trans.h"
@@ -9,17 +9,20 @@
 #include "iwl-csr.h"
 
 #include "xvt.h"
-#include "iwl-dnt-cfg.h"
 #include "fw/dbg.h"
 #include "fw/testmode.h"
 #include "fw/api/power.h"
 #include "fw/pnvm.h"
 
-#define XVT_UCODE_ALIVE_TIMEOUT	(HZ * CPTCFG_IWL_TIMEOUT_FACTOR)
+#ifdef CPTCFG_IWLWIFI_PRE_SILICON_SUPPORT
+#define XVT_UCODE_ALIVE_TIMEOUT	(HZ * iwl_timeout_factor)
+#else
+#define XVT_UCODE_ALIVE_TIMEOUT	HZ
+#endif
 
 struct iwl_xvt_alive_data {
+	__le32 sku_id[3];
 	bool valid;
-	u32 scd_base_addr;
 };
 
 static int iwl_xvt_send_dqa_cmd(struct iwl_xvt *xvt)
@@ -48,8 +51,8 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 	struct iwl_xvt_alive_data *alive_data = data;
 	struct xvt_alive_resp_ver2 *palive2;
 	struct iwl_alive_ntf_v3 *palive3;
-	struct iwl_alive_ntf_v4 *palive4;
-	struct iwl_alive_ntf_v5 *palive5;
+	struct iwl_alive_ntf_v7 *palive7;
+	struct iwl_alive_ntf *palive8;
 	struct iwl_lmac_alive *lmac1, *lmac2;
 	struct iwl_umac_alive *umac;
 	u32 rx_packet_payload_size = iwl_rx_packet_payload_len(pkt);
@@ -64,7 +67,6 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 
 		lmac_error_event_table =
 			le32_to_cpu(palive2->error_event_table_ptr);
-		alive_data->scd_base_addr = le32_to_cpu(palive2->scd_base_ptr);
 
 		alive_data->valid = le16_to_cpu(palive2->status) ==
 				    IWL_ALIVE_STATUS_OK;
@@ -91,44 +93,56 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 			umac = &palive3->umac_data;
 
 			IWL_DEBUG_FW(xvt, "Alive VER3\n");
-		} else if (rx_packet_payload_size == sizeof(*palive4)) {
+		} else if (version == 6 || version == 7) {
+			/* v5-7 are compatible (only IMR/flags addition) */
 			__le32 lmac2_err_ptr;
 
-			palive4 = (void *)pkt->data;
-			status = le16_to_cpu(palive4->status);
-			flags = le16_to_cpu(palive4->flags);
-			lmac1 = &palive4->lmac_data[0];
-			lmac2 = &palive4->lmac_data[1];
-			umac = &palive4->umac_data;
+			palive7 = (void *)pkt->data;
+			status = le16_to_cpu(palive7->status);
+			flags = le16_to_cpu(palive7->flags);
+			lmac1 = &palive7->lmac_data[0];
+			lmac2 = &palive7->lmac_data[1];
+			umac = &palive7->umac_data;
 			lmac2_err_ptr = lmac2->dbg_ptrs.error_event_table_ptr;
 			xvt->trans->dbg.lmac_error_event_table[1] =
 				le32_to_cpu(lmac2_err_ptr);
 
-			IWL_DEBUG_FW(xvt, "Alive VER4\n");
-		} else if (version == 5 || version == 6) {
-			/* v5 and v6 are compatible (only IMR addition) */
-			__le32 lmac2_err_ptr;
-
-			palive5 = (void *)pkt->data;
-			status = le16_to_cpu(palive5->status);
-			flags = le16_to_cpu(palive5->flags);
-			lmac1 = &palive5->lmac_data[0];
-			lmac2 = &palive5->lmac_data[1];
-			umac = &palive5->umac_data;
-			lmac2_err_ptr = lmac2->dbg_ptrs.error_event_table_ptr;
-			xvt->trans->dbg.lmac_error_event_table[1] =
-				le32_to_cpu(lmac2_err_ptr);
-
-			xvt->trans->sku_id[0] = le32_to_cpu(palive5->sku_id.data[0]);
-			xvt->trans->sku_id[1] = le32_to_cpu(palive5->sku_id.data[1]);
-			xvt->trans->sku_id[2] = le32_to_cpu(palive5->sku_id.data[2]);
+			BUILD_BUG_ON(sizeof(alive_data->sku_id) !=
+				     sizeof(palive7->sku_id.data));
+			memcpy(alive_data->sku_id, palive7->sku_id.data,
+			       sizeof(palive7->sku_id.data));
 
 			IWL_DEBUG_FW(xvt,
 				     "Alive VER%d - Got sku_id: 0x0%x 0x0%x 0x0%x\n",
 				     version,
-				     xvt->trans->sku_id[0],
-				     xvt->trans->sku_id[1],
-				     xvt->trans->sku_id[2]);
+				     le32_to_cpu(alive_data->sku_id[0]),
+				     le32_to_cpu(alive_data->sku_id[1]),
+				     le32_to_cpu(alive_data->sku_id[2]));
+		} else if (rx_packet_payload_size == sizeof(*palive8)) {
+			/* v8 compatible (only platform_id addition) */
+			__le32 lmac2_err_ptr;
+
+			palive8 = (void *)pkt->data;
+			status = le16_to_cpu(palive8->status);
+			flags = le16_to_cpu(palive8->flags);
+			lmac1 = &palive8->lmac_data[0];
+			lmac2 = &palive8->lmac_data[1];
+			umac = &palive8->umac_data;
+			lmac2_err_ptr = lmac2->dbg_ptrs.error_event_table_ptr;
+			xvt->trans->dbg.lmac_error_event_table[1] =
+				le32_to_cpu(lmac2_err_ptr);
+
+			BUILD_BUG_ON(sizeof(alive_data->sku_id) !=
+				     sizeof(palive8->sku_id.data));
+			memcpy(alive_data->sku_id, palive8->sku_id.data,
+			       sizeof(palive8->sku_id.data));
+
+			IWL_DEBUG_FW(xvt,
+				     "Alive VER%d - Got sku_id: 0x0%x 0x0%x 0x0%x\n",
+				     version,
+				     le32_to_cpu(alive_data->sku_id[0]),
+				     le32_to_cpu(alive_data->sku_id[1]),
+				     le32_to_cpu(alive_data->sku_id[2]));
 		} else {
 			IWL_ERR(xvt, "unrecognized alive notificatio\n");
 			return false;
@@ -137,8 +151,6 @@ static bool iwl_alive_fn(struct iwl_notif_wait_data *notif_wait,
 		alive_data->valid = status == IWL_ALIVE_STATUS_OK;
 		lmac_error_event_table =
 			le32_to_cpu(lmac1->dbg_ptrs.error_event_table_ptr);
-		alive_data->scd_base_addr =
-			le32_to_cpu(lmac1->dbg_ptrs.scd_base_ptr);
 		iwl_tm_set_fw_ver(xvt->trans, le32_to_cpu(lmac1->ucode_major),
 				  le32_to_cpu(lmac1->ucode_minor));
 		umac_error_event_table =
@@ -165,8 +177,7 @@ static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
 					 enum iwl_ucode_type ucode_type)
 {
 	struct iwl_notification_wait alive_wait;
-	struct iwl_xvt_alive_data alive_data;
-	const struct fw_img *fw;
+	struct iwl_xvt_alive_data alive_data = {};
 	int ret;
 	enum iwl_ucode_type old_type = xvt->fwrt.cur_fw_img;
 	static const u16 alive_cmd[] = { UCODE_ALIVE_NTFY };
@@ -182,19 +193,16 @@ static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
 			};
 
 	iwl_fw_set_current_image(&xvt->fwrt, ucode_type);
-	fw = iwl_get_ucode_image(xvt->fw, ucode_type);
 
-	if (!fw)
-		return -EINVAL;
+	if (xvt->sw_stack_cfg.fw_dbg_flags & ~IWL_XVT_DBG_FLAGS_NO_DEFAULT_TXQ)
+		return -EOPNOTSUPP;
 
 	iwl_init_notification_wait(&xvt->notif_wait, &alive_wait,
 				   alive_cmd, ARRAY_SIZE(alive_cmd),
 				   iwl_alive_fn, &alive_data);
 
-	ret = iwl_trans_start_fw_dbg(xvt->trans, fw,
-				     ucode_type == IWL_UCODE_INIT,
-				     (xvt->sw_stack_cfg.fw_dbg_flags &
-				     ~IWL_XVT_DBG_FLAGS_NO_DEFAULT_TXQ));
+	ret = iwl_trans_start_fw(xvt->trans, xvt->fw, ucode_type,
+				 ucode_type == IWL_UCODE_INIT);
 	if (ret) {
 		iwl_fw_set_current_image(&xvt->fwrt, old_type);
 		iwl_remove_notification(&xvt->notif_wait, &alive_wait);
@@ -208,6 +216,7 @@ static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
 	ret = iwl_wait_notification(&xvt->notif_wait, &alive_wait,
 				    XVT_UCODE_ALIVE_TIMEOUT);
 	if (ret) {
+		IWL_ERR(xvt, "XVT: ret:%d\n", ret);
 		iwl_fw_set_current_image(&xvt->fwrt, old_type);
 		return ret;
 	}
@@ -221,14 +230,15 @@ static int iwl_xvt_load_ucode_wait_alive(struct iwl_xvt *xvt,
 	/* fresh firmware was loaded */
 	xvt->fw_error = false;
 
-	ret = iwl_pnvm_load(xvt->trans, &xvt->notif_wait);
+	iwl_trans_fw_alive(xvt->trans);
+
+	ret = iwl_xvt_pnvm_load(xvt->trans, &xvt->notif_wait,
+				xvt->fw, alive_data.sku_id);
 	if (ret) {
 		IWL_ERR(xvt, "Timeout waiting for PNVM load!\n");
 		iwl_fw_set_current_image(&xvt->fwrt, old_type);
 		return ret;
 	}
-
-	iwl_trans_fw_alive(xvt->trans, alive_data.scd_base_addr);
 
 	ret = iwl_init_paging(&xvt->fwrt, ucode_type);
 	if (ret)
@@ -292,7 +302,7 @@ static int iwl_xvt_config_ltr(struct iwl_xvt *xvt)
 		.flags = cpu_to_le32(LTR_CFG_FLAG_FEATURE_ENABLE),
 	};
 
-	if (!xvt->trans->ltr_enabled)
+	if (!iwl_trans_is_ltr_enabled(xvt->trans))
 		return 0;
 
 	return iwl_xvt_send_cmd_pdu(xvt, LTR_CONFIG, 0, sizeof(cmd), &cmd);
@@ -342,6 +352,28 @@ int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type)
 	iwl_dbg_tlv_time_point(&xvt->fwrt, IWL_FW_INI_TIME_POINT_AFTER_ALIVE,
 			       NULL);
 
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+	/*
+	 * After the FW is alive, and only if the capability bit is set,
+	 * the xVT driver shall send a command to signal xVT mode.
+	 */
+	if (fw_has_capa(&xvt->fw->ucode_capa,
+			IWL_UCODE_TLV_CAPA_RESET_DURING_ASSERT)) {
+		ret = iwl_xvt_send_cmd_pdu(xvt, WIDE_ID(DEBUG_GROUP,
+							FW_STOP_ON_ASSERT_CMD),
+					   0, 0, NULL);
+		if (ret < 0) {
+			IWL_ERR(xvt,
+				"failed to send FW_STOP_ON_ASSERT_CMD (%d)\n",
+				ret);
+			iwl_fw_dbg_stop_sync(&xvt->fwrt);
+			iwl_trans_stop_device(xvt->trans);
+			return ret;
+		}
+	}
+#endif
+
+	iwl_fw_disable_dbg_asserts(&xvt->fwrt);
 	iwl_get_shared_mem_conf(&xvt->fwrt);
 
 	if (iwl_xvt_is_unified_fw(xvt)) {
@@ -354,7 +386,6 @@ int iwl_xvt_run_fw(struct iwl_xvt *xvt, u32 ucode_type)
 			return ret;
 		}
 	}
-	iwl_dnt_start(xvt->trans);
 
 	if (xvt->fwrt.cur_fw_img == IWL_UCODE_REGULAR &&
 	    (!fw_has_capa(&xvt->fw->ucode_capa,

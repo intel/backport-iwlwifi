@@ -13,9 +13,9 @@ config IWL7000
 
 	# things mac80211 selects
 	select CRYPTO
-	select CRYPTO_ARC4
 	select CRYPTO_AES
 	select CRYPTO_CCM
+	select CRYPTO_LIB_ARC4
 	select CRC32
 	select AVERAGE
 
@@ -42,17 +42,11 @@ config IWL7000_TRACING
 	depends on IWL7000
 	depends on EVENT_TRACING
 
-config IWL7000_TESTMODE
-	def_bool y
-	depends on IWL7000
-	depends on NL80211_TESTMODE
-
 config IWL7000_XVT
 	tristate "Enable IWL7000 XVT (production test) code"
 	depends on 64BIT
 	default m
 	depends on IWL7000
-	depends on IWL7000_TESTMODE
 
 config IWL7000_VENDOR_CMDS
 	bool "enable vendor commands"
@@ -65,3 +59,8 @@ config IWL7000_VENDOR_CMDS
 
 	  This option mostly exists for non-upstream tagging, so best
 	  leave it set to Y.
+
+config IWL7000_MLD
+	tristate "Enable IWL7000 MLD operation mode"
+	default m
+	depends on IWL7000

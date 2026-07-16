@@ -1,0 +1,19 @@
+@@
+@@
+-#include <linux/acpi_amd_wbrf.h>
+
+@@
+@@
+-get_chan_freq_boundary(...) { ... }
+
+@@
+@@
+-get_ranges_from_chandef(...) { ... }
+
+@@
+identifier fn =~ "ieee80211_check_wbrf_support|ieee80211_add_wbrf|ieee80211_remove_wbrf";
+@@
+fn(...)
+{
+-...
+}

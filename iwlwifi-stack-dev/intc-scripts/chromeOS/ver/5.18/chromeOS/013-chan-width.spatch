@@ -1,0 +1,24 @@
+// this is needed because NL80211_CHAN_WIDTH_320 is a define
+// (and the others on older versions)
+@@
+expression E;
+@@
+-switch (E) {
++switch ((int)E) {
+case
+(
+NL80211_CHAN_WIDTH_1
+|
+NL80211_CHAN_WIDTH_2
+|
+NL80211_CHAN_WIDTH_4
+|
+NL80211_CHAN_WIDTH_8
+|
+NL80211_CHAN_WIDTH_16
+|
+NL80211_CHAN_WIDTH_320
+)
+:
+...
+}

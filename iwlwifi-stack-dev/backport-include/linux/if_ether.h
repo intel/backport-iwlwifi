@@ -61,4 +61,8 @@
 #define ETH_MAX_MTU	0xFFFFU
 #endif
 
+#ifndef MAC_ADDR_STR_LEN
+#define MAC_ADDR_STR_LEN (3 * ETH_ALEN - 1)
+#endif
+
 #endif /* __BACKPORT_IF_ETHER_H */

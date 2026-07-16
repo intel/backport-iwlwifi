@@ -1,0 +1,18 @@
+// this is needed since NL80211_BAND_LC is a define here
+// (and the others on older versions)
+@@
+expression E;
+@@
+-switch (E) {
++switch ((int)E) {
+case
+(
+NL80211_BAND_S1GHZ
+|
+NL80211_BAND_LC
+|
+NL80211_BAND_6GHZ
+)
+:
+...
+}

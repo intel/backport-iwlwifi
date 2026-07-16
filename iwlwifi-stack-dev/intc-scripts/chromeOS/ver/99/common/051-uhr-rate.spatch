@@ -1,0 +1,23 @@
+@@
+expression E;
+@@
+switch (E) {
+case STA_STATS_RATE_TYPE_UHR:
+-...
++WARN_ONCE(1, "UHR not supported on this kernel version\n");
+ break;
+}
+
+@@
+expression E;
+identifier ri;
+@@
+switch (E) {
+-case RX_ENC_UHR: ri.flags |= RATE_INFO_FLAGS_UHR_MCS; ... break;
+}
+
+@@
+expression flags;
+@@
+-flags & RATE_INFO_FLAGS_UHR_MCS
++false

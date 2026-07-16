@@ -8,7 +8,7 @@
 #   * 2 -> code-review=-1
 # - stdout is shown in the review comment
 #
-import sys, subprocess, os, re, time
+import sys, subprocess, os, re, time, tempfile, glob
 from lib import git
 from lib.copyright_checker import check_copyright
 
@@ -17,10 +17,7 @@ COPYRIGHT_FILE_TYPES = set(['c', 'h'])
 def run_checkpatch(output_dir, http_root):
     ignore = [
         'GERRIT_CHANGE_ID',
-        'BLOCK_COMMENT_STYLE',
         'NETWORKING_BLOCK_COMMENT_STYLE',
-        'FILE_PATH_CHANGES',
-        'SYMBOLIC_PERMS',
     ]
     p = subprocess.Popen(["git", "format-patch", "-U20", "--stdout", "HEAD~1.."],
                          stdout=subprocess.PIPE, universal_newlines=True,
@@ -50,6 +47,7 @@ def run_checkpatch(output_dir, http_root):
         retval |= 1
 
     p = subprocess.Popen(["./intc-scripts/checkpatch.pl", "--no-tree",
+                          "--max-line-length=80", "--codespell",
                           "--strict", "--ignore=%s" % ','.join(ignore), "-"],
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          stdin=subprocess.PIPE, universal_newlines=True,
@@ -172,9 +170,9 @@ def _check_origin(v, req):
 
 def check_internal_names():
     int_names = ['pulsar', 'windstorm', 'wsp', 'lnp' , 'lightning', 'snowfield', 'sfp', 'thunder',
-		 'thp', 'lincoln', 'lcp', 'cleaveland', 'cleveland', 'cvp', 'jefferson', 'jfp', 'sandy',
+		 'thp', 'lincoln', 'cleaveland', 'cleveland', 'cvp', 'jefferson', 'jfp', 'sandy',
 		 'sdp', 'wilkins', 'wkp', 'stone', 'stp', 'lighthouse', 'lhp', 'oak', 'okp',
-                 'solar', 'typhoon',
+                 'solar', 'typhoon', 'gale', 'whale', 'scorpius', 'filmore',
 		 'cherrytrail', 'cht', 'broxton', 'bxt', 'sofia', 'brtns', 'brighton', 'btns', 'phoenix', 'gsd',
 		 'goldsand', 'google', 'asus', 'rockchip', 'quasar', 'qsr', 'icp', 'hrp', 'gfp', 'garfield',
 		 'blazar', 'fmp', 'magnetar', 'mrp', 'msp', ]
@@ -218,6 +216,35 @@ def check_internal_names():
         print('Avoid mentioning %s in code' % (','.join(diff_found)))
         ret = 1
     return ret
+
+def check_kernel_doc():
+    def run_kerneldoc(checkdir):
+        cwd = os.getcwd()
+        try:
+            os.chdir(checkdir)
+            files = glob.glob('net/**/*.[ch]', recursive=True)
+            files += glob.glob('drivers/**/*.[ch]', recursive=True)
+            # looks like our version doesn't have -none yet
+            warnings = subprocess.run(['./scripts/kernel-doc', '-Wall', '-none'] + files,
+                                      stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE).stderr.split(b'\n')
+            warnings = [w for w in warnings if b'warning:' in w or b'error:' in w]
+            warnings.sort()
+            return warnings
+        finally:
+            os.chdir(cwd)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        subprocess.run(['git', 'clone', '-q', '--reference', os.getcwd(), os.getcwd(), tmpdir],
+                       stderr=subprocess.PIPE)
+        sha1 = subprocess.run(['git', 'rev-parse', 'HEAD'], stdout=subprocess.PIPE).stdout.strip()
+        subprocess.run(['git', '-C', tmpdir, 'reset', '-q', '--hard', sha1])
+        result = 0
+        for warning in run_kerneldoc(tmpdir):
+            result = 1
+            print(warning.decode('utf-8'))
+        subprocess.run(['git', '-C', tmpdir, 'reset', '-q', '--hard', 'HEAD^'])
+        return result
 
 def check_metadata():
     msg = git.commit_message("HEAD")
@@ -272,11 +299,29 @@ def check_metadata():
             r |= 2
 
     if (not ('type' in found and found['type'] == 'maint') and
-        not re.search("^(\[.*\] )?wifi:", subj)):
+        not re.search(r"^(\[.*\] )?wifi:", subj)):
         print('most patches should have "wifi: " prefix')
         r |= 1
 
     return r
+
+def check_message_body():
+    msg = git.commit_message("HEAD")
+    # Extract the commit message body
+    body_lines = []
+    for line in msg.split('\n')[1:]:
+        if line.startswith("type="):
+            break
+        else:
+            body_lines.append(line.strip())
+
+    if not any(body_lines):
+        print("Commit message body must not be empty")
+        return 1
+    return 0
+
+def copyright_filter_out(filename):
+    return filename.startswith(b'intc-scripts/chromeOS/ver/')
 
 if __name__ == "__main__":
     output_dir = sys.argv[1]
@@ -289,7 +334,8 @@ if __name__ == "__main__":
         ret = 0
         ret |= run_checkpatch(output_dir, http_root)
 
-        ret |= check_copyright(COPYRIGHT_FILE_TYPES)
+        ret |= check_copyright(COPYRIGHT_FILE_TYPES,
+                               filter_out_fn=copyright_filter_out)
 
         if branch[:8] == 'release/':
             ret |= check_branch_changeid()
@@ -297,6 +343,10 @@ if __name__ == "__main__":
         ret |= check_metadata()
 
         ret |= check_internal_names()
+
+        ret |= check_kernel_doc()
+
+        ret |= check_message_body()
 
         sys.exit(ret)
     except Exception as e:

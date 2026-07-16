@@ -93,4 +93,5 @@ void __iwl_dbg(struct device *dev,
 	va_end(args);
 }
 IWL_EXPORT_SYMBOL(__iwl_dbg);
+
 #endif

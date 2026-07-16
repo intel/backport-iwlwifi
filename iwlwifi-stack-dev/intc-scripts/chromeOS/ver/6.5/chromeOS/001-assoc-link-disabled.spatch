@@ -1,0 +1,6 @@
+@@
+struct cfg80211_assoc_request *req;
+expression link_id;
+@@
+-req->links[link_id].disabled
++false

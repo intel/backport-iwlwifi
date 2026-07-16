@@ -1,0 +1,3 @@
+#define SKB_CONSUMED (SKB_DROP_REASON_MAX + 1)
+#define VISIBLE_IF_KUNIT static
+#define EXPORT_SYMBOL_IF_KUNIT(...)

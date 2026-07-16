@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (C) 2022 Intel Corporation
+ * Copyright (C) 2022-2024 Intel Corporation
  */
 
 #include <linux/device.h>
@@ -68,6 +68,7 @@ EXPORT_SYMBOL_GPL(_mei_cldev_enabled);
 
 int _mei_cldev_disable(struct mei_cl_device *cldev)
 {
+	cancel_work_sync(&mei_sim_dev->rx_work);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(_mei_cldev_disable);
@@ -244,7 +245,11 @@ void *_mei_cldev_dma_map(struct mei_cl_device *cldev,
 }
 EXPORT_SYMBOL_GPL(_mei_cldev_dma_map);
 
-static int mei_sim_match(struct device *dev, struct device_driver *driver)
+static int mei_sim_match(struct device *dev,
+#if LINUX_VERSION_IS_GEQ(6,11,0)
+			 const
+#endif
+			 struct device_driver *driver)
 {
 	/* Only have 1 device and 1 driver registered, so should always be ok */
 	return 1;

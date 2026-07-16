@@ -1,0 +1,15 @@
+@@
+struct cfg80211_pmsr_request_peer *peer;
+@@
+-peer->ftm.trigger_based
++0
+@@
+struct cfg80211_pmsr_request_peer *peer;
+@@
+-peer->ftm.non_trigger_based
++0
+
+@@
+@@
+-BIT(NL80211_PREAMBLE_HE)
++0

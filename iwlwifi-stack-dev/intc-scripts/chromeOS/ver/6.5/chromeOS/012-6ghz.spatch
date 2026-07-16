@@ -1,0 +1,5 @@
+@@
+identifier params, idx, tmp;
+@@
+-tmp = params[idx].psd_20;
++tmp = IEEE80211_RNR_TBTT_PARAMS_PSD_RESERVED;

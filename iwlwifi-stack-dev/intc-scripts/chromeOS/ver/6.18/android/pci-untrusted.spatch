@@ -1,0 +1,5 @@
+@@
+struct pci_dev *pdev;
+@@
+-pdev->untrusted
++pdev->requires_dma_protection

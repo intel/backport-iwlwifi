@@ -1,0 +1,10 @@
+@@
+struct wiphy_iftype_ext_capab *ec;
+@@
+-ec->ext_mld_capa_and_ops
++0
+
+@@
+expression E;
+@@
+-mld->ext_capab[0].ext_mld_capa_and_ops = E;

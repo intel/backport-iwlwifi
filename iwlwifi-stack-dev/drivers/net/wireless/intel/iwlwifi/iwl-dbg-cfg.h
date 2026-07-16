@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause */
 /*
- * Copyright (C) 2013-2015, 2018-2022 Intel Corporation
+ * Copyright (C) 2013-2015, 2018-2026 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  */
 #if !defined(__IWL_DBG_CFG_H__) || defined(DBG_CFG_REINCLUDE)
@@ -25,6 +25,7 @@ struct iwl_dbg_cfg {
 
 #define IWL_DBG_CFG(type, name)		type name;
 #define IWL_DBG_CFG_NODEF(type, name)	type name;
+#define IWL_DBG_CFG_DEF(type, name, v)	type name;
 #define IWL_DBG_CFG_BIN(name)		struct iwl_dbg_cfg_bin name;
 #define IWL_DBG_CFG_STR(name)	const char *name;
 #define IWL_DBG_CFG_BINA(name, max)	struct iwl_dbg_cfg_bin name[max]; \
@@ -43,8 +44,12 @@ struct iwl_dbg_cfg {
 	IWL_MOD_PARAM(bool, xvt_default_mode)
 #endif
 	IWL_DBG_CFG_NODEF(bool, disable_wrt_dump)
+	IWL_DBG_CFG_NODEF(u32, wrt_filter_timepoints)
 	IWL_DBG_CFG_NODEF(bool, disable_52GHz)
 	IWL_DBG_CFG_NODEF(bool, disable_24GHz)
+	IWL_DBG_CFG_DEF(bool, FW_MISBEHAVE_NMI,
+			CPTCFG_IWLWIFI_FW_MISBEHAVE_NMI_DEFAULT)
+	IWL_DBG_CFG_NODEF(bool, enable_dbg_asserts)
 #if IS_ENABLED(CPTCFG_IWLMVM)
 	IWL_DBG_CFG_NODEF(u32, MVM_CALIB_OVERRIDE_CONTROL)
 	IWL_DBG_CFG_NODEF(u32, MVM_CALIB_INIT_FLOW)
@@ -56,6 +61,7 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(bool, enable_timestamp_marker_cmd)
 #endif
 	IWL_DBG_CFG_NODEF(bool, STARTUP_RFKILL)
+	IWL_DBG_CFG_NODEF(bool, mac80211_strict)
 #if IS_ENABLED(CPTCFG_IWLMVM)
 	IWL_DBG_CFG(u32, MVM_DEFAULT_PS_TX_DATA_TIMEOUT)
 	IWL_DBG_CFG(u32, MVM_DEFAULT_PS_RX_DATA_TIMEOUT)
@@ -90,8 +96,6 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(bool, MVM_FW_BCAST_FILTER_PASS_ALL)
 	IWL_DBG_CFG(bool, MVM_TOF_IS_RESPONDER)
 	IWL_DBG_CFG(bool, MVM_P2P_LOWLATENCY_PS_ENABLE)
-	IWL_DBG_CFG(bool, MVM_HW_CSUM_DISABLE)
-	IWL_DBG_CFG(bool, MVM_PARSE_NVM)
 	IWL_DBG_CFG(bool, MVM_ADWELL_ENABLE)
 	IWL_DBG_CFG(u16, MVM_ADWELL_MAX_BUDGET)
 	IWL_DBG_CFG(u32, MVM_TCM_LOAD_MEDIUM_THRESH)
@@ -101,21 +105,11 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_RANGE(u8, MVM_UAPSD_NOAGG_LIST_LEN,
 			  1, IWL_MVM_UAPSD_NOAGG_BSSIDS_NUM)
 	IWL_DBG_CFG(bool, MVM_NON_TRANSMITTING_AP)
-	IWL_DBG_CFG(u32, MVM_PHY_FILTER_CHAIN_A)
-	IWL_DBG_CFG(u32, MVM_PHY_FILTER_CHAIN_B)
-	IWL_DBG_CFG(u32, MVM_PHY_FILTER_CHAIN_C)
-	IWL_DBG_CFG(u32, MVM_PHY_FILTER_CHAIN_D)
-#ifdef CPTCFG_IWLMVM_ADVANCED_QUOTA_MGMT
-	IWL_DBG_CFG(bool, MVM_DYNQUOTA_DISABLED)
-	IWL_DBG_CFG_RANGE(u8, MVM_DYNQUOTA_MIN_PERCENT, 0, 100)
-	IWL_DBG_CFG_RANGE(u8, MVM_DYNQUOTA_GUARD_PERCENT, 0, 100)
-	IWL_DBG_CFG_RANGE(u8, MVM_DYNQUOTA_HIGH_WM_PERCENT, 0, 100)
-	IWL_DBG_CFG_RANGE(u8, MVM_DYNQUOTA_LOW_WM_PERCENT, 0, 100)
-	IWL_DBG_CFG_RANGE(u8, MVM_DYNQUOTA_START_PERCENT, 0, 100)
-	IWL_DBG_CFG_RANGE(u8, MVM_DYNQUOTA_INC_HIGH_PERCENT, 0, 100)
-	IWL_DBG_CFG_RANGE(u8, MVM_LOWLAT_QUOTA_MIN_PCT_P2PCLIENT, 0, 100)
-	IWL_DBG_CFG_RANGE(u8, MVM_LOWLAT_QUOTA_MIN_PCT_P2PGO, 0, 100)
-#endif /* CPTCFG_IWLMVM_ADVANCED_QUOTA_MGMT */
+	IWL_DBG_CFG(u16, MVM_CONN_LISTEN_INTERVAL)
+	IWL_DBG_CFG_NODEF(u32, MVM_PHY_FILTER_CHAIN_A)
+	IWL_DBG_CFG_NODEF(u32, MVM_PHY_FILTER_CHAIN_B)
+	IWL_DBG_CFG_NODEF(u32, MVM_PHY_FILTER_CHAIN_C)
+	IWL_DBG_CFG_NODEF(u32, MVM_PHY_FILTER_CHAIN_D)
 	IWL_DBG_CFG(u8, MVM_QUOTA_THRESHOLD)
 	IWL_DBG_CFG(u8, MVM_RS_RSSI_BASED_INIT_RATE)
 	IWL_DBG_CFG(u8, MVM_RS_80_20_FAR_RANGE_TWEAK)
@@ -158,6 +152,8 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(u8, MVM_FTM_INITIATOR_ALGO)
 	IWL_DBG_CFG(bool, MVM_FTM_INITIATOR_DYNACK)
 	IWL_DBG_CFG(bool, MVM_FTM_LMR_FEEDBACK_TERMINATE)
+	IWL_DBG_CFG(bool, MVM_FTM_TEST_INCORRECT_SAC)
+	IWL_DBG_CFG_NODEF(bool, MVM_FTM_TEST_BAD_SLTF)
 	IWL_DBG_CFG_NODEF(bool, MVM_FTM_INITIATOR_MCSI_ENABLED)
 	IWL_DBG_CFG_NODEF(int, MVM_FTM_INITIATOR_COMMON_CALIB)
 	IWL_DBG_CFG_NODEF(bool, MVM_FTM_INITIATOR_FAST_ALGO_DISABLE)
@@ -175,7 +171,6 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(bool, MVM_TWT_TESTMODE)
 	IWL_DBG_CFG(u32, MVM_AMPDU_CONSEC_DROPS_DELBA)
 	IWL_MVM_MOD_PARAM(int, power_scheme)
-	IWL_MVM_MOD_PARAM(bool, init_dbg)
 	IWL_DBG_CFG(bool, MVM_FTM_INITIATOR_ENABLE_SMOOTH)
 	IWL_DBG_CFG_RANGE(u8, MVM_FTM_INITIATOR_SMOOTH_ALPHA, 0, 100)
 	/* 667200 is 200m RTT */
@@ -183,8 +178,6 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_RANGE(u32, MVM_FTM_INITIATOR_SMOOTH_OVERSHOOT, 0, 667200)
 	IWL_DBG_CFG(u32, MVM_FTM_INITIATOR_SMOOTH_AGE_SEC)
 	IWL_DBG_CFG(bool, MVM_DISABLE_AP_FILS)
-	IWL_DBG_CFG_STR(ppag_allowed)
-	IWL_DBG_CFG_STR(tas_allowed)
 	IWL_DBG_CFG(u32, MVM_6GHZ_PASSIVE_SCAN_TIMEOUT)
 	IWL_DBG_CFG(u32, MVM_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT)
 	IWL_DBG_CFG_NODEF(u32, system_features_control_1)
@@ -194,58 +187,63 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG(bool, MVM_MEI_REPORT_RFKILL)
 	IWL_DBG_CFG(u8, MVM_MIN_BEACON_INTERVAL_TU)
 	IWL_DBG_CFG_RANGE(u8, MVM_ADAPTIVE_DWELL_NUM_APS_OVERRIDE, 0, 10)
+	IWL_DBG_CFG(bool, MVM_AUTO_EML_ENABLE)
+
 #endif /* CPTCFG_IWLMVM */
-#ifdef CPTCFG_IWLWIFI_DEVICE_TESTMODE
-	IWL_DBG_CFG_NODEF(u32, dnt_out_mode)
-	/* XXX: should be dbgm_ or dbg_mon_ for consistency? */
-	IWL_DBG_CFG_NODEF(u32, dbm_destination_path)
-	/* XXX: should be dbg_mon_ for consistency? */
-	IWL_DBG_CFG_NODEF(u32, dbgm_enable_mode)
-	IWL_DBG_CFG_NODEF(u32, dbgm_mem_power)
-	IWL_DBG_CFG_NODEF(u32, dbg_flags)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_sample_ctl_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_sample_ctl_val)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_buff_base_addr_reg_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_buff_end_addr_reg_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_data_sel_ctl_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_data_sel_ctl_val)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_mc_msk_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_mc_msk_val)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_sample_mask_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_sample_mask_val)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_start_mask_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_start_mask_val)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_end_mask_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_end_mask_val)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_end_threshold_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_end_threshold_val)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_sample_period_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_sample_period_val)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_wr_ptr_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_cyc_cnt_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_dmarb_rd_ctl_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_dmarb_rd_data_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_marbh_conf_reg)
-	IWL_DBG_CFG_NODEF(u32, dbg_marbh_conf_mask)
-	IWL_DBG_CFG_NODEF(u32, dbg_marbh_access_type)
-	IWL_DBG_CFG_NODEF(u32, dbgc_hb_base_addr)
-	IWL_DBG_CFG_NODEF(u32, dbgc_hb_end_addr)
-	IWL_DBG_CFG_NODEF(u32, dbgc_dram_wrptr_addr)
-	IWL_DBG_CFG_NODEF(u32, dbgc_wrap_count_addr)
-	IWL_DBG_CFG_NODEF(u32, dbg_mipi_conf_reg)
-	IWL_DBG_CFG_NODEF(u32, dbg_mipi_conf_mask)
-	IWL_DBG_CFG_NODEF(u32, dbgc_hb_base_val_smem)
-	IWL_DBG_CFG_NODEF(u32, dbgc_hb_end_val_smem)
-	IWL_DBG_CFG_BIN(dbg_conf_monitor_host_command)
-	IWL_DBG_CFG_BIN(log_level_cmd)
-	IWL_DBG_CFG_BINA(ldbg_cmd, 32)
-	IWL_DBG_CFG_NODEF(u8, log_level_cmd_id)
-	IWL_DBG_CFG_NODEF(u8, dbg_conf_monitor_cmd_id)
-	IWL_DBG_CFG_NODEF(u8, ldbg_cmd_nums)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_buff_base_addr_reg_addr_b_step)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_buff_end_addr_reg_addr_b_step)
-	IWL_DBG_CFG_NODEF(u32, dbg_mon_wr_ptr_addr_b_step)
-#endif /* CPTCFG_IWLWIFI_DEVICE_TESTMODE */
+#if IS_ENABLED(CPTCFG_IWLMLD)
+	IWL_DBG_CFG_NODEF(bool, MLD_RANDOM_NMI_ENABLE)
+	IWL_DBG_CFG_DEF(u8, MLD_RANDOM_NMI_CEIL, U8_MAX)
+	IWL_DBG_CFG_NODEF(u8, MLD_RANDOM_NMI_FLOOR)
+	IWL_DBG_CFG_NODEF(u8, MLD_RANDOM_NMI_LIMIT)
+	IWL_DBG_CFG_NODEF(bool, MLD_DIS_RANDOM_FW_ID)
+	IWL_DBG_CFG(bool, MLD_D3_DEBUG)
+	IWL_DBG_CFG_NODEF(bool, MLD_NON_TRANSMITTING_AP)
+	IWL_DBG_CFG(u32, MLD_6GHZ_PASSIVE_SCAN_TIMEOUT)
+	IWL_DBG_CFG(u32, MLD_6GHZ_PASSIVE_SCAN_ASSOC_TIMEOUT)
+	IWL_DBG_CFG(u16, MLD_CONN_LISTEN_INTERVAL)
+	IWL_DBG_CFG_NODEF(bool, MLD_TWT_TESTMODE)
+	IWL_DBG_CFG_RANGE(u8, MLD_ADAPTIVE_DWELL_NUM_APS_OVERRIDE, 0, 10)
+
+	IWL_DBG_CFG(bool, MLD_AUTO_EML_ENABLE)
+
+	IWL_DBG_CFG(int, MLD_HIGH_RSSI_THRESH_20MHZ)
+	IWL_DBG_CFG(int, MLD_LOW_RSSI_THRESH_20MHZ)
+	IWL_DBG_CFG(int, MLD_HIGH_RSSI_THRESH_40MHZ)
+	IWL_DBG_CFG(int, MLD_LOW_RSSI_THRESH_40MHZ)
+	IWL_DBG_CFG(int, MLD_HIGH_RSSI_THRESH_80MHZ)
+	IWL_DBG_CFG(int, MLD_LOW_RSSI_THRESH_80MHZ)
+	IWL_DBG_CFG(int, MLD_HIGH_RSSI_THRESH_160MHZ)
+	IWL_DBG_CFG(int, MLD_LOW_RSSI_THRESH_160MHZ)
+
+	IWL_DBG_CFG(int, MLD_ENTER_EMLSR_TPT_THRESH)
+	IWL_DBG_CFG(int, MLD_EXIT_EMLSR_CHAN_LOAD)
+	IWL_DBG_CFG_DEF(int, MLD_ENTER_EMLSR_CHAN_LOAD, -1)
+	IWL_DBG_CFG_NODEF(bool, MLD_ENTER_EMLSR_UNEQUAL_BW)
+	IWL_DBG_CFG_NODEF(bool, MLD_SNIFFER_REDUCED_SENSITIVITY)
+
+	IWL_DBG_CFG(bool, MLD_FTM_RESP_LMR_FEEDBACK_SUPPORT)
+	IWL_DBG_CFG(u8, MLD_FTM_INITIATOR_ALGO)
+	IWL_DBG_CFG(bool, MLD_FTM_INITIATOR_DYNACK)
+	IWL_DBG_CFG(bool, MLD_FTM_LMR_FEEDBACK_TERMINATE)
+	IWL_DBG_CFG(bool, MLD_FTM_TEST_INCORRECT_SAC)
+	IWL_DBG_CFG_NODEF(bool, MLD_FTM_TEST_BAD_SLTF)
+	IWL_DBG_CFG_NODEF(bool, MLD_FTM_INITIATOR_MCSI_ENABLED)
+	IWL_DBG_CFG_NODEF(int, MLD_FTM_INITIATOR_COMMON_CALIB)
+	IWL_DBG_CFG_NODEF(bool, MLD_FTM_INITIATOR_FAST_ALGO_DISABLE)
+	IWL_DBG_CFG_RANGE(u8, MLD_FTM_R2I_MAX_REP, 0, 7)
+	IWL_DBG_CFG_RANGE(u8, MLD_FTM_I2R_MAX_REP, 0, 7)
+	IWL_DBG_CFG_RANGE(u8, MLD_FTM_R2I_MAX_STS, 0, 7)
+	IWL_DBG_CFG_RANGE(u8, MLD_FTM_I2R_MAX_STS, 0, 7)
+	IWL_DBG_CFG_RANGE(u8, MLD_FTM_R2I_MAX_TOTAL_LTF, 0, 3)
+	IWL_DBG_CFG_RANGE(u8, MLD_FTM_I2R_MAX_TOTAL_LTF, 0, 3)
+	IWL_DBG_CFG(u16, MLD_FTM_NON_TB_MIN_TIME_BETWEEN_MSR)
+	IWL_DBG_CFG(u16, MLD_FTM_NON_TB_MAX_TIME_BETWEEN_MSR)
+	IWL_DBG_CFG(bool, MLD_FTM_INITIATOR_SECURE_LTF)
+	IWL_DBG_CFG_NODEF(u32, MLD_FTM_RESP_VALID)
+	IWL_DBG_CFG_NODEF(u32, MLD_FTM_RESP_FLAGS)
+	IWL_DBG_CFG_NODEF(u16, MLD_FTM_RESP_TOA_OFFSET)
+
+#endif /* CPTCFG_IWLMLD */
 	IWL_DBG_CFG_BIN(hw_address)
 	IWL_DBG_CFG_STR(fw_dbg_conf)
 	IWL_DBG_CFG_STR(nvm_file)
@@ -273,10 +271,14 @@ struct iwl_dbg_cfg {
 	IWL_MOD_PARAM(int, swcrypto)
 	IWL_MOD_PARAM(uint, disable_11n)
 	IWL_MOD_PARAM(u32, enable_ini)
+	IWL_MOD_PARAM(bool, disable_11ac)
+	IWL_MOD_PARAM(bool, disable_11ax)
+	IWL_MOD_PARAM(bool, disable_11be)
 	IWL_DBG_CFG_BIN(he_ppe_thres)
 	IWL_DBG_CFG_NODEF(u8, he_chan_width_dis)
 	IWL_DBG_CFG_NODEF(u32, vht_cap_flip)
 	IWL_DBG_CFG_NODEF(u32, mu_edca)
+	IWL_DBG_CFG_NODEF(u32, disable_ht40)
 	IWL_DBG_CFG_BIN(he_mac_cap)
 	IWL_DBG_CFG_BIN(he_phy_cap)
 	IWL_DBG_CFG_BIN(eht_ppe_thres)
@@ -292,15 +294,31 @@ struct iwl_dbg_cfg {
 	IWL_DBG_CFG_NODEF(bool, he_smps_disabled)
 	IWL_DBG_CFG_NODEF(bool, ht_dynamic_smps)
 	IWL_DBG_CFG_NODEF(bool, amsdu_in_ampdu_disabled)
+	IWL_DBG_CFG_NODEF(bool, DISABLE_SPP_AMSDU_ADV)
+	IWL_DBG_CFG_DEF(int, SPP_AMSDU_ACTIVATE, -1)
+	IWL_DBG_CFG_NODEF(bool, HW_CSUM_DISABLE)
+	IWL_DBG_CFG_NODEF(bool, allow_twt)
+	IWL_DBG_CFG_STR(ppag_allowed)
+	IWL_DBG_CFG_STR(tas_allowed)
+	IWL_DBG_CFG_NODEF(bool, DISABLE_STUCK_TIMER)
+#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
+	IWL_DBG_CFG_DEF(u32, TLC_FAST_START, -1)
+#endif
+	IWL_DBG_CFG_NODEF(bool, disable_eml)
+	IWL_DBG_CFG_DEF(int, eml_capa_override, -1)
+	IWL_DBG_CFG_NODEF(bool, load_external_pnvm)
 #ifdef CPTCFG_IWLWIFI_DEBUG
 	IWL_MOD_PARAM(u32, debug_level)
 #endif /* CPTCFG_IWLWIFI_DEBUG */
 #ifdef CPTCFG_IWLWIFI_DISALLOW_OLDER_FW
 	IWL_DBG_CFG_NODEF(bool, load_old_fw)
 #endif /* CPTCFG_IWLWIFI_DISALLOW_OLDER_FW */
+	IWL_DBG_CFG_DEF(int, disable_top_reset, -1)
+	IWL_DBG_CFG_NODEF(bool, disable_product_reset)
 #undef IWL_DBG_CFG
 #undef IWL_DBG_CFG_STR
 #undef IWL_DBG_CFG_NODEF
+#undef IWL_DBG_CFG_DEF
 #undef IWL_DBG_CFG_BIN
 #undef IWL_DBG_CFG_BINA
 #undef IWL_DBG_CFG_RANGE
@@ -310,7 +328,7 @@ struct iwl_dbg_cfg {
 #ifndef DBG_CFG_REINCLUDE
 };
 
-extern struct iwl_dbg_cfg current_dbg_config;
+extern const struct iwl_dbg_cfg default_dbg_config;
 void iwl_dbg_cfg_free(struct iwl_dbg_cfg *dbgcfg);
 void iwl_dbg_cfg_load_ini(struct device *dev, struct iwl_dbg_cfg *dbgcfg);
 #endif /* DBG_CFG_REINCLUDE */

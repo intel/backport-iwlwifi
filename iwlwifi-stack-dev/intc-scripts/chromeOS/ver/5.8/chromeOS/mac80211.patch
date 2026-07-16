@@ -1,0 +1,57 @@
+--- a/net/mac80211/trace.h
++++ b/net/mac80211/trace.h
+@@ -54,11 +54,8 @@
+ #define __CHANDEF_ASSIGN(n, c)								\
+ 			__entry->n##control_freq = (c) && (c)->chan ?			\
+ 				(c)->chan->center_freq : 0;				\
+-			__entry->n##freq_offset = (c) && (c)->chan ?			\
+-				(c)->chan->freq_offset : 0;				\
+ 			__entry->n##chan_width = (c) ? (c)->width : 0;			\
+ 			__entry->n##center_freq1 = (c) ? (c)->center_freq1 : 0;		\
+-			__entry->n##freq1_offset = (c) ? (c)->freq1_offset : 0;		\
+ 			__entry->n##center_freq2 = (c) ? (c)->center_freq2 : 0;		\
+ 			__entry->n##punctured = 0;
+ #define __CHANDEF_PR_FMT(n)								\
+@@ -554,7 +548,6 @@ TRACE_EVENT(drv_link_info_changed,
+ 		__entry->cqm_rssi_hyst = link_conf->cqm_rssi_hyst;
+ 		__entry->channel_width = link_conf->chanreq.oper.width;
+ 		__entry->channel_cfreq1 = link_conf->chanreq.oper.center_freq1;
+-		__entry->channel_cfreq1_offset = link_conf->chanreq.oper.freq1_offset;
+ 		__entry->qos = link_conf->qos;
+ 		__entry->hidden_ssid = link_conf->hidden_ssid;
+ 		__entry->txpower = link_conf->txpower;
+@@ -1351,7 +1344,6 @@ TRACE_EVENT(drv_remain_on_channel,
+ 		LOCAL_ASSIGN;
+ 		VIF_ASSIGN;
+ 		__entry->center_freq = chan->center_freq;
+-		__entry->freq_offset = chan->freq_offset;
+ 		__entry->duration = duration;
+ 		__entry->type = type;
+ 	),
+@@ -1744,26 +1736,18 @@ TRACE_EVENT(drv_switch_vif_chanctx,
+ 					sizeof(local_vifs[i].vif.vif_name));
+ 				SWITCH_ENTRY_ASSIGN(old_chandef.control_freq,
+ 						old_ctx->def.chan->center_freq);
+-				SWITCH_ENTRY_ASSIGN(old_chandef.freq_offset,
+-						old_ctx->def.chan->freq_offset);
+ 				SWITCH_ENTRY_ASSIGN(old_chandef.chan_width,
+ 						    old_ctx->def.width);
+ 				SWITCH_ENTRY_ASSIGN(old_chandef.center_freq1,
+ 						    old_ctx->def.center_freq1);
+-				SWITCH_ENTRY_ASSIGN(old_chandef.freq1_offset,
+-						    old_ctx->def.freq1_offset);
+ 				SWITCH_ENTRY_ASSIGN(old_chandef.center_freq2,
+ 						    old_ctx->def.center_freq2);
+ 				SWITCH_ENTRY_ASSIGN(new_chandef.control_freq,
+ 						new_ctx->def.chan->center_freq);
+-				SWITCH_ENTRY_ASSIGN(new_chandef.freq_offset,
+-						new_ctx->def.chan->freq_offset);
+ 				SWITCH_ENTRY_ASSIGN(new_chandef.chan_width,
+ 						    new_ctx->def.width);
+ 				SWITCH_ENTRY_ASSIGN(new_chandef.center_freq1,
+ 						    new_ctx->def.center_freq1);
+-				SWITCH_ENTRY_ASSIGN(new_chandef.freq1_offset,
+-						    new_ctx->def.freq1_offset);
+ 				SWITCH_ENTRY_ASSIGN(new_chandef.center_freq2,
+ 						    new_ctx->def.center_freq2);
+ 			}

@@ -1,0 +1,1 @@
+find "$kernel_path/drivers/net/wireless/iwl7000/" -type f -exec sed -i '/#include <linux\/unaligned.h>/s|#include <linux/unaligned.h>|#include <asm/unaligned.h>|' {} +

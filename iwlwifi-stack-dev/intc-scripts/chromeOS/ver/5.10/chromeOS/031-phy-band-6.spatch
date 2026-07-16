@@ -1,0 +1,6 @@
+@@
+expression E, F;
+@@
+switch (E) {
+-case PHY_BAND_6: return F;
+}

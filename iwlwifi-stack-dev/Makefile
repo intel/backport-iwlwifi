@@ -20,7 +20,7 @@ KERNEL_CONFIG := $(KLIB_BUILD)/.config
 KERNEL_MAKEFILE := $(KLIB_BUILD)/Makefile
 CONFIG_MD5 := $(shell md5sum $(KERNEL_CONFIG) 2>/dev/null | sed 's/\s.*//')
 
-export KLIB  KLIB_BUILD BACKPORT_DIR KMODDIR KMODPATH_ARG
+export KLIB KLIB_BUILD BACKPORT_DIR KMODDIR KMODPATH_ARG
 
 # disable built-in rules for this file
 .SUFFIXES:
@@ -88,10 +88,9 @@ mrproper:
 			kernelversion |	sed 's/^\(\([3-9]\|2\.6\)\.[0-9]\+\).*/\1/;t;d');\
 		test "$$kver" != "" || echo "Kernel version parse failed!"		;\
 		test "$$kver" != ""							;\
-		kvers="$$(seq 14 39 | sed 's/^/2.6./')"					;\
-		kvers="$$kvers $$(seq 0 19 | sed 's/^/3./')"				;\
 		kvers="$$kvers $$(seq 0 20 | sed 's/^/4./')"				;\
-		kvers="$$kvers $$(seq 0 99 | sed 's/^/5./')"				;\
+		kvers="$$kvers $$(seq 0 19 | sed 's/^/5./')"				;\
+		kvers="$$kvers $$(seq 0 99 | sed 's/^/6./')"				;\
 		print=0									;\
 		for v in $$kvers ; do							\
 			if [ "$$print" = "1" ] ; then					\

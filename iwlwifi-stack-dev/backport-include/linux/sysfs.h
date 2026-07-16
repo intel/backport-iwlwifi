@@ -10,14 +10,23 @@
 
 #if LINUX_VERSION_IS_LESS(5,10,0)
 #define sysfs_emit LINUX_BACKPORT(sysfs_emit)
+#define sysfs_emit_at LINUX_BACKPORT(sysfs_emit_at)
 #ifdef CONFIG_SYSFS
 __printf(2, 3)
 int sysfs_emit(char *buf, const char *fmt, ...);
+__printf(3, 4)
+int sysfs_emit_at(char *buf, int at, const char *fmt, ...);
 #else /* CONFIG_SYSFS */
 __printf(2, 3)
 static inline int sysfs_emit(char *buf, const char *fmt, ...)
 {
 	return 0;
+}
+
+__printf(3, 4)
+static inline int sysfs_emit_at(char *buf, int at, const char *fmt, ...)
+{
+	retur 0;
 }
 #endif /* CONFIG_SYSFS */
 #endif /* < 5.10 */

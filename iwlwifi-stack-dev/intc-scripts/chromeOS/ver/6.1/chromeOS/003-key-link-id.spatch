@@ -1,0 +1,132 @@
+@add_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.add_key = fn,
+...
+};
+
+@@
+identifier add_key.fn;
+identifier link_id;
+@@
+ int fn(...,
+-	int link_id,
+ 	...)
+{
++	int link_id = -1;
+...
+}
+
+@del_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.del_key = fn,
+...
+};
+
+@@
+identifier del_key.fn;
+identifier link_id;
+@@
+ int fn(...,
+-	int link_id,
+ 	...)
+{
++	int link_id = -1;
+...
+}
+
+@get_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.get_key = fn,
+...
+};
+
+@@
+identifier get_key.fn;
+identifier link_id;
+@@
+ int fn(...,
+-	int link_id,
+ 	...)
+{
++	int link_id = -1;
+...
+}
+
+@def_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_default_key = fn,
+...
+};
+
+@@
+identifier def_key.fn;
+identifier link_id;
+@@
+ int fn(...,
+-	int link_id,
+ 	...)
+{
++	int link_id = -1;
+...
+}
+
+@def_mgmt_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_default_mgmt_key = fn,
+...
+};
+
+@@
+identifier def_mgmt_key.fn;
+identifier link_id;
+@@
+ int fn(...,
+-       int link_id,
+        ...)
+{
++	int link_id = -1;
+...
+}
+
+@def_bcon_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_default_beacon_key = fn,
+...
+};
+
+@@
+identifier def_bcon_key.fn;
+identifier link_id;
+@@
+ int fn(...,
+-	int link_id,
+ 	...)
+{
++	int link_id = -1;
+...
+}
+

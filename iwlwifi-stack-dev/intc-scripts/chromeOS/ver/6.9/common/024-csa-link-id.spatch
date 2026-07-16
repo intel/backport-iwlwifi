@@ -1,0 +1,5 @@
+@@
+struct cfg80211_csa_settings *csa;
+@@
+-csa->link_id
++0

@@ -1,0 +1,25 @@
+@monitor_channel@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+	.set_monitor_channel = fn,
+...
+};
+
+@@
+identifier monitor_channel.fn;
+identifier wiphy, dev, chandef;
+@@
+int fn(struct wiphy *wiphy,
+-struct net_device *dev,
+struct cfg80211_chan_def *chandef)
+{
+...
+-sdata = IEEE80211_DEV_TO_SUB_IF(dev);
+- if (!ieee80211_hw_check(&local->hw, NO_VIRTUAL_MONITOR)) {
+...
+-}
+...
+}

@@ -1,0 +1,9 @@
+@@
+@@
+-if (sdata->u.mntr.flags & MONITOR_FLAG_SKIP_TX) continue;
+
+@@
+expression E;
+@@
+-if (!(flags & MONITOR_FLAG_SKIP_TX)) E;
++if (true) E ;

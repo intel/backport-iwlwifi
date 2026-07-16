@@ -1,0 +1,13 @@
+@@
+expression req;
+@@
+-req->auth_type == NL80211_AUTHTYPE_EPPKE
++false
+
+@@
+expression E;
+@@
+switch (E) {
+- case NL80211_AUTHTYPE_EPPKE:
++ /* case NL80211_AUTHTYPE_EPPKE */
+}

@@ -1,0 +1,18 @@
+@@
+identifier fn = iwl_mld_set_link_sel_data;
+type u8;
+identifier link_conf;
+iterator for_each_set_bit;
+@@
+static u8 fn(...)
+{
+...
+	for_each_set_bit(...) {
+		struct ieee80211_bss_conf *link_conf;
+...
+-		if (ktime_before(link_conf->bss->ts_boottime, ...))
+-			continue;
+...
+	}
+...
+}

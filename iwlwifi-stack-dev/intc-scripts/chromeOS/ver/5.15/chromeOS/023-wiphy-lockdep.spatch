@@ -1,0 +1,17 @@
+@@
+struct wiphy *wiphy;
+@@
+-lockdep_is_held(&wiphy->mtx)
++lockdep_rtnl_is_held()
+
+@@
+expression hw;
+@@
+-lockdep_is_held(&hw->wiphy->mtx)
++lockdep_rtnl_is_held()
+
+@@
+expression local;
+@@
+-lockdep_is_held(&local->hw.wiphy->mtx)
++lockdep_rtnl_is_held()

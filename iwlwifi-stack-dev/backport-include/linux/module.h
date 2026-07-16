@@ -3,8 +3,11 @@
 #include_next <linux/module.h>
 #include <linux/rcupdate.h>
 
+#ifndef ___ADDRESSABLE
+#define ___ADDRESSABLE(fn, __attr)
+#endif
 #ifndef __CFI_ADDRESSABLE
-#define __CFI_ADDRESSABLE(fn, __attr)
+#define __CFI_ADDRESSABLE(fn, __attr) ___ADDRESSABLE(fn, __attr)
 #endif
 
 /*

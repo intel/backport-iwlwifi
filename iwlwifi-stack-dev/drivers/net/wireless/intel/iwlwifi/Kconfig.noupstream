@@ -3,6 +3,7 @@ config IWLXVT
 	depends on IWLWIFI
 	select IWLWIFI_DEVICE_TESTMODE
 	select IWLWIFI_SUPPORT_DEBUG_OVERRIDES
+	select IWLWIFI_OPMODE_MODULAR
 	help
 	  This option enables the xVT operation mode. xVT mode supports
 	  special debug and testing operations that are not supported in
@@ -17,11 +18,15 @@ config IWLXVT
 	  Say Y if you have the user space application and want
 	  to execute debug and testing flows on the HW.
 
-config IWLWIFI_NUM_CHANNELS
-	int "number of supported concurrent channels"
-	range 1 2
-	default 2
-	depends on IWLMVM
+config IWLPROD
+	tristate "Enable Production op_mode"
+	depends on IWLWIFI
+	select IWLWIFI_SUPPORT_DEBUG_OVERRIDES
+	select IWLWIFI_OPMODE_MODULAR
+	help
+	  This option enables the Production operation mode. This mode supports
+	  loading special production uCode that is used in factory production
+	  line. Use this mode for testing the production uCode.
 
 config IWLMVM_AX_SOFTAP_TESTMODE
 	bool "enable 11ax softap testmode debugfs configuration files"
@@ -33,23 +38,6 @@ config IWLMVM_AX_SOFTAP_TESTMODE
 	  enable/disable test modes for trigger frame sending to an 11ax
 	  testmode client.
 
-config IWLMVM_ADVANCED_QUOTA_MGMT
-	bool "enable advanced quota management code"
-	default y
-	depends on IWLMVM
-	help
-	  This code isn't intended to go upstream yet, hence
-	  the config option. You shouldn't turn it off.
-
-config IWLWIFI_THERMAL_DEBUGFS
-	bool "enable thermal debug write and read support"
-	depends on IWLWIFI_DEBUGFS
-	default y
-	help
-	  Enable thermal settings debugfs entries that can be used to change
-	  the temperatures and other parameters for testing, This code isn't
-	  intended for upstream, hence the config option. You shouldn't turn it off.
-
 config IWLWIFI_DEVICE_TESTMODE
 	bool "enable generic netlink testmode support"
 	depends on IWLWIFI
@@ -60,6 +48,12 @@ config IWLWIFI_SUPPORT_DEBUG_OVERRIDES
 	depends on IWLWIFI
 	bool "enable default value override (for debugging)"
 
+config IWLWIFI_FW_MISBEHAVE_NMI_DEFAULT
+	depends on IWLWIFI_SUPPORT_DEBUG_OVERRIDES
+	int "NMI the firmware on unexpected behaviour"
+	range 0 1
+	default 1
+
 config IWLWIFI_FORCE_OFDM_RATE
 	bool "force transmit to OFDM low rate"
 	depends on IWLMVM
@@ -68,21 +62,9 @@ config IWLWIFI_FORCE_OFDM_RATE
 
 	  If unsure say N, Say Y if you have this code and want to transmit OFDM low rate.
 
-config IWLMVM_P2P_OPPPS_TEST_WA
-	bool "Use WA to pass P2P OPPPS certification test"
-	depends on IWLMVM
-	---help---
-	  This option enables a WA to pass P2P OPPPS certification test.
-	  This test verifies P2P client power management behavior when
-	  connected to P2P GO that advertises OPPPS. Since P2P client power
-	  management is not supported currently by FW a special WA is required.
-	  Send zeroed quota on P2P client MAC if power save is enabled from
-	  user space to mimic power management behavior. Update quota to normal
-	  value otherwise.
-
-config IWLMVM_VENDOR_CMDS
+config IWL_VENDOR_CMDS
 	bool "enable vendor commands"
-	depends on IWLMVM
+	depends on IWLMVM || IWLMLD
 	default y
 	help
 	  This option enables support for vendor commands, including some
@@ -92,15 +74,6 @@ config IWLMVM_VENDOR_CMDS
 	  This option mostly exists for non-upstream tagging, so best
 	  leave it set to Y.
 
-config IWLMVM_TDLS_PEER_CACHE
-	bool "enable TDLS peer caching and traffic monitoring"
-	depends on IWLMVM_VENDOR_CMDS
-	default y
-	help
-	  This option enables (vendor) commands from userspace to monitor
-	  traffic to and from specific peers on the same BSS. These peers
-	  might be TDLS peers, or candidates to become such.
-
 config IWLWIFI_DISALLOW_OLDER_FW
 	bool "disallow fallback to older firmware images"
 	depends on IWLWIFI
@@ -109,21 +82,8 @@ config IWLWIFI_DISALLOW_OLDER_FW
 	  to ensure tight coupling between driver and firmware releases. When
 	  enabled, the dbg-cfg framework can still override this setting.
 
-config IWLWIFI_NUM_STA_INTERFACES
-	int "number of supported concurrent station interfaces"
-	range 1 2
-	default 1
-	depends on IWLMVM
-
-config REJECT_NONUPSTREAM_NL80211
-	bool "reject non-upstreamed nl80211 commands"
-	depends on CFG80211
-	help
-	  Say Y to disable non-upstream commands.
-
 config IWLWIFI_DHC_PRIVATE
 	bool "enable *private* DHC commands"
-	select IWLWIFI_DHC
 	help
 	  This option enables the use of private debug host commands.  It's used
 	  for internal debugging purposes and not intended for upstream.
@@ -139,14 +99,14 @@ config IWLWIFI_FPGA
 	help
 	  The code that is related to fpga is not intended to ever go upstream.
 
+config IWLWIFI_SLE
+	bool "enable SLE workaround code"
+	help
+	  The code that is related to sle is not intended to ever go upstream.
+
 config IWLWIFI_SIMULATION
 	def_bool y
 	depends on UML
-
-config IWLMVM_PHC
-	def_bool y
-	# this means kernel is >= 4.10, i.e. no 4.10 backports required
-	depends on !KERNEL_4_10
 
 config IWLWIFI_PLATFORM_MOCKUPS
 	bool "enable ACPI testing mock-ups"
@@ -181,12 +141,17 @@ config IWLWIFI_PRE_IPU_SECURITY_FIX
 	  If enabled, pre IPU fixes will be included in compilation for
 	  testing security code changes.
 
-config IWLMVM_MEI_SCAN_FILTER
-	bool "enable MEI scan filter"
+config IWLWIFI_NJ_SUPPORT
+	bool "enable support for *nJ devices"
 	default y
-	depends on IWLMEI
 	help
-	  If enabled, when the driver loads and the MEI driver reports that
-	  CSME is connected and has link protection enabled, scan requests will
-	  be modified to include only the channel and SSID of the connected AP,
-	  and scan results will be filtered to include only the connected BSS.
+	  If enabled, add support for *nJ test devices.
+
+config IWLWIFI_PRE_SILICON_SUPPORT
+	bool "Support for pre-silicon timeout/delay factors"
+	depends on IWLWIFI
+	help
+	  Enable dynamic timeout and delay factors for pre-silicon validation
+	  platforms (ESL, SLE, FPGA). This feature detects the platform type at
+	  runtime and automatically adjusts timeout and delay values to
+	  accommodate slower pre-silicon hardware.

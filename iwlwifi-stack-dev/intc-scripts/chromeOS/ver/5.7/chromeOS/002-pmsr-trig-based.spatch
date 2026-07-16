@@ -1,0 +1,11 @@
+@@
+identifier capa;
+expression E;
+@@
+struct cfg80211_pmsr_capabilities capa = {
+...,
+.ftm = {
+-.trigger_based = E,
+},
+...,
+};

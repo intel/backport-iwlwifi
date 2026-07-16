@@ -3,35 +3,11 @@
 #include_next <net/genetlink.h>
 #include <linux/version.h>
 
-static inline void __bp_genl_info_userhdr_set(struct genl_info *info,
-					      void *userhdr)
-{
-	info->userhdr = userhdr;
-}
-
-static inline void *__bp_genl_info_userhdr(struct genl_info *info)
-{
-	return info->userhdr;
-}
-
-#if LINUX_VERSION_IS_LESS(4,12,0)
-#define GENL_SET_ERR_MSG(info, msg) NL_SET_ERR_MSG(genl_info_extack(info), msg)
-
-static inline int genl_err_attr(struct genl_info *info, int err,
-				struct nlattr *attr)
-{
-	return err;
-}
-#endif /* < 4.12 */
 
 /* this is for patches we apply */
 static inline struct netlink_ext_ack *genl_info_extack(struct genl_info *info)
 {
-#if LINUX_VERSION_IS_GEQ(4,12,0)
 	return info->extack;
-#else
-	return info->userhdr;
-#endif
 }
 
 /* this is for patches we apply */
@@ -44,17 +20,15 @@ static inline struct netlink_ext_ack *genl_callback_extack(struct netlink_callba
 #endif
 }
 
+#if LINUX_VERSION_IS_LESS(6,6,0)
 /* this gets put in place of info->userhdr, since we use that above */
 static inline void *genl_info_userhdr(struct genl_info *info)
 {
 	return (u8 *)info->genlhdr + GENL_HDRLEN;
 }
-
-#if LINUX_VERSION_IS_LESS(4,10,0)
-#define __genl_ro_after_init
-#else
-#define __genl_ro_after_init __ro_after_init
 #endif
+
+#define __genl_ro_after_init __ro_after_init
 
 #if LINUX_VERSION_IS_LESS(4,15,0)
 #define genlmsg_nlhdr LINUX_BACKPORT(genlmsg_nlhdr)
@@ -91,10 +65,7 @@ struct backport_genl_ops {
 	void			*__dummy_was_policy_must_be_null;
 	int		       (*doit)(struct sk_buff *skb,
 				       struct genl_info *info);
-#if LINUX_VERSION_IS_GEQ(4,5,0) || \
-    LINUX_VERSION_IN_RANGE(4,4,104, 4,5,0)
 	int		       (*start)(struct netlink_callback *cb);
-#endif
 	int		       (*dumpit)(struct sk_buff *skb,
 					 struct netlink_callback *cb);
 	int		       (*done)(struct netlink_callback *cb);
@@ -111,10 +82,7 @@ __real_backport_genl_register_family(struct genl_family *family)
 	BUILD_BUG_ON(offsetof(struct genl_ops, f) != \
 		     offsetof(struct backport_genl_ops, f))
 	OPS_VALIDATE(doit);
-#if LINUX_VERSION_IS_GEQ(4,5,0) || \
-    LINUX_VERSION_IN_RANGE(4,4,104, 4,5,0)
 	OPS_VALIDATE(start);
-#endif
 	OPS_VALIDATE(dumpit);
 	OPS_VALIDATE(done);
 	OPS_VALIDATE(cmd);
@@ -199,7 +167,7 @@ int genlmsg_multicast(const struct genl_family *family,
 #define genlmsg_multicast_allns LINUX_BACKPORT(genlmsg_multicast_allns)
 int backport_genlmsg_multicast_allns(const struct genl_family *family,
 				     struct sk_buff *skb, u32 portid,
-				     unsigned int group, gfp_t flags);
+				     unsigned int group);
 
 #define genl_family_attrbuf LINUX_BACKPORT(genl_family_attrbuf)
 static inline struct nlattr **genl_family_attrbuf(struct genl_family *family)
@@ -219,6 +187,26 @@ static inline int genlmsg_parse(const struct nlmsghdr *nlh,
 	return __nlmsg_parse(nlh, family->hdrsize + GENL_HDRLEN, tb, maxtype,
 			     policy, NL_VALIDATE_STRICT, extack);
 }
+#elif LINUX_VERSION_IS_LESS(6,11,6) &&			\
+	!LINUX_VERSION_IN_RANGE(5,4,285, 5,5,0) &&	\
+	!LINUX_VERSION_IN_RANGE(5,10,229, 5,11,0) &&	\
+	!LINUX_VERSION_IN_RANGE(5,15,170, 5,16,0) &&	\
+	!LINUX_VERSION_IN_RANGE(6,1,115, 6,2,0) &&	\
+	!LINUX_VERSION_IN_RANGE(6,6,59, 6,7,0)
+static inline 
+int backport_genlmsg_multicast_allns(const struct genl_family *family,
+				     struct sk_buff *skb, u32 portid,
+				     unsigned int group)
+{
+	int ret;
+
+	rcu_read_lock();
+	ret = genlmsg_multicast_allns(family, skb, portid, group, GFP_ATOMIC);
+	rcu_read_unlock();
+
+	return ret;
+}
+#define genlmsg_multicast_allns LINUX_BACKPORT(genlmsg_multicast_allns)
 #endif /* LINUX_VERSION_IS_LESS(5,2,0) */
 
 #endif /* __BACKPORT_NET_GENETLINK_H */

@@ -5,9 +5,9 @@
  */
 
 #include <crypto/aes.h>
-#include <crypto/algapi.h>
 #include <crypto/hash.h>
 #include <crypto/skcipher.h>
+#include <crypto/utils.h>
 
 #include "ieee80211_i.h"
 #include "aes_cmac.h"
@@ -28,25 +28,35 @@ static int aes_s2v(struct crypto_shash *tfm,
 	u8 d[AES_BLOCK_SIZE], tmp[AES_BLOCK_SIZE] = {};
 	SHASH_DESC_ON_STACK(desc, tfm);
 	size_t i;
+	int err;
 
 	desc->tfm = tfm;
 
 	/* D = AES-CMAC(K, <zero>) */
-	crypto_shash_digest(desc, tmp, AES_BLOCK_SIZE, d);
+	err = crypto_shash_digest(desc, tmp, AES_BLOCK_SIZE, d);
+	if (err)
+		return err;
 
 	for (i = 0; i < num_elem - 1; i++) {
 		/* D = dbl(D) xor AES_CMAC(K, Si) */
 		gf_mulx(d); /* dbl */
-		crypto_shash_digest(desc, addr[i], len[i], tmp);
+		err = crypto_shash_digest(desc, addr[i], len[i], tmp);
+		if (err)
+			return err;
 		crypto_xor(d, tmp, AES_BLOCK_SIZE);
 	}
 
-	crypto_shash_init(desc);
+	err = crypto_shash_init(desc);
+	if (err)
+		return err;
 
 	if (len[i] >= AES_BLOCK_SIZE) {
 		/* len(Sn) >= 128 */
 		/* T = Sn xorend D */
-		crypto_shash_update(desc, addr[i], len[i] - AES_BLOCK_SIZE);
+		err = crypto_shash_update(desc, addr[i],
+					  len[i] - AES_BLOCK_SIZE);
+		if (err)
+			return err;
 		crypto_xor(d, addr[i] + len[i] - AES_BLOCK_SIZE,
 			   AES_BLOCK_SIZE);
 	} else {
@@ -57,9 +67,7 @@ static int aes_s2v(struct crypto_shash *tfm,
 		d[len[i]] ^= 0x80;
 	}
 	/* V = AES-CMAC(K, T) */
-	crypto_shash_finup(desc, d, AES_BLOCK_SIZE, v);
-
-	return 0;
+	return crypto_shash_finup(desc, d, AES_BLOCK_SIZE, v);
 }
 
 /* Note: addr[] and len[] needs to have one extra slot at the end. */

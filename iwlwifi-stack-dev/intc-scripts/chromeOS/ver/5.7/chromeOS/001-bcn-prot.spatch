@@ -1,0 +1,14 @@
+@default_beacon_key@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.set_default_beacon_key = fn,
+...
+};
+
+@@
+identifier default_beacon_key.fn;
+@@
+-fn(...) {...}

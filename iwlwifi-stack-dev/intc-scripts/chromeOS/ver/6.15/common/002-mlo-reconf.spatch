@@ -1,0 +1,46 @@
+@assoc_ml_reconf@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.assoc_ml_reconf = fn,
+...
+};
+
+@@
+identifier assoc_ml_reconf.fn;
+@@
+-fn(...) { ... }
+
+@@
+@@
+-ieee80211_mgd_assoc_ml_reconf(...) { ... }
+
+@@
+@@
+-int ieee80211_mgd_assoc_ml_reconf(...);
+
+@@
+@@
+-ieee80211_build_ml_reconf_req(...) { ... }
+
+@@
+@@
+-ieee80211_process_ml_reconf_resp(...) { ... }
+
+@@
+@@
+-ieee80211_process_ml_reconf_resp(...);
+
+@@
+@@
+-void ieee80211_process_ml_reconf_resp(...);
+
+@@
+@@
+-ieee80211_ml_reconf_reset(...) { ... }
+
+@@
+@@
+-ieee80211_ml_reconf_reset(...);

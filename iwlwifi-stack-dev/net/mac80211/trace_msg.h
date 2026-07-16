@@ -16,7 +16,9 @@
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM mac80211_msg
 
+#if LINUX_VERSION_IS_LESS(6,0,0)
 #define MAX_MSG_LEN	120
+#endif
 
 DECLARE_EVENT_CLASS(mac80211_msg_event,
 	TP_PROTO(struct va_format *vaf),

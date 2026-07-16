@@ -1,0 +1,96 @@
+@@
+@@
+ sta_link_apply_parameters(...,
+-                          struct link_station_parameters *params)
++                          struct station_parameters *params)
+{
+...
+-u32 link_id = params->link_id < 0 ? 0 : params->link_id;
++u32 link_id = 0;
+...
+-bool changes = ...;
+...
+switch (mode) {
+case STA_LINK_MODE_NEW:
+-if (...) return ...;
+break;
+case STA_LINK_MODE_LINK_MODIFY:
+-...
+break;
+case STA_LINK_MODE_STA_MODIFY:
+-if (...)break;
+-if (...)return ...;
+break;
+}
+...
+}
+
+@@
+@@
+sta_link_apply_parameters(...)
+{
+<+...
+(
+-if (params->link_mac) {...}
+|
+-if (params->txpwr_set)
++if (params->sta_modify_mask & STATION_PARAM_APPLY_STA_TXPOWER)
+ {...}
+)
+...+>
+}
+
+@@
+identifier ret;
+@@
+sta_apply_parameters(...)
+{
+...
+ret = sta_link_apply_parameters(...,
+-&params->link_sta_params
++params
+ );
+...
+}
+
+@link_sta@
+identifier ops;
+identifier fn;
+identifier cb = { add_link_station, mod_link_station, del_link_station };
+@@
+struct cfg80211_ops ops = {
+...,
+-       .cb = fn,
+...
+};
+
+@@
+identifier link_sta.fn;
+@@
+-fn(...) { ... }
+
+@@
+@@
+ieee80211_setup_assoc_link(...)
+{
+...
+-if (req->links[link_id].elems_len) { ... }
+...
+}
+
+@@
+statement s;
+@@
+ieee80211_link_init(...)
+{
+...
+if (!deflink) {
+...
+switch (sdata->vif.type) {
+-case NL80211_IFTYPE_AP: ...
+-case NL80211_IFTYPE_STATION: ...
+}
+...
+}
+...
+}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
  * Copyright (C) 2015-2017 Intel Deutschland GmbH
- * Copyright (C) 2018-2022 Intel Corporation
+ * Copyright (C) 2018-2024 Intel Corporation
  */
 #include <net/cfg80211.h>
 #include <linux/etherdevice.h>
@@ -12,6 +12,9 @@ struct iwl_mvm_pasn_sta {
 	struct list_head list;
 	struct iwl_mvm_int_sta int_sta;
 	u8 addr[ETH_ALEN];
+
+	/* must be last as it followed by buffer holding the key */
+	struct ieee80211_key_conf keyconf;
 };
 
 struct iwl_mvm_pasn_hltk_data {
@@ -39,7 +42,7 @@ static int iwl_mvm_ftm_responder_set_bw_v1(struct cfg80211_chan_def *chandef,
 		*ctrl_ch_position = iwl_mvm_get_ctrl_pos(chandef);
 		break;
 	default:
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 	}
 
 	return 0;
@@ -77,7 +80,7 @@ static int iwl_mvm_ftm_responder_set_bw_v2(struct cfg80211_chan_def *chandef,
 		}
 		fallthrough;
 	default:
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 	}
 
 	return 0;
@@ -85,7 +88,7 @@ static int iwl_mvm_ftm_responder_set_bw_v2(struct cfg80211_chan_def *chandef,
 
 static void
 iwl_mvm_ftm_responder_set_ndp(struct iwl_mvm *mvm,
-			      struct iwl_tof_responder_config_cmd_v9 *cmd)
+			      struct iwl_tof_responder_config_cmd *cmd)
 {
 	/* Up to 2 R2I STS are allowed on the responder */
 	u32 r2i_max_sts = IWL_MVM_FTM_R2I_MAX_STS < 2 ?
@@ -104,7 +107,8 @@ iwl_mvm_ftm_responder_set_ndp(struct iwl_mvm *mvm,
 static int
 iwl_mvm_ftm_responder_cmd(struct iwl_mvm *mvm,
 			  struct ieee80211_vif *vif,
-			  struct cfg80211_chan_def *chandef)
+			  struct cfg80211_chan_def *chandef,
+			  struct ieee80211_bss_conf *link_conf)
 {
 	u32 cmd_id = WIDE_ID(LOCATION_GROUP, TOF_RESPONDER_CONFIG_CMD);
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
@@ -113,13 +117,13 @@ iwl_mvm_ftm_responder_cmd(struct iwl_mvm *mvm,
 	 * field interpretation is different), so the same struct can be use
 	 * for all cases.
 	 */
-	struct iwl_tof_responder_config_cmd_v9 cmd = {
+	struct iwl_tof_responder_config_cmd cmd = {
 		.channel_num = chandef->chan->hw_value,
 		.cmd_valid_fields =
 			cpu_to_le32(IWL_TOF_RESPONDER_CMD_VALID_CHAN_INFO |
 				    IWL_TOF_RESPONDER_CMD_VALID_BSSID |
 				    IWL_TOF_RESPONDER_CMD_VALID_STA_ID),
-		.sta_id = mvmvif->deflink.bcast_sta.sta_id,
+		.sta_id = mvmvif->link[link_conf->link_id]->bcast_sta.sta_id,
 	};
 	u8 cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw, cmd_id, 6);
 	int err;
@@ -138,8 +142,13 @@ iwl_mvm_ftm_responder_cmd(struct iwl_mvm *mvm,
 	}
 #endif
 
+	if (cmd_ver >= 10) {
+		cmd.band =
+			iwl_mvm_phy_band_from_nl80211(chandef->chan->band);
+	}
+
 	/* Use a default of bss_color=1 for now */
-	if (cmd_ver == 9) {
+	if (cmd_ver >= 9) {
 		cmd.cmd_valid_fields |=
 			cpu_to_le32(IWL_TOF_RESPONDER_CMD_VALID_BSS_COLOR |
 				    IWL_TOF_RESPONDER_CMD_VALID_MIN_MAX_TIME_BETWEEN_MSR);
@@ -155,7 +164,7 @@ iwl_mvm_ftm_responder_cmd(struct iwl_mvm *mvm,
 	}
 
 	if (cmd_ver >= 8)
-		iwl_mvm_ftm_responder_set_ndp(mvm, &cmd);
+		iwl_mvm_ftm_responder_set_ndp(mvm, (void *)&cmd);
 
 	if (cmd_ver >= 7)
 		err = iwl_mvm_ftm_responder_set_bw_v2(chandef, &cmd.format_bw,
@@ -301,7 +310,7 @@ iwl_mvm_ftm_responder_dyn_cfg_cmd(struct iwl_mvm *mvm,
 	default:
 		IWL_ERR(mvm, "Unsupported DYN_CONFIG_CMD version %u\n",
 			cmd_ver);
-		ret = -ENOTSUPP;
+		ret = -EOPNOTSUPP;
 	}
 
 	return ret;
@@ -312,7 +321,16 @@ static void iwl_mvm_resp_del_pasn_sta(struct iwl_mvm *mvm,
 				      struct iwl_mvm_pasn_sta *sta)
 {
 	list_del(&sta->list);
-	iwl_mvm_rm_sta_id(mvm, vif, sta->int_sta.sta_id);
+
+	if (sta->keyconf.keylen)
+		iwl_mvm_sec_key_del_pasn(mvm, vif, BIT(sta->int_sta.sta_id),
+					 &sta->keyconf);
+
+	if (iwl_mvm_has_mld_api(mvm->fw))
+		iwl_mvm_mld_rm_sta_id(mvm, sta->int_sta.sta_id);
+	else
+		iwl_mvm_rm_sta_id(mvm, vif, sta->int_sta.sta_id);
+
 	iwl_mvm_dealloc_int_sta(mvm, &sta->int_sta);
 	kfree(sta);
 }
@@ -338,7 +356,7 @@ int iwl_mvm_ftm_respoder_add_pasn_sta(struct iwl_mvm *mvm,
 
 	if (cmd_ver < 3) {
 		IWL_ERR(mvm, "Adding PASN station not supported by FW\n");
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 	}
 
 	if ((!hltk || !hltk_len) && (!tk || !tk_len)) {
@@ -347,6 +365,12 @@ int iwl_mvm_ftm_respoder_add_pasn_sta(struct iwl_mvm *mvm,
 	}
 
 	if (hltk && hltk_len) {
+		if (!fw_has_capa(&mvm->fw->ucode_capa,
+				 IWL_UCODE_TLV_CAPA_SECURE_LTF_SUPPORT)) {
+			IWL_ERR(mvm, "No support for secure LTF measurement\n");
+			return -EINVAL;
+		}
+
 		hltk_data.cipher = iwl_mvm_cipher_to_location_cipher(cipher);
 		if (hltk_data.cipher == IWL_LOCATION_CIPHER_INVALID) {
 			IWL_ERR(mvm, "invalid cipher: %u\n", cipher);
@@ -357,12 +381,12 @@ int iwl_mvm_ftm_respoder_add_pasn_sta(struct iwl_mvm *mvm,
 	}
 
 	if (tk && tk_len) {
-		sta = kzalloc(sizeof(*sta), GFP_KERNEL);
+		sta = kzalloc(sizeof(*sta) + tk_len, GFP_KERNEL);
 		if (!sta)
 			return -ENOBUFS;
 
 		ret = iwl_mvm_add_pasn_sta(mvm, vif, &sta->int_sta, addr,
-					   cipher, tk, tk_len);
+					   cipher, tk, tk_len, &sta->keyconf);
 		if (ret) {
 			kfree(sta);
 			return ret;
@@ -397,7 +421,8 @@ int iwl_mvm_ftm_resp_remove_pasn_sta(struct iwl_mvm *mvm,
 	return -EINVAL;
 }
 
-int iwl_mvm_ftm_start_responder(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
+int iwl_mvm_ftm_start_responder(struct iwl_mvm *mvm, struct ieee80211_vif *vif,
+				struct ieee80211_bss_conf *bss_conf)
 {
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	struct ieee80211_ftm_responder_params *params;
@@ -406,11 +431,11 @@ int iwl_mvm_ftm_start_responder(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	struct iwl_mvm_phy_ctxt *phy_ctxt;
 	int ret;
 
-	params = vif->bss_conf.ftmr_params;
+	params = bss_conf->ftmr_params;
 
 	lockdep_assert_held(&mvm->mutex);
 
-	if (WARN_ON_ONCE(!vif->bss_conf.ftm_responder))
+	if (WARN_ON_ONCE(!bss_conf->ftm_responder))
 		return -EINVAL;
 
 	if (vif->p2p || vif->type != NL80211_IFTYPE_AP ||
@@ -420,7 +445,7 @@ int iwl_mvm_ftm_start_responder(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	}
 
 	rcu_read_lock();
-	pctx = rcu_dereference(vif->bss_conf.chanctx_conf);
+	pctx = rcu_dereference(bss_conf->chanctx_conf);
 	/* Copy the ctx to unlock the rcu and send the phy ctxt. We don't care
 	 * about changes in the ctx after releasing the lock because the driver
 	 * is still protected by the mutex. */
@@ -429,13 +454,13 @@ int iwl_mvm_ftm_start_responder(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 	rcu_read_unlock();
 
 	phy_ctxt = &mvm->phy_ctxts[*phy_ctxt_id];
-	ret = iwl_mvm_phy_ctxt_changed(mvm, phy_ctxt, &ctx.def,
+	ret = iwl_mvm_phy_ctxt_changed(mvm, phy_ctxt, &ctx.def, &ctx.ap,
 				       ctx.rx_chains_static,
 				       ctx.rx_chains_dynamic);
 	if (ret)
 		return ret;
 
-	ret = iwl_mvm_ftm_responder_cmd(mvm, vif, &ctx.def);
+	ret = iwl_mvm_ftm_responder_cmd(mvm, vif, &ctx.def, bss_conf);
 	if (ret)
 		return ret;
 
@@ -457,13 +482,14 @@ void iwl_mvm_ftm_responder_clear(struct iwl_mvm *mvm,
 }
 
 void iwl_mvm_ftm_restart_responder(struct iwl_mvm *mvm,
-				   struct ieee80211_vif *vif)
+				   struct ieee80211_vif *vif,
+				   struct ieee80211_bss_conf *bss_conf)
 {
-	if (!vif->bss_conf.ftm_responder)
+	if (!bss_conf->ftm_responder)
 		return;
 
 	iwl_mvm_ftm_responder_clear(mvm, vif);
-	iwl_mvm_ftm_start_responder(mvm, vif);
+	iwl_mvm_ftm_start_responder(mvm, vif, bss_conf);
 }
 
 void iwl_mvm_ftm_responder_stats(struct iwl_mvm *mvm,

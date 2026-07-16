@@ -2,6 +2,7 @@
 /*
  * Copyright (C) 2012-2014, 2018-2021 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
+ * Copyright (C) 2023, 2025 Intel Corporation
  */
 #include "iwl-trans.h"
 #include "iwl-tm-infc.h"
@@ -145,10 +146,10 @@ static int iwl_tm_get_dev_info(struct iwl_testmode *testmode,
 	if (!dev_info)
 		return -ENOMEM;
 
-	dev_info->dev_id = testmode->trans->hw_id;
+	dev_info->dev_id = testmode->trans->info.hw_id;
 	dev_info->fw_ver = testmode->fw->ucode_ver;
 	dev_info->vendor_id = PCI_VENDOR_ID_INTEL;
-	dev_info->silicon_step = testmode->trans->hw_rev_step;
+	dev_info->silicon_step = testmode->trans->info.hw_rev_step;
 
 	/* TODO: Assign real value when feature is implemented */
 	dev_info->build_ver = 0x00;
@@ -159,6 +160,30 @@ static int iwl_tm_get_dev_info(struct iwl_testmode *testmode,
 	data_out->len = sizeof(*dev_info);
 
 	return 0;
+}
+
+static bool iwl_tm_addr_range_prph(struct iwl_testmode *testmode, u32 addr)
+{
+	struct iwl_trans *trans = testmode->trans;
+
+	if (addr >= IWL_ABS_LMAC1_PRPH_START &&
+	    addr < IWL_ABS_LMAC1_PRPH_START + PRPH_END)
+		return true;
+
+	if (trans->mac_cfg->device_family < IWL_DEVICE_FAMILY_AX210)
+		return false;
+
+	if (fw_has_capa(&testmode->fw->ucode_capa,
+			IWL_UCODE_TLV_CAPA_CDB_SUPPORT) &&
+	     addr >= IWL_ABS_LMAC2_PRPH_START &&
+	     addr < IWL_ABS_LMAC2_PRPH_START + PRPH_END)
+		return true;
+
+	if (addr >= IWL_ABS_UMAC_PRPH_START &&
+	    addr < IWL_ABS_UMAC_PRPH_START + PRPH_END)
+		return true;
+
+	return false;
 }
 
 static int iwl_tm_indirect_read(struct iwl_testmode *testmode,
@@ -186,8 +211,7 @@ static int iwl_tm_indirect_read(struct iwl_testmode *testmode,
 	mutex_lock(testmode->mutex);
 
 	/* Hard-coded periphery absolute address */
-	if (addr >= IWL_ABS_PRPH_START &&
-	    addr < IWL_ABS_PRPH_START + PRPH_END) {
+	if (iwl_tm_addr_range_prph(testmode, addr)) {
 		if (!iwl_trans_grab_nic_access(trans)) {
 			mutex_unlock(testmode->mutex);
 			return -EBUSY;
@@ -217,8 +241,7 @@ static int iwl_tm_indirect_write(struct iwl_testmode *testmode,
 	u32 val, i;
 
 	mutex_lock(testmode->mutex);
-	if (addr >= IWL_ABS_PRPH_START &&
-	    addr < IWL_ABS_PRPH_START + PRPH_END) {
+	if (iwl_tm_addr_range_prph(testmode, addr)) {
 		/* Periphery writes can be 1-3 bytes long, or DWORDs */
 		if (size < 4) {
 			memcpy(&val, buf, size);
@@ -302,14 +325,13 @@ static int iwl_tm_get_fw_info(struct iwl_testmode *testmode,
  *		  length is valid.
  * @data_out:	  Will be allocated inside, freeing is in the caller's
  *		  responsibility
+ * Returns: an error code indicating success or failure
  */
 int iwl_tm_execute_cmd(struct iwl_testmode *testmode, u32 cmd,
 		       struct iwl_tm_data *data_in,
 		       struct iwl_tm_data *data_out)
 {
 	const struct iwl_test_ops *test_ops;
-	bool cmd_supported = false;
-	int ret;
 
 	if (!testmode->trans->op_mode) {
 		IWL_ERR(testmode->trans, "No op_mode!\n");
@@ -320,39 +342,33 @@ int iwl_tm_execute_cmd(struct iwl_testmode *testmode, u32 cmd,
 
 	test_ops = &testmode->trans->op_mode->ops->test_ops;
 
-	if (test_ops->cmd_exec)
-		ret = test_ops->cmd_exec(testmode, cmd, data_in, data_out,
-					    &cmd_supported);
+	if (test_ops->cmd_exec) {
+		bool cmd_supported = false;
+		int ret;
 
-	if (cmd_supported)
-		goto out;
+		ret = test_ops->cmd_exec(testmode, cmd, data_in, data_out,
+					 &cmd_supported);
+
+		if (cmd_supported)
+			return ret;
+	}
 
 	switch (cmd) {
 	case IWL_TM_USER_CMD_HCMD:
-		ret = iwl_tm_send_hcmd(testmode, data_in, data_out);
-		break;
+		return iwl_tm_send_hcmd(testmode, data_in, data_out);
 	case IWL_TM_USER_CMD_REG_ACCESS:
-		ret = iwl_tm_reg_ops(testmode, data_in, data_out);
-		break;
+		return iwl_tm_reg_ops(testmode, data_in, data_out);
 	case IWL_TM_USER_CMD_SRAM_WRITE:
-		ret = iwl_tm_indirect_write(testmode, data_in);
-		break;
+		return iwl_tm_indirect_write(testmode, data_in);
 	case IWL_TM_USER_CMD_SRAM_READ:
-		ret = iwl_tm_indirect_read(testmode, data_in, data_out);
-		break;
+		return iwl_tm_indirect_read(testmode, data_in, data_out);
 	case IWL_TM_USER_CMD_GET_DEVICE_INFO:
-		ret = iwl_tm_get_dev_info(testmode, data_out);
-		break;
+		return iwl_tm_get_dev_info(testmode, data_out);
 	case IWL_TM_USER_CMD_GET_FW_INFO:
-		ret = iwl_tm_get_fw_info(testmode, data_out);
-		break;
+		return iwl_tm_get_fw_info(testmode, data_out);
 	default:
-		ret = -EOPNOTSUPP;
-		break;
+		return -EOPNOTSUPP;
 	}
-
-out:
-	return ret;
 }
 
 void iwl_tm_init(struct iwl_trans *trans, const struct iwl_fw *fw,

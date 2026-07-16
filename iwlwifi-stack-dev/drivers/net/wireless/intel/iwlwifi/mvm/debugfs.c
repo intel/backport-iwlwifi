@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
- * Copyright (C) 2012-2014, 2018-2022 Intel Corporation
+ * Copyright (C) 2012-2014, 2018-2025 Intel Corporation
  * Copyright (C) 2013-2015 Intel Mobile Communications GmbH
  * Copyright (C) 2016-2017 Intel Deutschland GmbH
  */
 #include <linux/vmalloc.h>
 #include <linux/err.h>
+#include <linux/hex.h>
 #include <linux/ieee80211.h>
 #include <linux/netdevice.h>
 #include <linux/dmi.h>
@@ -15,84 +16,12 @@
 #include "iwl-io.h"
 #include "debugfs.h"
 #include "iwl-modparams.h"
+#include "iwl-drv.h"
+#include "iwl-utils.h"
 #include "fw/error-dump.h"
 #include "fw/api/phy-ctxt.h"
 #ifdef CPTCFG_IWLMVM_AX_SOFTAP_TESTMODE
 #include "fw/api/ax-softap-testmode.h"
-#endif
-
-#ifdef CPTCFG_IWLWIFI_THERMAL_DEBUGFS
-static ssize_t iwl_dbgfs_tt_tx_backoff_write(struct iwl_mvm *mvm, char *buf,
-					     size_t count, loff_t *ppos)
-{
-	int i = 0;
-	int ret;
-	u32 temperature, backoff;
-	char *value_str;
-	char *seps = "\n ";
-	char *buf_ptr = buf;
-	struct iwl_tt_tx_backoff new_backoff_values[TT_TX_BACKOFF_SIZE];
-
-	mutex_lock(&mvm->mutex);
-	while ((value_str = strsep(&buf_ptr, seps))) {
-		if (sscanf(value_str, "%u=%u", &temperature, &backoff) != 2)
-			break;
-
-		if (temperature >=
-		    mvm->thermal_throttle.params.ct_kill_entry ||
-		    backoff < mvm->thermal_throttle.min_backoff) {
-			ret = -EINVAL;
-			goto out;
-		}
-
-		if (i == TT_TX_BACKOFF_SIZE) {
-			ret = -EINVAL;
-			goto out;
-		}
-
-		new_backoff_values[i].backoff = backoff;
-		new_backoff_values[i].temperature = temperature;
-		i++;
-	}
-
-	if (i != TT_TX_BACKOFF_SIZE) {
-		ret = -EINVAL;
-		goto out;
-	}
-
-	memcpy(mvm->thermal_throttle.params.tx_backoff, new_backoff_values,
-	       sizeof(mvm->thermal_throttle.params.tx_backoff));
-
-	ret = count;
-
-out:
-	mutex_unlock(&mvm->mutex);
-	return ret;
-}
-
-static ssize_t iwl_dbgfs_tt_tx_backoff_read(struct file *file,
-					    char __user *user_buf, size_t count,
-					    loff_t *ppos)
-{
-	struct iwl_mvm *mvm = file->private_data;
-	struct iwl_tt_tx_backoff *tx_backoff =
-	       mvm->thermal_throttle.params.tx_backoff;
-	/* we need 10 chars per line: 3 chars for the temperature + 1
-	 * for the equal sign + 5 for the backoff value + end of line.
-	*/
-	char buf[TT_TX_BACKOFF_SIZE * 10 + 1];
-	int i, pos = 0, bufsz = sizeof(buf);
-
-	mutex_lock(&mvm->mutex);
-	for (i = 0; i < TT_TX_BACKOFF_SIZE; i++) {
-		pos += scnprintf(buf + pos, bufsz - pos, "%d=%d\n",
-				 tx_backoff[i].temperature,
-				 tx_backoff[i].backoff);
-	}
-	mutex_unlock(&mvm->mutex);
-
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
-}
 #endif
 
 static ssize_t iwl_dbgfs_ctdp_budget_read(struct file *file,
@@ -126,8 +55,18 @@ static ssize_t iwl_dbgfs_stop_ctdp_write(struct iwl_mvm *mvm, char *buf,
 					 size_t count, loff_t *ppos)
 {
 	int ret;
+	bool force;
 
-	if (!iwl_mvm_is_ctdp_supported(mvm))
+	if (!kstrtobool(buf, &force))
+		IWL_DEBUG_INFO(mvm,
+			       "force start is %d [0=disabled, 1=enabled]\n",
+			       force);
+
+	/* we allow skipping cap support check and force stop ctdp
+	 * statistics collection and with guerantee that it is
+	 * safe to use.
+	 */
+	if (!force && !iwl_mvm_is_ctdp_supported(mvm))
 		return -EOPNOTSUPP;
 
 	if (!iwl_mvm_firmware_running(mvm) ||
@@ -136,6 +75,36 @@ static ssize_t iwl_dbgfs_stop_ctdp_write(struct iwl_mvm *mvm, char *buf,
 
 	mutex_lock(&mvm->mutex);
 	ret = iwl_mvm_ctdp_command(mvm, CTDP_CMD_OPERATION_STOP, 0);
+	mutex_unlock(&mvm->mutex);
+
+	return ret ?: count;
+}
+
+static ssize_t iwl_dbgfs_start_ctdp_write(struct iwl_mvm *mvm,
+					  char *buf, size_t count,
+					  loff_t *ppos)
+{
+	int ret;
+	bool force;
+
+	if (!kstrtobool(buf, &force))
+		IWL_DEBUG_INFO(mvm,
+			       "force start is %d [0=disabled, 1=enabled]\n",
+			       force);
+
+	/* we allow skipping cap support check and force enable ctdp
+	 * for statistics collection and with guerantee that it is
+	 * safe to use.
+	 */
+	if (!force && !iwl_mvm_is_ctdp_supported(mvm))
+		return -EOPNOTSUPP;
+
+	if (!iwl_mvm_firmware_running(mvm) ||
+	    mvm->fwrt.cur_fw_img != IWL_UCODE_REGULAR)
+		return -EIO;
+
+	mutex_lock(&mvm->mutex);
+	ret = iwl_mvm_ctdp_command(mvm, CTDP_CMD_OPERATION_START, 0);
 	mutex_unlock(&mvm->mutex);
 
 	return ret ?: count;
@@ -182,37 +151,6 @@ static ssize_t iwl_dbgfs_tx_flush_write(struct iwl_mvm *mvm, char *buf,
 
 	mutex_lock(&mvm->mutex);
 	ret =  iwl_mvm_flush_tx_path(mvm, flush_arg) ? : count;
-	mutex_unlock(&mvm->mutex);
-
-	return ret;
-}
-
-static ssize_t iwl_dbgfs_sta_drain_write(struct iwl_mvm *mvm, char *buf,
-					 size_t count, loff_t *ppos)
-{
-	struct iwl_mvm_sta *mvmsta;
-	int sta_id, drain, ret;
-
-	if (!iwl_mvm_firmware_running(mvm) ||
-	    mvm->fwrt.cur_fw_img != IWL_UCODE_REGULAR)
-		return -EIO;
-
-	if (sscanf(buf, "%d %d", &sta_id, &drain) != 2)
-		return -EINVAL;
-	if (sta_id < 0 || sta_id >= mvm->fw->ucode_capa.num_stations)
-		return -EINVAL;
-	if (drain < 0 || drain > 1)
-		return -EINVAL;
-
-	mutex_lock(&mvm->mutex);
-
-	mvmsta = iwl_mvm_sta_from_staid_protected(mvm, sta_id);
-
-	if (!mvmsta)
-		ret = -ENOENT;
-	else
-		ret = iwl_mvm_drain_sta(mvm, mvmsta, drain) ? : count;
-
 	mutex_unlock(&mvm->mutex);
 
 	return ret;
@@ -427,9 +365,7 @@ static ssize_t iwl_dbgfs_wifi_6e_enable_read(struct file *file,
 	char buf[12];
 	u32 value;
 
-	err = iwl_acpi_get_dsm_u32(mvm->fwrt.dev, 0,
-				   DSM_FUNC_ENABLE_6E,
-				   &iwl_guid, &value);
+	err = iwl_bios_get_dsm(&mvm->fwrt, DSM_FUNC_ENABLE_6E, &value);
 	if (err)
 		return err;
 
@@ -468,13 +404,14 @@ static ssize_t iwl_dbgfs_stations_read(struct file *file, char __user *user_buf,
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
 
-static ssize_t iwl_dbgfs_rs_data_read(struct file *file, char __user *user_buf,
+static ssize_t iwl_dbgfs_rs_data_read(struct ieee80211_link_sta *link_sta,
+				      struct iwl_mvm_sta *mvmsta,
+				      struct iwl_mvm *mvm,
+				      struct iwl_mvm_link_sta *mvm_link_sta,
+				      char __user *user_buf,
 				      size_t count, loff_t *ppos)
 {
-	struct ieee80211_sta *sta = file->private_data;
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->deflink.lq_sta.rs_fw;
-	struct iwl_mvm *mvm = lq_sta->pers.drv;
+	struct iwl_lq_sta_rs_fw *lq_sta = &mvm_link_sta->lq_sta.rs_fw;
 	static const size_t bufsz = 2048;
 	char *buff;
 	int desc = 0;
@@ -483,8 +420,6 @@ static ssize_t iwl_dbgfs_rs_data_read(struct file *file, char __user *user_buf,
 	buff = kmalloc(bufsz, GFP_KERNEL);
 	if (!buff)
 		return -ENOMEM;
-
-	mutex_lock(&mvm->mutex);
 
 	desc += scnprintf(buff + desc, bufsz - desc, "sta_id %d\n",
 			  lq_sta->pers.sta_id);
@@ -506,67 +441,47 @@ static ssize_t iwl_dbgfs_rs_data_read(struct file *file, char __user *user_buf,
 				     lq_sta->last_rate_n_flags);
 	if (desc < bufsz - 1)
 		buff[desc++] = '\n';
-	mutex_unlock(&mvm->mutex);
 
 	ret = simple_read_from_buffer(user_buf, count, ppos, buff, desc);
 	kfree(buff);
 	return ret;
 }
 
-#ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
-static ssize_t iwl_dbgfs_send_ps_config_dhc(struct iwl_mvm *mvm,
-					    struct iwl_ps_config *ps_cfg_cmd)
+static ssize_t
+_iwl_dbgfs_fixed_rate_write(struct ieee80211_link_sta *link_sta,
+			    struct iwl_mvm_sta *mvmsta,
+			    struct iwl_mvm *mvm,
+			    struct iwl_mvm_link_sta *mvm_link_sta,
+			    char *buf, size_t count,
+			    loff_t *ppos, bool v3)
 {
-	int ret;
-	struct iwl_dhc_cmd *dhc_cmd;
-	struct iwl_host_cmd hcmd = {
-			.id = WIDE_ID(LEGACY_GROUP, DEBUG_HOST_COMMAND),
-			};
-
-	/* allocate the maximal amount of memory that can be sent */
-	dhc_cmd = kzalloc(sizeof(*dhc_cmd) + sizeof(*ps_cfg_cmd),
-			  GFP_KERNEL);
-	if (!dhc_cmd)
-		return -ENOMEM;
-
-	dhc_cmd->length = cpu_to_le32(sizeof(*ps_cfg_cmd) >> 2);
-	dhc_cmd->index_and_mask =
-			cpu_to_le32(DHC_AUTO_UMAC_CONFIGURE_POWER_FLAGS |
-				    DHC_TABLE_AUTOMATION |
-				    DHC_TARGET_UMAC),
-
-	memcpy((void *)dhc_cmd->data,
-	       (void *)ps_cfg_cmd,
-	       sizeof(*ps_cfg_cmd));
-
-	hcmd.len[0] = sizeof(*ps_cfg_cmd) + sizeof(*dhc_cmd);
-	hcmd.data[0] = dhc_cmd;
-
-	if (!iwl_mvm_firmware_running(mvm))
-		return -EIO;
-
-	mutex_lock(&mvm->mutex);
-	ret = iwl_mvm_send_cmd(mvm, &hcmd);
-	mutex_unlock(&mvm->mutex);
-
-	return ret;
-}
-#endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
-
-static int iwl_rs_set_fixed_rate(struct iwl_mvm *mvm,
-				 struct iwl_lq_sta_rs_fw *lq_sta,
-				 bool partial)
-{
-	u32 type = partial ? IWL_TLC_DEBUG_PARTIAL_FIXED_RATE :
-			     IWL_TLC_DEBUG_FIXED_RATE;
-	int ret = iwl_rs_send_dhc(mvm, lq_sta->pers.sta_id, type,
-				  lq_sta->pers.dbg_fixed_rate);
-
+	struct iwl_lq_sta_rs_fw *lq_sta = &mvm_link_sta->lq_sta.rs_fw;
+	u32 rate, partial = 0, type;
 	char pretty_rate[100];
+	int ret;
+
+	/* no longer support this file for v1 firmware */
+	if (mvm->fw_rates_ver == 1)
+		return -EINVAL;
+
+	if (sscanf(buf, "%i %i", &rate, &partial) == 0)
+		rate = 0;
+
+	/* input is in FW format v2 or v3) so convert to v3 */
+	rate = iwl_v3_rate_from_v2_v3(cpu_to_le32(rate), v3);
+	/* and then to running FW expectation */
+	rate = le32_to_cpu(iwl_mvm_v3_rate_to_fw(rate, mvm->fw_rates_ver));
+
+	lq_sta->pers.dbg_fixed_rate = rate;
+
+	type = partial ? IWL_TLC_DEBUG_PARTIAL_FIXED_RATE :
+			 IWL_TLC_DEBUG_FIXED_RATE;
 
 	rs_pretty_print_rate(pretty_rate, sizeof(pretty_rate),
 			     lq_sta->pers.dbg_fixed_rate);
 
+	ret = iwl_rs_send_dhc(mvm, lq_sta->pers.sta_id, type,
+			      lq_sta->pers.dbg_fixed_rate);
 	IWL_DEBUG_RATE(mvm, "sta_id %d rate %s partial: %d, ret:%d\n",
 		       lq_sta->pers.sta_id, pretty_rate, partial, ret);
 
@@ -575,28 +490,31 @@ static int iwl_rs_set_fixed_rate(struct iwl_mvm *mvm,
 		return -EINVAL;
 	}
 
-	return 0;
+	return count;
 }
 
-static ssize_t iwl_dbgfs_fixed_rate_write(struct ieee80211_sta *sta,
-					  char *buf, size_t count,
-					  loff_t *ppos)
+static ssize_t
+iwl_dbgfs_fixed_rate_write(struct ieee80211_link_sta *link_sta,
+			   struct iwl_mvm_sta *mvmsta,
+			   struct iwl_mvm *mvm,
+			   struct iwl_mvm_link_sta *mvm_link_sta,
+			   char *buf, size_t count,
+			   loff_t *ppos)
 {
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->deflink.lq_sta.rs_fw;
-	struct iwl_mvm *mvm = lq_sta->pers.drv;
-	u32 parsed_rate;
-	u32 partial = false;
+	return _iwl_dbgfs_fixed_rate_write(link_sta, mvmsta, mvm, mvm_link_sta,
+					   buf, count, ppos, false);
+}
 
-	if (sscanf(buf, "%i %i", &parsed_rate, &partial) == 0)
-		lq_sta->pers.dbg_fixed_rate = 0;
-	else
-		lq_sta->pers.dbg_fixed_rate = parsed_rate;
-
-	if (iwl_rs_set_fixed_rate(mvm, lq_sta, !!partial))
-		return -EINVAL;
-
-	return count;
+static ssize_t
+iwl_dbgfs_fixed_rate_v3_write(struct ieee80211_link_sta *link_sta,
+			      struct iwl_mvm_sta *mvmsta,
+			      struct iwl_mvm *mvm,
+			      struct iwl_mvm_link_sta *mvm_link_sta,
+			      char *buf, size_t count,
+			      loff_t *ppos)
+{
+	return _iwl_dbgfs_fixed_rate_write(link_sta, mvmsta, mvm, mvm_link_sta,
+					   buf, count, ppos, true);
 }
 
 static void iwl_rs_disable_rts(struct iwl_mvm *mvm,
@@ -612,14 +530,15 @@ static void iwl_rs_disable_rts(struct iwl_mvm *mvm,
 		       sta_id, rts_disable);
 }
 
-static ssize_t iwl_dbgfs_disable_rts_write(struct ieee80211_sta *sta,
+static ssize_t iwl_dbgfs_disable_rts_write(struct ieee80211_link_sta *link_sta,
+					   struct iwl_mvm_sta *mvmsta,
+					   struct iwl_mvm *mvm,
+					   struct iwl_mvm_link_sta *mvm_link_sta,
 					   char *buf, size_t count,
 					   loff_t *ppos)
 {
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->deflink.lq_sta.rs_fw;
+	struct iwl_lq_sta_rs_fw *lq_sta = &mvm_link_sta->lq_sta.rs_fw;
 	u32 sta_id = lq_sta->pers.sta_id;
-	struct iwl_mvm *mvm = lq_sta->pers.drv;
 	bool disable_rts;
 
 	if (kstrtobool(buf, &disable_rts))
@@ -629,16 +548,16 @@ static ssize_t iwl_dbgfs_disable_rts_write(struct ieee80211_sta *sta,
 	return count;
 }
 
-static ssize_t iwl_dbgfs_tlc_dhc_write(struct ieee80211_sta *sta,
+static ssize_t iwl_dbgfs_tlc_dhc_write(struct ieee80211_link_sta *link_sta,
+				       struct iwl_mvm_sta *mvmsta,
+				       struct iwl_mvm *mvm,
+				       struct iwl_mvm_link_sta *mvm_link_sta,
 				       char *buf, size_t count,
 				       loff_t *ppos)
 {
+	struct iwl_lq_sta_rs_fw *lq_sta = &mvm_link_sta->lq_sta.rs_fw;
 	u32 type, value;
 	int ret;
-
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-	struct iwl_lq_sta_rs_fw *lq_sta = &mvmsta->deflink.lq_sta.rs_fw;
-	struct iwl_mvm *mvm = lq_sta->pers.drv;
 
 	if (sscanf(buf, "%i %i", &type, &value) != 2) {
 		IWL_DEBUG_RATE(mvm, "usage <type> <value>\n");
@@ -672,7 +591,10 @@ static ssize_t iwl_dbgfs_iwl_tlc_dhc_write(struct iwl_mvm *mvm, char *buf,
 	return count;
 }
 
-static ssize_t iwl_dbgfs_ampdu_size_write(struct ieee80211_sta *sta,
+static ssize_t iwl_dbgfs_ampdu_size_write(struct ieee80211_link_sta *link_sta,
+					  struct iwl_mvm_sta *mvmsta,
+					  struct iwl_mvm *mvm,
+					  struct iwl_mvm_link_sta *mvm_link_sta,
 					  char *buf, size_t count,
 					  loff_t *ppos)
 {
@@ -683,15 +605,17 @@ static ssize_t iwl_dbgfs_ampdu_size_write(struct ieee80211_sta *sta,
 	if (err)
 		return err;
 
-	iwl_rs_dhc_set_ampdu_size(sta, &sta->deflink, ampdu_size);
+	iwl_rs_dhc_set_ampdu_size(link_sta->sta, link_sta, ampdu_size);
 	return count;
 }
 
-static ssize_t iwl_dbgfs_amsdu_len_write(struct ieee80211_sta *sta,
+static ssize_t iwl_dbgfs_amsdu_len_write(struct ieee80211_link_sta *link_sta,
+					 struct iwl_mvm_sta *mvmsta,
+					 struct iwl_mvm *mvm,
+					 struct iwl_mvm_link_sta *mvm_link_sta,
 					 char *buf, size_t count,
 					 loff_t *ppos)
 {
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 	int i;
 	u16 amsdu_len;
 
@@ -699,38 +623,38 @@ static ssize_t iwl_dbgfs_amsdu_len_write(struct ieee80211_sta *sta,
 		return -EINVAL;
 
 	/* only change from debug set <-> debug unset */
-	if (amsdu_len && mvmsta->orig_amsdu_len)
+	if (amsdu_len && mvm_link_sta->orig_amsdu_len)
 		return -EBUSY;
 
 	if (amsdu_len) {
-		mvmsta->orig_amsdu_len = sta->cur->max_amsdu_len;
-		sta->deflink.agg.max_amsdu_len = amsdu_len;
-		sta->deflink.agg.max_amsdu_len = amsdu_len;
-		for (i = 0; i < ARRAY_SIZE(sta->deflink.agg.max_tid_amsdu_len); i++)
-			sta->deflink.agg.max_tid_amsdu_len[i] = amsdu_len;
+		mvm_link_sta->orig_amsdu_len = link_sta->agg.max_amsdu_len;
+		link_sta->agg.max_amsdu_len = amsdu_len;
+		for (i = 0; i < ARRAY_SIZE(link_sta->agg.max_tid_amsdu_len); i++)
+			link_sta->agg.max_tid_amsdu_len[i] = amsdu_len;
 	} else {
-		sta->deflink.agg.max_amsdu_len = mvmsta->orig_amsdu_len;
-		mvmsta->orig_amsdu_len = 0;
+		link_sta->agg.max_amsdu_len = mvm_link_sta->orig_amsdu_len;
+		mvm_link_sta->orig_amsdu_len = 0;
 	}
 
-	ieee80211_sta_recalc_aggregates(sta);
+	ieee80211_sta_recalc_aggregates(link_sta->sta);
 
 	return count;
 }
 
-static ssize_t iwl_dbgfs_amsdu_len_read(struct file *file,
+static ssize_t iwl_dbgfs_amsdu_len_read(struct ieee80211_link_sta *link_sta,
+					struct iwl_mvm_sta *mvmsta,
+					struct iwl_mvm *mvm,
+					struct iwl_mvm_link_sta *mvm_link_sta,
 					char __user *user_buf,
 					size_t count, loff_t *ppos)
 {
-	struct ieee80211_sta *sta = file->private_data;
-	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
-
 	char buf[32];
 	int pos;
 
-	pos = scnprintf(buf, sizeof(buf), "current %d ", sta->cur->max_amsdu_len);
+	pos = scnprintf(buf, sizeof(buf), "current %d ",
+			link_sta->agg.max_amsdu_len);
 	pos += scnprintf(buf + pos, sizeof(buf) - pos, "stored %d\n",
-			 mvmsta->orig_amsdu_len);
+			 mvm_link_sta->orig_amsdu_len);
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
@@ -825,236 +749,34 @@ static ssize_t iwl_dbgfs_ax_softap_client_testmode_write(struct iwl_mvm *mvm,
 }
 #endif
 
-static
-int iwl_mvm_coex_dump_mbox(struct iwl_bt_coex_profile_notif *notif, char *buf,
-			   int pos, int bufsz)
-{
-	pos += scnprintf(buf+pos, bufsz-pos, "MBOX dw0:\n");
-
-	BT_MBOX_PRINT(0, LE_SLAVE_LAT, false);
-	BT_MBOX_PRINT(0, LE_PROF1, false);
-	BT_MBOX_PRINT(0, LE_PROF2, false);
-	BT_MBOX_PRINT(0, LE_PROF_OTHER, false);
-	BT_MBOX_PRINT(0, CHL_SEQ_N, false);
-	BT_MBOX_PRINT(0, INBAND_S, false);
-	BT_MBOX_PRINT(0, LE_MIN_RSSI, false);
-	BT_MBOX_PRINT(0, LE_SCAN, false);
-	BT_MBOX_PRINT(0, LE_ADV, false);
-	BT_MBOX_PRINT(0, LE_MAX_TX_POWER, false);
-	BT_MBOX_PRINT(0, OPEN_CON_1, true);
-
-	pos += scnprintf(buf+pos, bufsz-pos, "MBOX dw1:\n");
-
-	BT_MBOX_PRINT(1, BR_MAX_TX_POWER, false);
-	BT_MBOX_PRINT(1, IP_SR, false);
-	BT_MBOX_PRINT(1, LE_MSTR, false);
-	BT_MBOX_PRINT(1, AGGR_TRFC_LD, false);
-	BT_MBOX_PRINT(1, MSG_TYPE, false);
-	BT_MBOX_PRINT(1, SSN, true);
-
-	pos += scnprintf(buf+pos, bufsz-pos, "MBOX dw2:\n");
-
-	BT_MBOX_PRINT(2, SNIFF_ACT, false);
-	BT_MBOX_PRINT(2, PAG, false);
-	BT_MBOX_PRINT(2, INQUIRY, false);
-	BT_MBOX_PRINT(2, CONN, false);
-	BT_MBOX_PRINT(2, SNIFF_INTERVAL, false);
-	BT_MBOX_PRINT(2, DISC, false);
-	BT_MBOX_PRINT(2, SCO_TX_ACT, false);
-	BT_MBOX_PRINT(2, SCO_RX_ACT, false);
-	BT_MBOX_PRINT(2, ESCO_RE_TX, false);
-	BT_MBOX_PRINT(2, SCO_DURATION, true);
-
-	pos += scnprintf(buf+pos, bufsz-pos, "MBOX dw3:\n");
-
-	BT_MBOX_PRINT(3, SCO_STATE, false);
-	BT_MBOX_PRINT(3, SNIFF_STATE, false);
-	BT_MBOX_PRINT(3, A2DP_STATE, false);
-	BT_MBOX_PRINT(3, A2DP_SRC, false);
-	BT_MBOX_PRINT(3, ACL_STATE, false);
-	BT_MBOX_PRINT(3, MSTR_STATE, false);
-	BT_MBOX_PRINT(3, OBX_STATE, false);
-	BT_MBOX_PRINT(3, OPEN_CON_2, false);
-	BT_MBOX_PRINT(3, TRAFFIC_LOAD, false);
-	BT_MBOX_PRINT(3, CHL_SEQN_LSB, false);
-	BT_MBOX_PRINT(3, INBAND_P, false);
-	BT_MBOX_PRINT(3, MSG_TYPE_2, false);
-	BT_MBOX_PRINT(3, SSN_2, false);
-	BT_MBOX_PRINT(3, UPDATE_REQUEST, true);
-
-	return pos;
-}
-
-static ssize_t iwl_dbgfs_bt_notif_read(struct file *file, char __user *user_buf,
-				       size_t count, loff_t *ppos)
-{
-	struct iwl_mvm *mvm = file->private_data;
-	struct iwl_bt_coex_profile_notif *notif = &mvm->last_bt_notif;
-	char *buf;
-	int ret, pos = 0, bufsz = sizeof(char) * 1024;
-
-	buf = kmalloc(bufsz, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	mutex_lock(&mvm->mutex);
-
-	pos += iwl_mvm_coex_dump_mbox(notif, buf, pos, bufsz);
-
-	pos += scnprintf(buf + pos, bufsz - pos, "bt_ci_compliance = %d\n",
-			 notif->bt_ci_compliance);
-	pos += scnprintf(buf + pos, bufsz - pos, "primary_ch_lut = %d\n",
-			 le32_to_cpu(notif->primary_ch_lut));
-	pos += scnprintf(buf + pos, bufsz - pos, "secondary_ch_lut = %d\n",
-			 le32_to_cpu(notif->secondary_ch_lut));
-	pos += scnprintf(buf + pos,
-			 bufsz - pos, "bt_activity_grading = %d\n",
-			 le32_to_cpu(notif->bt_activity_grading));
-	pos += scnprintf(buf + pos, bufsz - pos, "bt_rrc = %d\n",
-			 notif->rrc_status & 0xF);
-	pos += scnprintf(buf + pos, bufsz - pos, "bt_ttc = %d\n",
-			 notif->ttc_status & 0xF);
-
-	pos += scnprintf(buf + pos, bufsz - pos, "sync_sco = %d\n",
-			 IWL_MVM_BT_COEX_SYNC2SCO);
-	pos += scnprintf(buf + pos, bufsz - pos, "mplut = %d\n",
-			 IWL_MVM_BT_COEX_MPLUT);
-
-	mutex_unlock(&mvm->mutex);
-
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
-	kfree(buf);
-
-	return ret;
-}
-#undef BT_MBOX_PRINT
-
-static ssize_t iwl_dbgfs_bt_cmd_read(struct file *file, char __user *user_buf,
-				     size_t count, loff_t *ppos)
-{
-	struct iwl_mvm *mvm = file->private_data;
-	struct iwl_bt_coex_ci_cmd *cmd = &mvm->last_bt_ci_cmd;
-	char buf[256];
-	int bufsz = sizeof(buf);
-	int pos = 0;
-
-	mutex_lock(&mvm->mutex);
-
-	pos += scnprintf(buf + pos, bufsz - pos, "Channel inhibition CMD\n");
-	pos += scnprintf(buf + pos, bufsz - pos,
-			 "\tPrimary Channel Bitmap 0x%016llx\n",
-			 le64_to_cpu(cmd->bt_primary_ci));
-	pos += scnprintf(buf + pos, bufsz - pos,
-			 "\tSecondary Channel Bitmap 0x%016llx\n",
-			 le64_to_cpu(cmd->bt_secondary_ci));
-
-	mutex_unlock(&mvm->mutex);
-
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
-}
-
-static ssize_t
-iwl_dbgfs_bt_tx_prio_write(struct iwl_mvm *mvm, char *buf,
-			   size_t count, loff_t *ppos)
-{
-	u32 bt_tx_prio;
-
-	if (sscanf(buf, "%u", &bt_tx_prio) != 1)
-		return -EINVAL;
-	if (bt_tx_prio > 4)
-		return -EINVAL;
-
-	mvm->bt_tx_prio = bt_tx_prio;
-
-	return count;
-}
-
-static ssize_t
-iwl_dbgfs_bt_force_ant_write(struct iwl_mvm *mvm, char *buf,
-			     size_t count, loff_t *ppos)
-{
-	static const char * const modes_str[BT_FORCE_ANT_MAX] = {
-		[BT_FORCE_ANT_DIS] = "dis",
-		[BT_FORCE_ANT_AUTO] = "auto",
-		[BT_FORCE_ANT_BT] = "bt",
-		[BT_FORCE_ANT_WIFI] = "wifi",
-	};
-	int ret, bt_force_ant_mode;
-
-	ret = match_string(modes_str, ARRAY_SIZE(modes_str), buf);
-	if (ret < 0)
-		return ret;
-
-	bt_force_ant_mode = ret;
-	ret = 0;
-	mutex_lock(&mvm->mutex);
-	if (mvm->bt_force_ant_mode == bt_force_ant_mode)
-		goto out;
-
-	mvm->bt_force_ant_mode = bt_force_ant_mode;
-	IWL_DEBUG_COEX(mvm, "Force mode: %s\n",
-		       modes_str[mvm->bt_force_ant_mode]);
-
-	if (iwl_mvm_firmware_running(mvm))
-		ret = iwl_mvm_send_bt_init_conf(mvm);
-	else
-		ret = 0;
-
-out:
-	mutex_unlock(&mvm->mutex);
-	return ret ?: count;
-}
-
-static ssize_t iwl_dbgfs_fw_ver_read(struct file *file, char __user *user_buf,
-				     size_t count, loff_t *ppos)
-{
-	struct iwl_mvm *mvm = file->private_data;
-	char *buff, *pos, *endpos;
-	static const size_t bufsz = 1024;
-	int ret;
-
-	buff = kmalloc(bufsz, GFP_KERNEL);
-	if (!buff)
-		return -ENOMEM;
-
-	pos = buff;
-	endpos = pos + bufsz;
-
-	pos += scnprintf(pos, endpos - pos, "FW prefix: %s\n",
-			 mvm->trans->cfg->fw_name_pre);
-	pos += scnprintf(pos, endpos - pos, "FW: %s\n",
-			 mvm->fwrt.fw->human_readable);
-	pos += scnprintf(pos, endpos - pos, "Device: %s\n",
-			 mvm->fwrt.trans->name);
-	pos += scnprintf(pos, endpos - pos, "Bus: %s\n",
-			 mvm->fwrt.dev->bus->name);
-
-	ret = simple_read_from_buffer(user_buf, count, ppos, buff, pos - buff);
-	kfree(buff);
-
-	return ret;
-}
-
 static ssize_t iwl_dbgfs_tas_get_status_read(struct file *file,
 					     char __user *user_buf,
 					     size_t count, loff_t *ppos)
 {
 	struct iwl_mvm *mvm = file->private_data;
-	struct iwl_mvm_tas_status_resp tas_rsp;
-	struct iwl_mvm_tas_status_resp *rsp = &tas_rsp;
+	struct iwl_tas_status_resp *rsp = NULL;
 	static const size_t bufsz = 1024;
 	char *buff, *pos, *endpos;
 	const char * const tas_dis_reason[TAS_DISABLED_REASON_MAX] = {
-		[TAS_DISABLED_DUE_TO_BIOS] = "Due To BIOS",
-		[TAS_DISABLED_DUE_TO_SAR_6DBM] = "Due To SAR Limit Less Than 6 dBm",
-		[TAS_DISABLED_REASON_INVALID] = "N/A",
+		[TAS_DISABLED_DUE_TO_BIOS] =
+			"Due To BIOS",
+		[TAS_DISABLED_DUE_TO_SAR_6DBM] =
+			"Due To SAR Limit Less Than 6 dBm",
+		[TAS_DISABLED_REASON_INVALID] =
+			"N/A",
+		[TAS_DISABLED_DUE_TO_TABLE_SOURCE_INVALID] =
+			"Due to table source invalid",
 	};
 	const char * const tas_current_status[TAS_DYNA_STATUS_MAX] = {
 		[TAS_DYNA_INACTIVE] = "INACTIVE",
-		[TAS_DYNA_INACTIVE_MVM_MODE] = "Inactive Due To MVM Mode",
-		[TAS_DYNA_INACTIVE_TRIGGER_MODE] = "Inactive Due To Trigger Mode",
-		[TAS_DYNA_INACTIVE_BLOCK_LISTED] = "Inactive Due To Block Listed",
-		[TAS_DYNA_INACTIVE_UHB_NON_US] = "Inactive Due To UHB Non USA",
+		[TAS_DYNA_INACTIVE_MVM_MODE] =
+			"inactive due to mvm mode",
+		[TAS_DYNA_INACTIVE_TRIGGER_MODE] =
+			"inactive due to trigger mode",
+		[TAS_DYNA_INACTIVE_BLOCK_LISTED] =
+			"inactive due to block listed",
+		[TAS_DYNA_INACTIVE_UHB_NON_US] =
+			"inactive due to uhb non US",
 		[TAS_DYNA_ACTIVE] = "ACTIVE",
 	};
 	struct iwl_host_cmd hcmd = {
@@ -1069,6 +791,10 @@ static ssize_t iwl_dbgfs_tas_get_status_read(struct file *file,
 
 	if (!iwl_mvm_firmware_running(mvm))
 		return -ENODEV;
+
+	if (iwl_fw_lookup_notif_ver(mvm->fw, DEBUG_GROUP, GET_TAS_STATUS,
+				    0) != 3)
+		return -EOPNOTSUPP;
 
 	mutex_lock(&mvm->mutex);
 	ret = iwl_mvm_send_cmd(mvm, &hcmd);
@@ -1086,24 +812,22 @@ static ssize_t iwl_dbgfs_tas_get_status_read(struct file *file,
 
 	pos += scnprintf(pos, endpos - pos, "TAS Conclusion:\n");
 	for (i = 0; i < rsp->in_dual_radio + 1; i++) {
-		if (rsp->tas_status_mac[i].band != TAS_LMAC_BAND_INVALID &&
-		    rsp->tas_status_mac[i].dynamic_status & BIT(TAS_DYNA_ACTIVE)) {
+		if (rsp->tas_status_mac[i].dynamic_status &
+		    BIT(TAS_DYNA_ACTIVE)) {
 			pos += scnprintf(pos, endpos - pos, "\tON for ");
 			switch (rsp->tas_status_mac[i].band) {
-			case TAS_LMAC_BAND_HB:
+			case PHY_BAND_5:
 				pos += scnprintf(pos, endpos - pos, "HB\n");
 				break;
-			case TAS_LMAC_BAND_LB:
+			case PHY_BAND_24:
 				pos += scnprintf(pos, endpos - pos, "LB\n");
 				break;
-			case TAS_LMAC_BAND_UHB:
+			case PHY_BAND_6:
 				pos += scnprintf(pos, endpos - pos, "UHB\n");
 				break;
-			case TAS_LMAC_BAND_INVALID:
-				pos += scnprintf(pos, endpos - pos, "INVALID BAND\n");
-				break;
 			default:
-				pos += scnprintf(pos, endpos - pos, "Unsupported band (%d)\n",
+				pos += scnprintf(pos, endpos - pos,
+						 "Unsupported band (%d)\n",
 						 rsp->tas_status_mac[i].band);
 				goto out;
 			}
@@ -1114,77 +838,94 @@ static ssize_t iwl_dbgfs_tas_get_status_read(struct file *file,
 		pos += scnprintf(pos, endpos - pos, "\tOFF\n");
 
 	pos += scnprintf(pos, endpos - pos, "TAS Report\n");
-	pos += scnprintf(pos, endpos - pos, "\tTAS FW version: %d\n", rsp->tas_fw_version);
-	pos += scnprintf(pos, endpos - pos, "\tIs UHB Enabled For USA?: %s\n",
-			 rsp->is_uhb_for_usa_enable ? "TRUE" : "FALSE");
-	pos += scnprintf(pos, endpos - pos, "\tCurrent Country: 0x%x\n",
+	pos += scnprintf(pos, endpos - pos, "TAS FW version: %d\n",
+			 rsp->tas_fw_version);
+	pos += scnprintf(pos, endpos - pos, "Is UHB enabled for USA?: %s\n",
+			 rsp->is_uhb_for_usa_enable ? "True" : "False");
+
+	if (fw_has_capa(&mvm->fw->ucode_capa,
+			IWL_UCODE_TLV_CAPA_UHB_CANADA_TAS_SUPPORT))
+		pos += scnprintf(pos, endpos - pos,
+				 "Is UHB enabled for CANADA?: %s\n",
+				 rsp->uhb_allowed_flags &
+				 TAS_UHB_ALLOWED_CANADA ? "True" : "False");
+
+	pos += scnprintf(pos, endpos - pos, "Current MCC: 0x%x\n",
 			 le16_to_cpu(rsp->curr_mcc));
 
-	pos += scnprintf(pos, endpos - pos, "\tBlock List Countries:");
-	for (i = 0; i < APCI_WTAS_BLACK_LIST_MAX; i++)
-		pos += scnprintf(pos, endpos - pos, " 0x%x", le16_to_cpu(rsp->block_list[i]));
+	pos += scnprintf(pos, endpos - pos, "Block list entries:");
+	for (i = 0; i < IWL_WTAS_BLACK_LIST_MAX; i++)
+		pos += scnprintf(pos, endpos - pos, " 0x%x",
+				 le16_to_cpu(rsp->block_list[i]));
 
-	pos += scnprintf(pos, endpos - pos, "\n\tVendor: %s\n",
-			 dmi_get_system_info(DMI_SYS_VENDOR));
+	pos += scnprintf(pos, endpos - pos, "\nOEM name: %s\n",
+			 dmi_get_system_info(DMI_SYS_VENDOR) ?: "<unknown>");
 	pos += scnprintf(pos, endpos - pos, "\tVendor In Approved List: %s\n",
-			 iwl_mvm_is_vendor_in_approved_list() ? "YES" : "NO");
-	pos += scnprintf(pos, endpos - pos, "\tDo TAS Support Dual Radio?: %s\n",
+			 iwl_is_tas_approved() ? "YES" : "NO");
+	pos += scnprintf(pos, endpos - pos,
+			 "\tDo TAS Support Dual Radio?: %s\n",
 			 rsp->in_dual_radio ? "TRUE" : "FALSE");
 
 	for (i = 0; i < rsp->in_dual_radio + 1; i++) {
-		if (rsp->tas_status_mac[i].static_dis_reason == 0) {
-			pos += scnprintf(pos, endpos - pos, "\tStatic Status: Disabled\n");
-			pos += scnprintf(pos, endpos - pos, "\tStatic Disabled Reason: %s (0)\n",
+		if (rsp->tas_status_mac[i].static_status == 0) {
+			pos += scnprintf(pos, endpos - pos,
+					 "Static status: disabled\n");
+			pos += scnprintf(pos, endpos - pos,
+					 "Static disabled reason: %s (0)\n",
 					 tas_dis_reason[0]);
 			goto out;
 		}
 
-		pos += scnprintf(pos, endpos - pos, "\nTAS status for ");
+		pos += scnprintf(pos, endpos - pos, "TAS status for ");
 		switch (rsp->tas_status_mac[i].band) {
-		case TAS_LMAC_BAND_HB:
-			pos += scnprintf(pos, endpos - pos, "HB\n");
+		case PHY_BAND_5:
+			pos += scnprintf(pos, endpos - pos, "High band\n");
 			break;
-		case TAS_LMAC_BAND_LB:
-			pos += scnprintf(pos, endpos - pos, "LB\n");
+		case PHY_BAND_24:
+			pos += scnprintf(pos, endpos - pos, "Low band\n");
 			break;
-		case TAS_LMAC_BAND_UHB:
-			pos += scnprintf(pos, endpos - pos, "UHB\n");
-			break;
-		case TAS_LMAC_BAND_INVALID:
-			pos += scnprintf(pos, endpos - pos, "INVALID BAND\n");
+		case PHY_BAND_6:
+			pos += scnprintf(pos, endpos - pos,
+					 "Ultra high band\n");
 			break;
 		default:
-			pos += scnprintf(pos, endpos - pos, "Unsupported band (%d)\n",
+			pos += scnprintf(pos, endpos - pos,
+					 "Unsupported band (%d)\n",
 					 rsp->tas_status_mac[i].band);
 			goto out;
 		}
-		pos += scnprintf(pos, endpos - pos, "\tStatic Status: %sabled\n",
-				 rsp->tas_status_mac[i].static_status ? "En" : "Dis");
-		pos += scnprintf(pos, endpos - pos, "\tStatic Disabled Reason: ");
-		if (rsp->tas_status_mac[i].static_dis_reason >= 0 &&
-		    rsp->tas_status_mac[i].static_dis_reason < TAS_DISABLED_REASON_MAX)
+		pos += scnprintf(pos, endpos - pos, "Static status: %sabled\n",
+				 rsp->tas_status_mac[i].static_status ?
+				 "En" : "Dis");
+		pos += scnprintf(pos, endpos - pos,
+				 "\tStatic Disabled Reason: ");
+		if (rsp->tas_status_mac[i].static_dis_reason < TAS_DISABLED_REASON_MAX)
 			pos += scnprintf(pos, endpos - pos, "%s (%d)\n",
 					 tas_dis_reason[rsp->tas_status_mac[i].static_dis_reason],
 					 rsp->tas_status_mac[i].static_dis_reason);
 		else
-			pos += scnprintf(pos, endpos - pos, "unsupported value (%d)\n",
+			pos += scnprintf(pos, endpos - pos,
+					 "unsupported value (%d)\n",
 					 rsp->tas_status_mac[i].static_dis_reason);
 
-		pos += scnprintf(pos, endpos - pos, "\tDynamic Status:\n");
+		pos += scnprintf(pos, endpos - pos, "Dynamic status:\n");
 		dyn_status = (rsp->tas_status_mac[i].dynamic_status);
-		for_each_set_bit(tmp, &dyn_status, sizeof(dyn_status)) {
-			if (tmp >= 0 && tmp < TAS_DYNA_STATUS_MAX)
-				pos += scnprintf(pos, endpos - pos, "\t\t%s (%d)\n",
-						 tas_current_status[tmp], tmp);
+		for_each_set_bit(tmp, &dyn_status, TAS_DYNA_STATUS_MAX) {
+			pos += scnprintf(pos, endpos - pos, "\t%s (%d)\n",
+					 tas_current_status[tmp], tmp);
 		}
 
-		pos += scnprintf(pos, endpos - pos, "\tIs Near Disconnection?: %s\n",
-				 rsp->tas_status_mac[i].near_disconnection ? "TRUE" : "FALSE");
+		pos += scnprintf(pos, endpos - pos,
+				 "Is near disconnection?: %s\n",
+				 rsp->tas_status_mac[i].near_disconnection ?
+				 "True" : "False");
 		tmp = le16_to_cpu(rsp->tas_status_mac[i].max_reg_pwr_limit);
-		pos += scnprintf(pos, endpos - pos, "\tMax. Regulatory Pwr Limit (dBm): %d.%03d\n",
+		pos += scnprintf(pos, endpos - pos,
+				 "Max. regulatory pwr limit (dBm): %d.%03d\n",
 				 tmp / 8, 125 * (tmp % 8));
 		tmp = le16_to_cpu(rsp->tas_status_mac[i].sar_limit);
-		pos += scnprintf(pos, endpos - pos, "\tSAR limit (dBm): %d.%03d\n",
+		pos += scnprintf(pos, endpos - pos,
+				 "SAR limit (dBm): %d.%03d\n",
 				 tmp / 8, 125 * (tmp % 8));
 	}
 
@@ -1235,6 +976,13 @@ static ssize_t iwl_dbgfs_fw_rx_stats_read(struct file *file,
 	char *buf;
 	int ret;
 	size_t bufsz;
+	u8 cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw,
+					   WIDE_ID(SYSTEM_GROUP,
+						   SYSTEM_STATISTICS_CMD),
+					   IWL_FW_CMD_VER_UNKNOWN);
+
+	if (cmd_ver != IWL_FW_CMD_VER_UNKNOWN)
+		return -EOPNOTSUPP;
 
 	if (iwl_mvm_has_new_rx_stats_api(mvm))
 		bufsz = ((sizeof(struct mvm_statistics_rx) /
@@ -1414,6 +1162,101 @@ static ssize_t iwl_dbgfs_fw_rx_stats_read(struct file *file,
 }
 #undef PRINT_STAT_LE32
 
+static ssize_t iwl_dbgfs_fw_system_stats_read(struct file *file,
+					      char __user *user_buf,
+					      size_t count, loff_t *ppos)
+{
+	char *buff, *pos, *endpos;
+	int ret;
+	size_t bufsz;
+	int i;
+	struct iwl_mvm_vif *mvmvif;
+	struct ieee80211_vif *vif;
+	struct iwl_mvm *mvm = file->private_data;
+	u8 cmd_ver = iwl_fw_lookup_cmd_ver(mvm->fw,
+					   WIDE_ID(SYSTEM_GROUP,
+						   SYSTEM_STATISTICS_CMD),
+					   IWL_FW_CMD_VER_UNKNOWN);
+
+	/* in case of a wrong cmd version, allocate buffer only for error msg */
+	bufsz = (cmd_ver == 1) ? 4096 : 64;
+
+	buff = kzalloc(bufsz, GFP_KERNEL);
+	if (!buff)
+		return -ENOMEM;
+
+	pos = buff;
+	endpos = pos + bufsz;
+
+	if (cmd_ver != 1) {
+		pos += scnprintf(pos, endpos - pos,
+				 "System stats not supported:%d\n", cmd_ver);
+		goto send_out;
+	}
+
+	mutex_lock(&mvm->mutex);
+	if (iwl_mvm_firmware_running(mvm))
+		iwl_mvm_request_statistics(mvm, false);
+
+	for (i = 0; i < NUM_MAC_INDEX_DRIVER; i++) {
+		vif = iwl_mvm_rcu_dereference_vif_id(mvm, i, false);
+		if (!vif)
+			continue;
+
+		if (vif->type == NL80211_IFTYPE_STATION)
+			break;
+	}
+
+	if (i == NUM_MAC_INDEX_DRIVER || !vif) {
+		pos += scnprintf(pos, endpos - pos, "vif is NULL\n");
+		goto release_send_out;
+	}
+
+	mvmvif = iwl_mvm_vif_from_mac80211(vif);
+	if (!mvmvif) {
+		pos += scnprintf(pos, endpos - pos, "mvmvif is NULL\n");
+		goto release_send_out;
+	}
+
+	for_each_mvm_vif_valid_link(mvmvif, i) {
+		struct iwl_mvm_vif_link_info *link_info = mvmvif->link[i];
+
+		pos += scnprintf(pos, endpos - pos,
+				 "link_id %d", i);
+		pos += scnprintf(pos, endpos - pos,
+				 " num_beacons %d",
+				 link_info->beacon_stats.num_beacons);
+		pos += scnprintf(pos, endpos - pos,
+				 " accu_num_beacons %d",
+				 link_info->beacon_stats.accu_num_beacons);
+		pos += scnprintf(pos, endpos - pos,
+				 " avg_signal %d\n",
+				 link_info->beacon_stats.avg_signal);
+	}
+
+	pos += scnprintf(pos, endpos - pos,
+			 "radio_stats.rx_time %lld\n",
+			 mvm->radio_stats.rx_time);
+	pos += scnprintf(pos, endpos - pos,
+			 "radio_stats.tx_time %lld\n",
+			 mvm->radio_stats.tx_time);
+	pos += scnprintf(pos, endpos - pos,
+			 "accu_radio_stats.rx_time %lld\n",
+			 mvm->accu_radio_stats.rx_time);
+	pos += scnprintf(pos, endpos - pos,
+			 "accu_radio_stats.tx_time %lld\n",
+			 mvm->accu_radio_stats.tx_time);
+
+release_send_out:
+	mutex_unlock(&mvm->mutex);
+
+send_out:
+	ret = simple_read_from_buffer(user_buf, count, ppos, buff, pos - buff);
+	kfree(buff);
+
+	return ret;
+}
+
 static ssize_t iwl_dbgfs_frame_stats_read(struct iwl_mvm *mvm,
 					  char __user *user_buf, size_t count,
 					  loff_t *ppos,
@@ -1501,13 +1344,9 @@ static ssize_t iwl_dbgfs_fw_restart_write(struct iwl_mvm *mvm, char *buf,
 
 	mutex_lock(&mvm->mutex);
 
-	/* allow one more restart that we're provoking here */
-	if (mvm->fw_restart >= 0)
-		mvm->fw_restart++;
-
 	if (count == 6 && !strcmp(buf, "nolog\n")) {
 		set_bit(IWL_MVM_STATUS_SUPPRESS_ERROR_LOG_ONCE, &mvm->status);
-		set_bit(STATUS_SUPPRESS_CMD_ERROR_ONCE, &mvm->trans->status);
+		mvm->trans->suppress_cmd_error_once = true;
 	}
 
 	/* take the return value to make compiler happy - it will fail anyway */
@@ -1525,6 +1364,8 @@ static ssize_t iwl_dbgfs_fw_nmi_write(struct iwl_mvm *mvm, char *buf,
 {
 	if (!iwl_mvm_firmware_running(mvm))
 		return -EIO;
+
+	IWL_ERR(mvm, "Triggering an NMI from debugfs\n");
 
 	if (count == 6 && !strcmp(buf, "nolog\n"))
 		set_bit(IWL_MVM_STATUS_SUPPRESS_ERROR_LOG_ONCE, &mvm->status);
@@ -1648,8 +1489,8 @@ static ssize_t iwl_dbgfs_inject_packet_write(struct iwl_mvm *mvm,
 		return -EIO;
 
 	/* supporting only MQ RX */
-	if (!mvm->trans->trans_cfg->mq_rx_supported)
-		return -ENOTSUPP;
+	if (!mvm->trans->mac_cfg->mq_rx_supported)
+		return -EOPNOTSUPP;
 
 	rxb._page = alloc_pages(GFP_ATOMIC, 0);
 	if (!rxb._page)
@@ -1734,7 +1575,8 @@ static int _iwl_dbgfs_inject_beacon_ie(struct iwl_mvm *mvm, char *bin, int len)
 
 	for_each_mvm_vif_valid_link(mvmvif, link_id) {
 		beacon_cmd.flags =
-			cpu_to_le16(iwl_mvm_mac_ctxt_get_beacon_flags(mvm->fw, rate));
+			cpu_to_le16(iwl_mvm_mac_ctxt_get_beacon_flags(mvm->fw,
+								      rate));
 		beacon_cmd.byte_cnt = cpu_to_le16((u16)beacon->len);
 		if (iwl_fw_lookup_cmd_ver(mvm->fw, BEACON_TEMPLATE_CMD, 0) > 12)
 			beacon_cmd.link_id =
@@ -1742,10 +1584,18 @@ static int _iwl_dbgfs_inject_beacon_ie(struct iwl_mvm *mvm, char *bin, int len)
 		else
 			beacon_cmd.link_id = cpu_to_le32((u32)mvmvif->id);
 
-
 		iwl_mvm_mac_ctxt_set_tim(mvm, &beacon_cmd.tim_idx,
 					 &beacon_cmd.tim_size,
 					 beacon->data, beacon->len);
+
+		if (iwl_fw_lookup_cmd_ver(mvm->fw,
+					  BEACON_TEMPLATE_CMD, 0) >= 14) {
+			u32 offset = iwl_find_ie_offset(beacon->data,
+							WLAN_EID_S1G_TWT,
+							beacon->len);
+
+			beacon_cmd.btwt_offset = cpu_to_le32(offset);
+		}
 
 		iwl_mvm_mac_ctxt_send_beacon_cmd(mvm, beacon, &beacon_cmd,
 						 sizeof(beacon_cmd));
@@ -1826,18 +1676,23 @@ static ssize_t iwl_dbgfs_fw_dbg_conf_write(struct iwl_mvm *mvm,
 	return ret ?: count;
 }
 
-static ssize_t iwl_dbgfs_fw_dbg_collect_write(struct iwl_mvm *mvm,
-					      char *buf, size_t count,
-					      loff_t *ppos)
+static ssize_t iwl_dbgfs_fw_dbg_clear_write(struct iwl_mvm *mvm,
+					    char *buf, size_t count,
+					    loff_t *ppos)
 {
-	if (count == 0)
-		return 0;
+	if (mvm->trans->mac_cfg->device_family < IWL_DEVICE_FAMILY_9000)
+		return -EOPNOTSUPP;
 
-	iwl_dbg_tlv_time_point(&mvm->fwrt, IWL_FW_INI_TIME_POINT_USER_TRIGGER,
-			       NULL);
+	/*
+	 * If the firmware is not running, silently succeed since there is
+	 * no data to clear.
+	 */
+	if (!iwl_mvm_firmware_running(mvm))
+		return count;
 
-	iwl_fw_dbg_collect(&mvm->fwrt, FW_DBG_TRIGGER_USER, buf,
-			   (count - 1), NULL);
+	mutex_lock(&mvm->mutex);
+	iwl_fw_dbg_clear_monitor_buf(&mvm->fwrt);
+	mutex_unlock(&mvm->mutex);
 
 	return count;
 }
@@ -1871,17 +1726,127 @@ static ssize_t iwl_dbgfs_dbg_time_point_write(struct iwl_mvm *mvm,
 #define MVM_DEBUGFS_ADD_FILE(name, parent, mode) \
 	MVM_DEBUGFS_ADD_FILE_ALIAS(#name, name, parent, mode)
 
-#define MVM_DEBUGFS_WRITE_STA_FILE_OPS(name, bufsz) \
-	_MVM_DEBUGFS_WRITE_FILE_OPS(name, bufsz, struct ieee80211_sta)
-#define MVM_DEBUGFS_READ_WRITE_STA_FILE_OPS(name, bufsz) \
-	_MVM_DEBUGFS_READ_WRITE_FILE_OPS(name, bufsz, struct ieee80211_sta)
+static ssize_t
+_iwl_dbgfs_link_sta_wrap_write(ssize_t (*real)(struct ieee80211_link_sta *,
+					       struct iwl_mvm_sta *,
+					       struct iwl_mvm *,
+					       struct iwl_mvm_link_sta *,
+					       char *,
+					       size_t, loff_t *),
+			   struct file *file,
+			   char *buf, size_t buf_size, loff_t *ppos)
+{
+	struct ieee80211_link_sta *link_sta = file->private_data;
+	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(link_sta->sta);
+	struct iwl_mvm *mvm = iwl_mvm_vif_from_mac80211(mvmsta->vif)->mvm;
+	struct iwl_mvm_link_sta *mvm_link_sta;
+	ssize_t ret;
 
-#define MVM_DEBUGFS_ADD_STA_FILE_ALIAS(alias, name, parent, mode) do {	\
-		debugfs_create_file(alias, mode, parent, sta,		\
-				    &iwl_dbgfs_##name##_ops);		\
-	} while (0)
-#define MVM_DEBUGFS_ADD_STA_FILE(name, parent, mode) \
-	MVM_DEBUGFS_ADD_STA_FILE_ALIAS(#name, name, parent, mode)
+	mutex_lock(&mvm->mutex);
+
+	mvm_link_sta = rcu_dereference_protected(mvmsta->link[link_sta->link_id],
+						 lockdep_is_held(&mvm->mutex));
+	if (WARN_ON(!mvm_link_sta)) {
+		mutex_unlock(&mvm->mutex);
+		return -ENODEV;
+	}
+
+	ret = real(link_sta, mvmsta, mvm, mvm_link_sta, buf, buf_size, ppos);
+
+	mutex_unlock(&mvm->mutex);
+
+	return ret;
+}
+
+static ssize_t
+_iwl_dbgfs_link_sta_wrap_read(ssize_t (*real)(struct ieee80211_link_sta *,
+					      struct iwl_mvm_sta *,
+					      struct iwl_mvm *,
+					      struct iwl_mvm_link_sta *,
+					      char __user *,
+					      size_t, loff_t *),
+			   struct file *file,
+			   char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct ieee80211_link_sta *link_sta = file->private_data;
+	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(link_sta->sta);
+	struct iwl_mvm *mvm = iwl_mvm_vif_from_mac80211(mvmsta->vif)->mvm;
+	struct iwl_mvm_link_sta *mvm_link_sta;
+	ssize_t ret;
+
+	mutex_lock(&mvm->mutex);
+
+	mvm_link_sta = rcu_dereference_protected(mvmsta->link[link_sta->link_id],
+						 lockdep_is_held(&mvm->mutex));
+	if (WARN_ON(!mvm_link_sta)) {
+		mutex_unlock(&mvm->mutex);
+		return -ENODEV;
+	}
+
+	ret = real(link_sta, mvmsta, mvm, mvm_link_sta, user_buf, count, ppos);
+
+	mutex_unlock(&mvm->mutex);
+
+	return ret;
+}
+
+#define MVM_DEBUGFS_LINK_STA_WRITE_WRAPPER(name, buflen)		\
+static ssize_t _iwl_dbgfs_link_sta_##name##_write(struct file *file,	\
+					 const char __user *user_buf,	\
+					 size_t count, loff_t *ppos)	\
+{									\
+	char buf[buflen] = {};						\
+	size_t buf_size = min(count, sizeof(buf) -  1);			\
+									\
+	if (copy_from_user(buf, user_buf, buf_size))			\
+		return -EFAULT;						\
+									\
+	return _iwl_dbgfs_link_sta_wrap_write(iwl_dbgfs_##name##_write,	\
+					      file,			\
+					      buf, buf_size, ppos);	\
+}									\
+
+#define MVM_DEBUGFS_LINK_STA_READ_WRAPPER(name)		\
+static ssize_t _iwl_dbgfs_link_sta_##name##_read(struct file *file,	\
+					 char __user *user_buf,		\
+					 size_t count, loff_t *ppos)	\
+{									\
+	return _iwl_dbgfs_link_sta_wrap_read(iwl_dbgfs_##name##_read,	\
+					     file,			\
+					     user_buf, count, ppos);	\
+}									\
+
+#define MVM_DEBUGFS_WRITE_LINK_STA_FILE_OPS(name, bufsz)		\
+MVM_DEBUGFS_LINK_STA_WRITE_WRAPPER(name, bufsz)				\
+static const struct file_operations iwl_dbgfs_link_sta_##name##_ops = {	\
+	.write = _iwl_dbgfs_link_sta_##name##_write,			\
+	.open = simple_open,						\
+	.llseek = generic_file_llseek,					\
+}
+
+#define MVM_DEBUGFS_READ_LINK_STA_FILE_OPS(name)			\
+MVM_DEBUGFS_LINK_STA_READ_WRAPPER(name)					\
+static const struct file_operations iwl_dbgfs_link_sta_##name##_ops = {	\
+	.read = _iwl_dbgfs_link_sta_##name##_read,			\
+	.open = simple_open,						\
+	.llseek = generic_file_llseek,					\
+}
+
+#define MVM_DEBUGFS_READ_WRITE_LINK_STA_FILE_OPS(name, bufsz)		\
+MVM_DEBUGFS_LINK_STA_READ_WRAPPER(name)					\
+MVM_DEBUGFS_LINK_STA_WRITE_WRAPPER(name, bufsz)				\
+static const struct file_operations iwl_dbgfs_link_sta_##name##_ops = {	\
+	.read = _iwl_dbgfs_link_sta_##name##_read,			\
+	.write = _iwl_dbgfs_link_sta_##name##_write,			\
+	.open = simple_open,						\
+	.llseek = generic_file_llseek,					\
+}
+
+#define MVM_DEBUGFS_ADD_LINK_STA_FILE_ALIAS(alias, name, parent, mode)	\
+		debugfs_create_file(alias, mode, parent, link_sta,	\
+				    &iwl_dbgfs_link_sta_##name##_ops)
+#define MVM_DEBUGFS_ADD_LINK_STA_FILE(name, parent, mode) \
+	MVM_DEBUGFS_ADD_LINK_STA_FILE_ALIAS(#name, name, parent, mode)
 
 static ssize_t
 iwl_dbgfs_prph_reg_read(struct file *file,
@@ -2055,7 +2020,7 @@ iwl_dbgfs_uapsd_noagg_bssids_read(struct file *file, char __user *user_buf,
 	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
 }
 
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
+#ifdef CPTCFG_IWL_VENDOR_CMDS
 static ssize_t iwl_dbgfs_tx_power_status_read(struct file *file,
 					      char __user *user_buf,
 					      size_t count, loff_t *ppos)
@@ -2066,9 +2031,9 @@ static ssize_t iwl_dbgfs_tx_power_status_read(struct file *file,
 	int pos = 0;
 	u32 mode = le32_to_cpu(mvm->txp_cmd.common.set_mode);
 	bool txp_cmd_valid = mode == IWL_TX_POWER_MODE_SET_DEVICE;
-	u16 val_24 = le16_to_cpu(mvm->txp_cmd.common.dev_24);
-	u16 val_52l = le16_to_cpu(mvm->txp_cmd.common.dev_52_low);
-	u16 val_52h = le16_to_cpu(mvm->txp_cmd.common.dev_52_high);
+	u16 val_24 = le16_to_cpu(mvm->txp_cmd.per_band.dev_24);
+	u16 val_52l = le16_to_cpu(mvm->txp_cmd.per_band.dev_52_low);
+	u16 val_52h = le16_to_cpu(mvm->txp_cmd.per_band.dev_52_high);
 	char buf_24[15] = "(not limited)";
 	char buf_52l[15] = "(not limited)";
 	char buf_52h[15] = "(not limited)";
@@ -2348,7 +2313,7 @@ static ssize_t iwl_dbgfs_csi_addresses_write(struct iwl_mvm *mvm, char *buf,
 
 	return count;
 }
-#endif /* CPTCFG_IWLMVM_VENDOR_CMDS */
+#endif /* CPTCFG_IWL_VENDOR_CMDS */
 
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 static ssize_t iwl_dbgfs_debug_profile_write(struct iwl_mvm *mvm, char *buf,
@@ -2468,6 +2433,16 @@ iwl_dbgfs_enable_adwell_channel_dwell_report_write(struct iwl_mvm *mvm,
 	return ret ?: count;
 }
 
+static inline int iwl_mvm_device_uses_lmac2(struct iwl_mvm *mvm)
+{
+	struct iwl_trans *trans = mvm->fwrt.trans;
+
+	return CSR_HW_RFID_TYPE(trans->info.hw_rf_id) == IWL_CFG_RF_TYPE_FM ||
+	       CSR_HW_RFID_TYPE(trans->info.hw_rf_id) == IWL_CFG_RF_TYPE_WH ||
+	       (CSR_HW_RFID_TYPE(trans->info.hw_rf_id) == IWL_CFG_RF_TYPE_GF &&
+		CSR_HW_RFID_IS_CDB(trans->info.hw_rf_id));
+}
+
 static ssize_t iwl_dbgfs_disable_tx_fifo_mask_write(struct iwl_mvm *mvm,
 						    char *buf,
 						    size_t count,
@@ -2477,28 +2452,9 @@ static ssize_t iwl_dbgfs_disable_tx_fifo_mask_write(struct iwl_mvm *mvm,
 
 	u32 index_and_mask = DHC_TOOLS_LMAC_TXF_FIFO_DISABLE;
 
-	set_bit(STATUS_DISABLE_STUCK_TIMER, &mvm->trans->status);
-
-	ret = iwl_dbgfs_send_dhc(mvm, buf, index_and_mask);
-
-	return ret ?: count;
-}
-
-static ssize_t iwl_dbgfs_ps_config_write(struct iwl_mvm *mvm,
-					 char *buf,
-					 size_t count,
-					 loff_t *ppos)
-{
-	int ret;
-	struct iwl_ps_config cmd_data;
-
-	if (sscanf(buf, "%x %x %x",
-		   &cmd_data.pwr_flags,
-		   &cmd_data.pwr_flags_msk,
-		   &cmd_data.param1) != 3)
-		return -EINVAL;
-
-	ret = iwl_dbgfs_send_ps_config_dhc(mvm, &cmd_data);
+	ret = iwl_dbgfs_send_dhc(mvm, buf, index_and_mask | DHC_TARGET_LMAC1);
+	if (ret == 0 && iwl_mvm_device_uses_lmac2(mvm))
+		ret = iwl_dbgfs_send_dhc(mvm, buf, index_and_mask | DHC_TARGET_LMAC2);
 
 	return ret ?: count;
 }
@@ -2549,7 +2505,7 @@ static ssize_t iwl_dbgfs_rfi_freq_table_write(struct iwl_mvm *mvm, char *buf,
 	/* value zero triggers re-sending the default table to the device */
 	if (!op_id) {
 		mutex_lock(&mvm->mutex);
-		ret = iwl_rfi_send_config_cmd(mvm, NULL);
+		ret = iwl_mvm_rfi_send_config_cmd(mvm, NULL, false, false);
 		mutex_unlock(&mvm->mutex);
 	} else {
 		ret = -EOPNOTSUPP; /* in the future a new table will be added */
@@ -2563,8 +2519,17 @@ static ssize_t iwl_dbgfs_rfi_freq_table_write(struct iwl_mvm *mvm, char *buf,
  * the table; So, need 5 chars for the "freq: " part and each tuple afterwards
  * needs 6 characters for numbers and 5 for the punctuation around.
  */
-#define IWL_RFI_BUF_SIZE (IWL_RFI_LUT_INSTALLED_SIZE *\
-				(5 + IWL_RFI_LUT_ENTRY_CHANNELS_NUM * (6 + 5)))
+#define IWL_RFI_DDR_BUF_SIZE (IWL_RFI_DDR_LUT_INSTALLED_SIZE *\
+				(5 + IWL_RFI_DDR_LUT_ENTRY_CHANNELS_NUM *\
+					(6 + 5)))
+#define IWL_RFI_DLVR_BUF_SIZE (IWL_RFI_DLVR_LUT_INSTALLED_SIZE *\
+				(5 + IWL_RFI_DLVR_LUT_ENTRY_CHANNELS_NUM *\
+					(6 + 5)))
+#define IWL_RFI_DESENSE_BUF_SIZE IWL_RFI_DDR_BUF_SIZE
+
+/* Extra 32 for "DDR and DLVR table" message */
+#define IWL_RFI_BUF_SIZE (IWL_RFI_DDR_BUF_SIZE + IWL_RFI_DLVR_BUF_SIZE +\
+				IWL_RFI_DESENSE_BUF_SIZE + 32)
 
 static ssize_t iwl_dbgfs_rfi_freq_table_read(struct file *file,
 					     char __user *user_buf,
@@ -2573,78 +2538,108 @@ static ssize_t iwl_dbgfs_rfi_freq_table_read(struct file *file,
 	struct iwl_mvm *mvm = file->private_data;
 	struct iwl_rfi_freq_table_resp_cmd *resp;
 	u32 status;
-	char buf[IWL_RFI_BUF_SIZE];
-	int i, j, pos = 0;
+	char *buf;
+	int i, j, pos = 0, bufsz = IWL_RFI_BUF_SIZE;
+	size_t ret;
+	u8 notif_ver = iwl_fw_lookup_notif_ver(mvm->fw, SYSTEM_GROUP,
+					       RFI_GET_FREQ_TABLE_CMD, 0);
 
-	resp = iwl_rfi_get_freq_table(mvm);
+	resp = iwl_mvm_rfi_get_freq_table(mvm);
 	if (IS_ERR(resp))
 		return PTR_ERR(resp);
 
+	buf = kzalloc(bufsz, GFP_KERNEL);
+	if (!buf) {
+		kfree(resp);
+		return -ENOMEM;
+	}
+
 	status = le32_to_cpu(resp->status);
 	if (status != RFI_FREQ_TABLE_OK) {
-		scnprintf(buf, IWL_RFI_BUF_SIZE, "status = %d\n", status);
+		pos = scnprintf(buf, bufsz, "status = %d\n", status);
 		goto out;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(resp->table); i++) {
-		pos += scnprintf(buf + pos, IWL_RFI_BUF_SIZE - pos, "%d: ",
-				 resp->table[i].freq);
+	BUILD_BUG_ON(ARRAY_SIZE(resp->ddr_table) !=
+		     ARRAY_SIZE(resp->desense_table));
+	pos = scnprintf(buf + pos, bufsz - pos, "DDR table:\n");
+	for (i = 0; i < ARRAY_SIZE(resp->ddr_table); i++) {
+		pos += scnprintf(buf + pos, bufsz - pos, "%u: ",
+				 le16_to_cpu(resp->ddr_table[i].freq));
 
-		for (j = 0; j < ARRAY_SIZE(resp->table[i].channels); j++)
-			pos += scnprintf(buf + pos, IWL_RFI_BUF_SIZE - pos,
-					 "(%d, %d) ",
-					 resp->table[i].channels[j],
-					 resp->table[i].bands[j]);
-		pos += scnprintf(buf + pos, IWL_RFI_BUF_SIZE - pos, "\n");
+		for (j = 0; j < ARRAY_SIZE(resp->ddr_table[0].channels); j++)
+			pos += scnprintf(buf + pos, bufsz - pos,
+					 "(%u, %u) ",
+					 resp->ddr_table[i].channels[j],
+					 resp->ddr_table[i].bands[j]);
+		pos += scnprintf(buf + pos, bufsz - pos, "\n");
+
+		if (notif_ver < 3)
+			continue;
+
+		for (j = 0; j < ARRAY_SIZE(resp->desense_table[0].chain_a); j++)
+			pos += scnprintf(buf + pos, bufsz - pos,
+					 "(%u, %u) ",
+					 resp->desense_table[i].chain_a[j],
+					 resp->desense_table[i].chain_b[j]);
+		pos += scnprintf(buf + pos, bufsz - pos, "\n");
+	}
+
+	if (notif_ver < 2)
+		goto out;
+
+	pos += scnprintf(buf + pos, bufsz - pos, "DLVR table:\n");
+	for (i = 0; i < ARRAY_SIZE(resp->dlvr_table); i++) {
+		pos += scnprintf(buf + pos, bufsz - pos, "%u: ",
+				 le16_to_cpu(resp->dlvr_table[i].freq));
+
+		for (j = 0; j < ARRAY_SIZE(resp->dlvr_table[0].channels); j++)
+			pos += scnprintf(buf + pos, bufsz - pos,
+					 "(%u, %u) ",
+					 resp->dlvr_table[i].channels[j],
+					 resp->dlvr_table[i].bands[j]);
+		pos += scnprintf(buf + pos, bufsz - pos, "\n");
 	}
 
 out:
 	kfree(resp);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	kfree(buf);
+	return ret;
 }
 
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(prph_reg, 64);
 
 /* Device wide debugfs entries */
-#ifdef CPTCFG_IWLMVM_ADVANCED_QUOTA_MGMT
-MVM_DEBUGFS_READ_FILE_OPS(quota_status);
-#endif
-#ifdef CPTCFG_IWLWIFI_THERMAL_DEBUGFS
-MVM_DEBUGFS_READ_WRITE_FILE_OPS(tt_tx_backoff, 64);
-#endif
 MVM_DEBUGFS_READ_FILE_OPS(ctdp_budget);
 MVM_DEBUGFS_WRITE_FILE_OPS(stop_ctdp, 8);
+MVM_DEBUGFS_WRITE_FILE_OPS(start_ctdp, 8);
 MVM_DEBUGFS_WRITE_FILE_OPS(force_ctkill, 8);
 MVM_DEBUGFS_WRITE_FILE_OPS(tx_flush, 16);
-MVM_DEBUGFS_WRITE_FILE_OPS(sta_drain, 8);
 MVM_DEBUGFS_WRITE_FILE_OPS(send_echo_cmd, 8);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(sram, 64);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(set_nic_temperature, 64);
 MVM_DEBUGFS_READ_FILE_OPS(nic_temp);
 MVM_DEBUGFS_READ_FILE_OPS(stations);
-MVM_DEBUGFS_READ_FILE_OPS(rs_data);
-MVM_DEBUGFS_READ_FILE_OPS(bt_notif);
-MVM_DEBUGFS_READ_FILE_OPS(bt_cmd);
+MVM_DEBUGFS_READ_LINK_STA_FILE_OPS(rs_data);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(disable_power_off, 64);
 MVM_DEBUGFS_READ_FILE_OPS(fw_rx_stats);
 MVM_DEBUGFS_READ_FILE_OPS(drv_rx_stats);
-MVM_DEBUGFS_READ_FILE_OPS(fw_ver);
+MVM_DEBUGFS_READ_FILE_OPS(fw_system_stats);
 MVM_DEBUGFS_READ_FILE_OPS(phy_integration_ver);
 MVM_DEBUGFS_READ_FILE_OPS(tas_get_status);
 MVM_DEBUGFS_WRITE_FILE_OPS(fw_restart, 10);
 MVM_DEBUGFS_WRITE_FILE_OPS(fw_nmi, 10);
-MVM_DEBUGFS_WRITE_FILE_OPS(bt_tx_prio, 10);
-MVM_DEBUGFS_WRITE_FILE_OPS(bt_force_ant, 10);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(scan_ant_rxchain, 8);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(fw_dbg_conf, 8);
-MVM_DEBUGFS_WRITE_FILE_OPS(fw_dbg_collect, 64);
+MVM_DEBUGFS_WRITE_FILE_OPS(fw_dbg_clear, 64);
 MVM_DEBUGFS_WRITE_FILE_OPS(dbg_time_point, 64);
 MVM_DEBUGFS_WRITE_FILE_OPS(indirection_tbl,
 			   (IWL_RSS_INDIRECTION_TABLE_SIZE * 2));
 MVM_DEBUGFS_WRITE_FILE_OPS(inject_packet, 512);
 MVM_DEBUGFS_WRITE_FILE_OPS(inject_beacon_ie, 512);
 MVM_DEBUGFS_WRITE_FILE_OPS(inject_beacon_ie_restore, 512);
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
+#ifdef CPTCFG_IWL_VENDOR_CMDS
 MVM_DEBUGFS_READ_FILE_OPS(tx_power_status);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(csi_enabled, 8);
 MVM_DEBUGFS_READ_WRITE_FILE_OPS(csi_count, 32);
@@ -2663,19 +2658,19 @@ MVM_DEBUGFS_READ_FILE_OPS(sar_geo_profile);
 MVM_DEBUGFS_READ_FILE_OPS(wifi_6e_enable);
 #endif
 
-MVM_DEBUGFS_WRITE_STA_FILE_OPS(fixed_rate, 64);
-MVM_DEBUGFS_WRITE_STA_FILE_OPS(ampdu_size, 64);
-MVM_DEBUGFS_WRITE_STA_FILE_OPS(disable_rts, 8);
-MVM_DEBUGFS_WRITE_STA_FILE_OPS(tlc_dhc, 64);
+MVM_DEBUGFS_WRITE_LINK_STA_FILE_OPS(fixed_rate, 64);
+MVM_DEBUGFS_WRITE_LINK_STA_FILE_OPS(fixed_rate_v3, 64);
+MVM_DEBUGFS_WRITE_LINK_STA_FILE_OPS(ampdu_size, 64);
+MVM_DEBUGFS_WRITE_LINK_STA_FILE_OPS(disable_rts, 8);
+MVM_DEBUGFS_WRITE_LINK_STA_FILE_OPS(tlc_dhc, 64);
 MVM_DEBUGFS_WRITE_FILE_OPS(iwl_tlc_dhc, 64);
 #ifdef CPTCFG_IWLWIFI_DHC_PRIVATE
 MVM_DEBUGFS_WRITE_FILE_OPS(debug_profile, 64);
 MVM_DEBUGFS_WRITE_FILE_OPS(enable_adwell_fine_tune_report, 32);
 MVM_DEBUGFS_WRITE_FILE_OPS(enable_adwell_channel_dwell_report, 32);
 MVM_DEBUGFS_WRITE_FILE_OPS(disable_tx_fifo_mask, 16);
-MVM_DEBUGFS_WRITE_FILE_OPS(ps_config, 32);
 #endif /* CPTCFG_IWLWIFI_DHC_PRIVATE */
-MVM_DEBUGFS_READ_WRITE_STA_FILE_OPS(amsdu_len, 16);
+MVM_DEBUGFS_READ_WRITE_LINK_STA_FILE_OPS(amsdu_len, 16);
 
 #ifdef CPTCFG_IWLMVM_AX_SOFTAP_TESTMODE
 MVM_DEBUGFS_WRITE_FILE_OPS(ax_softap_client_testmode, 8);
@@ -2718,6 +2713,11 @@ static ssize_t iwl_dbgfs_mem_read(struct file *file, char __user *user_buf,
 
 	if (ret < 0)
 		return ret;
+
+	if (iwl_rx_packet_payload_len(hcmd.resp_pkt) < sizeof(*rsp)) {
+		ret = -EIO;
+		goto out;
+	}
 
 	rsp = (void *)hcmd.resp_pkt->data;
 	if (le32_to_cpu(rsp->status) != DEBUG_MEM_STATUS_SUCCESS) {
@@ -2795,6 +2795,11 @@ static ssize_t iwl_dbgfs_mem_write(struct file *file,
 	if (ret < 0)
 		return ret;
 
+	if (iwl_rx_packet_payload_len(hcmd.resp_pkt) < sizeof(*rsp)) {
+		ret = -EIO;
+		goto out;
+	}
+
 	rsp = (void *)hcmd.resp_pkt->data;
 	if (rsp->status != DEBUG_MEM_STATUS_SUCCESS) {
 		ret = -ENXIO;
@@ -2816,62 +2821,50 @@ static const struct file_operations iwl_dbgfs_mem_ops = {
 	.llseek = default_llseek,
 };
 
-void iwl_mvm_sta_add_debugfs(struct ieee80211_hw *hw,
-			     struct ieee80211_vif *vif,
-			     struct ieee80211_sta *sta,
-			     struct dentry *dir)
+void iwl_mvm_link_sta_add_debugfs(struct ieee80211_hw *hw,
+				  struct ieee80211_vif *vif,
+				  struct ieee80211_link_sta *link_sta,
+				  struct dentry *dir)
 {
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
 
-#ifdef CPTCFG_IWLMVM_AX_SOFTAP_TESTMODE
-	iwl_mvm_ax_softap_testmode_sta_add_debugfs(hw, vif, sta, dir);
-#endif
-
 	if (iwl_mvm_has_tlc_offload(mvm)) {
-		MVM_DEBUGFS_ADD_STA_FILE(rs_data, dir, 0400);
-		MVM_DEBUGFS_ADD_STA_FILE(fixed_rate, dir, 0200);
-		MVM_DEBUGFS_ADD_STA_FILE(ampdu_size, dir, 0400);
-		MVM_DEBUGFS_ADD_STA_FILE(disable_rts, dir, 0400);
-		MVM_DEBUGFS_ADD_STA_FILE(tlc_dhc, dir, 0200);
+		MVM_DEBUGFS_ADD_LINK_STA_FILE(rs_data, dir, 0400);
+		MVM_DEBUGFS_ADD_LINK_STA_FILE(fixed_rate, dir, 0200);
+		MVM_DEBUGFS_ADD_LINK_STA_FILE(fixed_rate_v3, dir, 0200);
+		MVM_DEBUGFS_ADD_LINK_STA_FILE(ampdu_size, dir, 0400);
+		MVM_DEBUGFS_ADD_LINK_STA_FILE(disable_rts, dir, 0400);
+		MVM_DEBUGFS_ADD_LINK_STA_FILE(tlc_dhc, dir, 0200);
 	}
-	MVM_DEBUGFS_ADD_STA_FILE(amsdu_len, dir, 0600);
+
+	MVM_DEBUGFS_ADD_LINK_STA_FILE(amsdu_len, dir, 0600);
 }
 
 void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm)
 {
-#ifdef CPTCFG_IWLWIFI_THERMAL_DEBUGFS
-	struct iwl_tt_params *tt_params = &mvm->thermal_throttle.params;
-#endif
 	struct dentry *bcast_dir __maybe_unused;
 
 	spin_lock_init(&mvm->drv_stats_lock);
 
-#ifdef CPTCFG_IWLWIFI_THERMAL_DEBUGFS
-	MVM_DEBUGFS_ADD_FILE(tt_tx_backoff, mvm->debugfs_dir, 0400);
-#endif
 	MVM_DEBUGFS_ADD_FILE(tx_flush, mvm->debugfs_dir, 0200);
-	MVM_DEBUGFS_ADD_FILE(sta_drain, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(sram, mvm->debugfs_dir, 0600);
 	MVM_DEBUGFS_ADD_FILE(set_nic_temperature, mvm->debugfs_dir, 0600);
 	MVM_DEBUGFS_ADD_FILE(nic_temp, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(ctdp_budget, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(stop_ctdp, mvm->debugfs_dir, 0200);
+	MVM_DEBUGFS_ADD_FILE(start_ctdp, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(force_ctkill, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(stations, mvm->debugfs_dir, 0400);
-	MVM_DEBUGFS_ADD_FILE(bt_notif, mvm->debugfs_dir, 0400);
-	MVM_DEBUGFS_ADD_FILE(bt_cmd, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(disable_power_off, mvm->debugfs_dir, 0600);
-	MVM_DEBUGFS_ADD_FILE(fw_ver, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(fw_rx_stats, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(drv_rx_stats, mvm->debugfs_dir, 0400);
+	MVM_DEBUGFS_ADD_FILE(fw_system_stats, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(fw_restart, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(fw_nmi, mvm->debugfs_dir, 0200);
-	MVM_DEBUGFS_ADD_FILE(bt_tx_prio, mvm->debugfs_dir, 0200);
-	MVM_DEBUGFS_ADD_FILE(bt_force_ant, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(scan_ant_rxchain, mvm->debugfs_dir, 0600);
 	MVM_DEBUGFS_ADD_FILE(prph_reg, mvm->debugfs_dir, 0600);
 	MVM_DEBUGFS_ADD_FILE(fw_dbg_conf, mvm->debugfs_dir, 0600);
-	MVM_DEBUGFS_ADD_FILE(fw_dbg_collect, mvm->debugfs_dir, 0200);
+	MVM_DEBUGFS_ADD_FILE(fw_dbg_clear, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(dbg_time_point, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(send_echo_cmd, mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(indirection_tbl, mvm->debugfs_dir, 0200);
@@ -2891,13 +2884,12 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm)
 	MVM_DEBUGFS_ADD_FILE(enable_adwell_channel_dwell_report,
 			     mvm->debugfs_dir, 0200);
 	MVM_DEBUGFS_ADD_FILE(disable_tx_fifo_mask, mvm->debugfs_dir, 0200);
-	MVM_DEBUGFS_ADD_FILE(ps_config, mvm->debugfs_dir, 0200);
 #endif
 #ifdef CONFIG_ACPI
 	MVM_DEBUGFS_ADD_FILE(sar_geo_profile, mvm->debugfs_dir, 0400);
 	MVM_DEBUGFS_ADD_FILE(wifi_6e_enable, mvm->debugfs_dir, 0400);
 #endif
-#ifdef CPTCFG_IWLMVM_VENDOR_CMDS
+#ifdef CPTCFG_IWL_VENDOR_CMDS
 	MVM_DEBUGFS_ADD_FILE(tx_power_status, mvm->debugfs_dir, 0400);
 
 	if (fw_has_capa(&mvm->fw->ucode_capa,
@@ -2938,12 +2930,7 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm)
 
 	MVM_DEBUGFS_ADD_FILE(uapsd_noagg_bssids, mvm->debugfs_dir, 0400);
 
-#ifdef CPTCFG_IWLMVM_ADVANCED_QUOTA_MGMT
-	MVM_DEBUGFS_ADD_FILE(quota_status, mvm->debugfs_dir, 0400);
-#endif
-
 #ifdef CONFIG_PM_SLEEP
-	MVM_DEBUGFS_ADD_FILE(d3_test, mvm->debugfs_dir, 0400);
 	debugfs_create_bool("d3_wake_sysassert", 0600, mvm->debugfs_dir,
 			    &mvm->d3_wake_sysassert);
 	debugfs_create_u32("last_netdetect_scans", 0400, mvm->debugfs_dir,
@@ -2965,32 +2952,11 @@ void iwl_mvm_dbgfs_register(struct iwl_mvm *mvm)
 	debugfs_create_blob("nvm_reg", S_IRUSR,
 			    mvm->debugfs_dir, &mvm->nvm_reg_blob);
 
-#ifdef CPTCFG_IWLWIFI_THERMAL_DEBUGFS
-	debugfs_create_u32("ct_kill_exit", 0600,
-			   mvm->debugfs_dir,
-			   &tt_params->ct_kill_exit);
-	debugfs_create_u32("ct_kill_entry", 0600,
-			   mvm->debugfs_dir,
-			   &tt_params->ct_kill_entry);
-	debugfs_create_u32("ct_kill_duration", 0600,
-			   mvm->debugfs_dir,
-			   &tt_params->ct_kill_duration);
-	debugfs_create_u32("dynamic_smps_entry", 0600,
-			   mvm->debugfs_dir,
-			   &tt_params->dynamic_smps_entry);
-	debugfs_create_u32("dynamic_smps_exit", 0600,
-			   mvm->debugfs_dir,
-			   &tt_params->dynamic_smps_exit);
-	debugfs_create_u32("tx_protection_entry", 0600,
-			   mvm->debugfs_dir,
-			   &tt_params->tx_protection_entry);
-	debugfs_create_u32("tx_protection_exit", 0600,
-			   mvm->debugfs_dir,
-			   &tt_params->tx_protection_exit);
-#endif
-
 	debugfs_create_file("mem", 0600, mvm->debugfs_dir, mvm,
 			    &iwl_dbgfs_mem_ops);
+
+	debugfs_create_bool("rx_ts_ptp", 0600, mvm->debugfs_dir,
+			    &mvm->rx_ts_ptp);
 
 	/*
 	 * Create a symlink with mac80211. It will be removed when mac80211

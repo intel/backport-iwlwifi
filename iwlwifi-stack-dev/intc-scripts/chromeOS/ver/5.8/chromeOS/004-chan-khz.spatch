@@ -1,0 +1,96 @@
+@@
+expression wiphy;
+identifier channel, status;
+@@
+-channel = ieee80211_get_channel_khz(wiphy, ieee80211_rx_status_to_khz(status));
++channel = ieee80211_get_channel(wiphy, status->freq);
+
+@@
+expression wiphy, data, len, sig;
+@@
+-cfg80211_report_obss_beacon_khz(wiphy, data, len, ieee80211_rx_status_to_khz(status), sig)
++cfg80211_report_obss_beacon(wiphy, data, len, status->freq, sig)
+
+@@
+identifier chandef, channel;
+@@
+ *chandef = (struct cfg80211_chan_def) {
+-                .freq1_offset = channel->freq_offset,
+...
+ };
+
+@@
+identifier rx_status, chanctx_conf;
+@@
+-ieee80211_rx_status_to_khz(rx_status) != ieee80211_channel_to_khz(chanctx_conf->def.chan)
++rx_status->freq != chanctx_conf->def.chan->center_freq
+
+@@
+struct ieee80211_channel *chan;
+@@
+-chan->freq_offset
++0
+
+@@
+identifier chandef;
+@@
+-chandef->chan->freq_offset
++0
+
+@@
+struct cfg80211_chan_def *chandef;
+expression E;
+@@
+<...
+(
+-chandef->freq1_offset = E;
+|
+-chandef->freq1_offset
++0
+)
+...>
+
+@@
+struct cfg80211_chan_def chandef;
+expression E;
+@@
+<...
+-chandef.freq1_offset = E;
+...>
+
+@@
+struct cfg80211_chan_def chandef;
+@@
+-chandef.freq1_offset
++0
+
+@@
+struct ieee80211_chan_req chanreq;
+@@
+-chanreq.oper.freq1_offset
++0
+
+@@
+struct cfg80211_chan_def chandef;
+@@
+-chandef.chan->freq_offset
++0
+
+@@
+struct ieee80211_chan_req chanreq;
+@@
+-chanreq.oper.chan->freq_offset
++0
+
+@@
+identifier params;
+identifier fn;
+identifier type =~ "cfg80211_ibss_params|cfg80211_csa_settings";
+@@
+fn(..., struct type *params, ...)
+{
+<...
+-params->chandef.chan->freq_offset
++0
+...>
+}

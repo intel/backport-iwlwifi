@@ -1,0 +1,35 @@
+@@
+identifier fn =~ "ieee80211_set_s1g_short_beacon";
+@@
+-static int fn(...) {...}
+
+@@
+identifier ret;
+@@
+-ret = ieee80211_set_s1g_short_beacon(...);
++ret = 0;
+
+@@
+struct cfg80211_ap_settings *params;
+@@
+-params->s1g_long_beacon_period
++0
+
+@@
+struct cfg80211_ap_settings *params;
+@@
+-params->s1g_short_beacon
++NULL
+
+@@
+statement S;
+@@
+static int sta_link_apply_parameters(...)
+{...
+-if (params->s1g_capa) S
+...}
+
+@@
+@@
+-params->s1g_capa
++NULL

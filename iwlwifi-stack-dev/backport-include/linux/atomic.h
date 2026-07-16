@@ -2,30 +2,6 @@
 #define __BP_ATOMIC_H
 #include_next <linux/atomic.h>
 
-/* atomic_cmpxchg_relaxed */
-#ifndef atomic_cmpxchg_relaxed
-#define  atomic_cmpxchg_relaxed		atomic_cmpxchg
-#define  atomic_cmpxchg_acquire		atomic_cmpxchg
-#define  atomic_cmpxchg_release		atomic_cmpxchg
-
-#else /* atomic_cmpxchg_relaxed */
-
-#ifndef atomic_cmpxchg_acquire
-#define  atomic_cmpxchg_acquire(...)					\
-	__atomic_op_acquire(atomic_cmpxchg, __VA_ARGS__)
-#endif
-
-#ifndef atomic_cmpxchg_release
-#define  atomic_cmpxchg_release(...)					\
-	__atomic_op_release(atomic_cmpxchg, __VA_ARGS__)
-#endif
-
-#ifndef atomic_cmpxchg
-#define  atomic_cmpxchg(...)						\
-	__atomic_op_fence(atomic_cmpxchg, __VA_ARGS__)
-#endif
-#endif /* atomic_cmpxchg_relaxed */
-
 /* these were introduced together, so just a single check is enough */
 #ifndef atomic_try_cmpxchg_acquire
 #ifndef atomic_try_cmpxchg
@@ -66,30 +42,6 @@ static inline int atomic_fetch_add_unless(atomic_t *v, int a, int u)
 
 #ifndef __atomic_post_full_fence
 #define __atomic_post_full_fence        smp_mb__after_atomic
-#endif
-
-#if LINUX_VERSION_IS_LESS(4,8,0)
-static inline int
-atomic_fetch_add(int i, atomic_t *v)
-{
-	return atomic_add_return(i, v) - i;
-}
-
-static inline int
-atomic_fetch_sub(int i, atomic_t *v)
-{
-	return atomic_sub_return(i, v) + i;
-}
-#endif
-
-#ifndef atomic_fetch_add_relaxed
-#define atomic_fetch_add_relaxed atomic_fetch_add
-#endif
-
-#ifndef atomic_fetch_sub_relaxed
-#define atomic_fetch_sub_acquire atomic_fetch_sub
-#define atomic_fetch_sub_release atomic_fetch_sub
-#define atomic_fetch_sub_relaxed atomic_fetch_sub
 #endif
 
 #endif /* __BP_ATOMIC_H */

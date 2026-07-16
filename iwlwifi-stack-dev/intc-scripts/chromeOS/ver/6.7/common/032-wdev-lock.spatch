@@ -1,0 +1,96 @@
+@@
+identifier sdata, skb;
+identifier fn =~ "ieee80211_sta_rx_queued_mgmt|ieee80211_ibss_rx_queued_mgmt";
+fresh identifier wrapped_fn = "_" ## fn;
+@@
++static
+void
+-fn
++wrapped_fn
+ (struct ieee80211_sub_if_data *sdata,
+  struct sk_buff *skb)
+{ ... }
++
++void fn(struct ieee80211_sub_if_data *sdata,
++        struct sk_buff *skb)
++{
++	mutex_lock(&(sdata)->wdev.mtx);
++	wrapped_fn(sdata, skb);
++	mutex_unlock(&(sdata)->wdev.mtx);
++}
+
+@@
+identifier fn =~ "ieee80211_sta_work|ieee80211_sta_restart|ieee80211_mgd_quiesce";
+fresh identifier wrapped_fn = "_" ## fn;
+identifier sdata;
+@@
++static
+void
+-fn
++wrapped_fn
+ (struct ieee80211_sub_if_data *sdata)
+{ ... }
++
++void fn(struct ieee80211_sub_if_data *sdata)
++{
++	mutex_lock(&(sdata)->wdev.mtx);
++	wrapped_fn(sdata);
++	mutex_unlock(&(sdata)->wdev.mtx);
++}
+
+@@
+identifier sdata;
+@@
+static void
+-__ieee80211_disconnect
++__ieee80211_disconnect_unlocked
+ (struct ieee80211_sub_if_data *sdata)
+ {...}
++
++static void
++__ieee80211_disconnect_locked(struct ieee80211_sub_if_data *sdata)
++{
++	mutex_lock(&(sdata)->wdev.mtx);
++	__ieee80211_disconnect_unlocked(sdata);
++	mutex_unlock(&(sdata)->wdev.mtx);
++}
+
+@@
+identifier fn =~ "ieee80211_beacon_connection_loss_work|ieee80211_csa_connection_drop_work|ieee80211_ml_reconf_work|ieee80211_process_neg_ttlm_res|ieee80211_neg_ttlm_timeout_work|ieee80211_process_ml_reconf_resp|ieee80211_ml_sta_reconf_timeout";
+identifier sdata;
+@@
+fn(...)
+{
+<...
+-__ieee80211_disconnect
++__ieee80211_disconnect_locked
+ (sdata)
+...>
+}
+
+@@
+// ieee80211_process_adv_ttlm is called from ieee80211_rx_mgmt_beacon()
+// which is already locked now by the ieee80211_sta_rx_queued_mgmt() above
+identifier fn =~ "ieee80211_process_adv_ttlm|ieee80211_rx_mgmt_beacon";
+identifier sdata;
+@@
+fn(...)
+{
+<...
+-__ieee80211_disconnect
++__ieee80211_disconnect_unlocked
+ (sdata)
+...>
+}
+
+@@
+identifier link;
+@@
+ieee80211_csa_finalize_work(...)
+{
+...
++	mutex_lock(&(sdata)->wdev.mtx);
+	ieee80211_csa_finalize(link);
++	mutex_unlock(&(sdata)->wdev.mtx);
+...
+}

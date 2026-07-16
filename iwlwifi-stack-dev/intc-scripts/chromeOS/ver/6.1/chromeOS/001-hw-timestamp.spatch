@@ -1,0 +1,22 @@
+@set_hw_timestamp@
+identifier ops;
+identifier fn;
+@@
+struct cfg80211_ops ops = {
+...,
+-	.set_hw_timestamp = fn,
+...
+};
+
+@@
+identifier set_hw_timestamp.fn;
+@@
+-fn(...) {...}
+
+@@
+@@
+-static const struct cfg80211_pmsr_capabilities iwl_mvm_pmsr_capa = { ... };
+
+@@
+@@
+-if (fw_has_capa(&mvm->fw->ucode_capa, IWL_UCODE_TLV_CAPA_FTM_CALIBRATED)) { ... }

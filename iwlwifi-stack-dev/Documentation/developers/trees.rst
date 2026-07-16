@@ -10,7 +10,7 @@ Trees used for the driver
 	|
 	+-------> iwlwifi-chrome-kernel/chromeos-<cros-version>__<branch>	[defconfig: chromeos]
 	|         Done using intc-scripts/chromeos.py, see VERSIONS variable
-	|         there for <cros-version>s and corresponding WIFIVERSIONs.
+	|         there for <cros-version>s.
 	|         See the ChromeOS chapter for a more detailed description of
         |         the process and how to resolve problems when it fails per-CI.
 	|

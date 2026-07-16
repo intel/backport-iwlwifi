@@ -2,6 +2,8 @@
 
 #include <linux/export.h>
 #include <linux/interrupt.h>
+#include <linux/bitmap.h>
+#include <linux/device.h>
 
 #if defined(CONFIG_SMP) || defined(CONFIG_PREEMPT_RT)
 /*
@@ -28,3 +30,35 @@ void tasklet_unlock_spin_wait(struct tasklet_struct *t)
 }
 EXPORT_SYMBOL_GPL(tasklet_unlock_spin_wait);
 #endif
+
+static void devm_bitmap_free(void *data)
+{
+	unsigned long *bitmap = data;
+
+	bitmap_free(bitmap);
+}
+
+unsigned long *devm_bitmap_alloc(struct device *dev,
+				 unsigned int nbits, gfp_t flags)
+{
+	unsigned long *bitmap;
+	int ret;
+
+	bitmap = bitmap_alloc(nbits, flags);
+	if (!bitmap)
+		return NULL;
+
+	ret = devm_add_action_or_reset(dev, devm_bitmap_free, bitmap);
+	if (ret)
+		return NULL;
+
+	return bitmap;
+}
+EXPORT_SYMBOL_GPL(devm_bitmap_alloc);
+
+unsigned long *devm_bitmap_zalloc(struct device *dev,
+				  unsigned int nbits, gfp_t flags)
+{
+	return devm_bitmap_alloc(dev, nbits, flags | __GFP_ZERO);
+}
+EXPORT_SYMBOL_GPL(devm_bitmap_zalloc);

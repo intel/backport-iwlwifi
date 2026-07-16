@@ -1,0 +1,4 @@
+@@
+@@
++#undef pr_fmt
+ #define pr_fmt(...) ...

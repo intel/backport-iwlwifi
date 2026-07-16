@@ -11,9 +11,9 @@ from jira import JIRA
 COMMON_JIRA_FIELDS = {
     'project': 'WIFI',
     'issuetype': {'name': 'Task'},
-    'components': [{'name': 'LinuxDriver->SMAC'}],
+    'components': [{'name': 'LinuxDriver'}],
 }
-WATCHERS = ['amalamud', 'ggreenma', 'jberg1']
+WATCHERS = ['hdreyfus', 'mkorenbl', 'jberg1']
 ASSIGNEE = 'gbenami'
 PROXY = 'http://proxy.iil.intel.com:911/'
 

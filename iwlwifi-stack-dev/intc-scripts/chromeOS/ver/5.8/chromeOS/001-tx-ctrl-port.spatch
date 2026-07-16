@@ -1,0 +1,15 @@
+@@
+@@
+ieee80211_tx_control_port(...
+-, u64 *cookie
+ )
+{
++       u64 *cookie = NULL;
+...
+}
+
+@@
+@@
+int ieee80211_tx_control_port(...
+-, u64 *cookie
+ );

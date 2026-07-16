@@ -1,0 +1,20 @@
+@@
+identifier sdata;
+identifier fn =~ "cfg80211_(new_sta|del_sta_sinfo)";
+@@
+fn(
+-&sdata->wdev
++sdata->dev
+, ...)
+
+@@
+identifier fn =~ "ieee80211_((add|del|change|get|dump)_station|config_default_(mgmt|beacon)_key|(add|get|del)_key)";
+@@
+fn(struct wiphy *wiphy
+-  , struct wireless_dev *wdev
++  , struct net_device *dev
+   , ...)
+{
++	struct wireless_dev *wdev = dev->ieee80211_ptr;
+...
+}

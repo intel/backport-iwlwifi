@@ -5,7 +5,7 @@
  * (for nl80211's connect() and wext)
  *
  * Copyright 2009	Johannes Berg <johannes@sipsolutions.net>
- * Copyright (C) 2009, 2020, 2022 Intel Corporation. All rights reserved.
+ * Copyright (C) 2009, 2020, 2022-2026 Intel Corporation. All rights reserved.
  * Copyright 2017	Intel Deutschland GmbH
  */
 
@@ -64,10 +64,10 @@ static void cfg80211_sme_free(struct wireless_dev *wdev)
 static int cfg80211_conn_scan(struct wireless_dev *wdev)
 {
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
-	struct cfg80211_scan_request *request;
+	struct cfg80211_scan_request_int *request;
 	int n_channels, err;
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	if (rdev->scan_req || rdev->scan_msg)
 		return -EBUSY;
@@ -77,8 +77,8 @@ static int cfg80211_conn_scan(struct wireless_dev *wdev)
 	else
 		n_channels = ieee80211_get_num_supported_channels(wdev->wiphy);
 
-	request = kzalloc(sizeof(*request) + sizeof(request->ssids[0]) +
-			  sizeof(request->channels[0]) * n_channels,
+	request = kzalloc(sizeof(*request) + sizeof(request->req.ssids[0]) +
+			  sizeof(request->req.channels[0]) * n_channels,
 			  GFP_KERNEL);
 	if (!request)
 		return -ENOMEM;
@@ -92,8 +92,8 @@ static int cfg80211_conn_scan(struct wireless_dev *wdev)
 			kfree(request);
 			return -EINVAL;
 		}
-		request->channels[0] = wdev->conn->params.channel;
-		request->rates[band] = (1 << sband->n_bitrates) - 1;
+		request->req.channels[0] = wdev->conn->params.channel;
+		request->req.rates[band] = (1 << sband->n_bitrates) - 1;
 	} else {
 		int i = 0, j;
 		enum nl80211_band band;
@@ -108,29 +108,30 @@ static int cfg80211_conn_scan(struct wireless_dev *wdev)
 				channel = &bands->channels[j];
 				if (channel->flags & IEEE80211_CHAN_DISABLED)
 					continue;
-				request->channels[i++] = channel;
+				request->req.channels[i++] = channel;
 			}
-			request->rates[band] = (1 << bands->n_bitrates) - 1;
+			request->req.rates[band] = (1 << bands->n_bitrates) - 1;
 		}
 		n_channels = i;
 	}
-	request->n_channels = n_channels;
-	request->ssids = (void *)&request->channels[n_channels];
-	request->n_ssids = 1;
+	request->req.n_channels = n_channels;
+	request->req.ssids = (void *)request +
+			     struct_size(request, req.channels, n_channels);
+	request->req.n_ssids = 1;
 
-	memcpy(request->ssids[0].ssid, wdev->conn->params.ssid,
-		wdev->conn->params.ssid_len);
-	request->ssids[0].ssid_len = wdev->conn->params.ssid_len;
+	memcpy(request->req.ssids[0].ssid, wdev->conn->params.ssid,
+	       wdev->conn->params.ssid_len);
+	request->req.ssids[0].ssid_len = wdev->conn->params.ssid_len;
 
-	eth_broadcast_addr(request->bssid);
+	eth_broadcast_addr(request->req.bssid);
 
-	request->wdev = wdev;
-	request->wiphy = &rdev->wiphy;
-	request->scan_start = jiffies;
+	request->req.wdev = wdev;
+	request->req.wiphy = &rdev->wiphy;
+	request->req.scan_start = jiffies;
 
 	rdev->scan_req = request;
 
-	err = rdev_scan(rdev, request);
+	err = cfg80211_scan(rdev);
 	if (!err) {
 		wdev->conn->state = CFG80211_CONN_SCANNING;
 		nl80211_send_scan_start(rdev, wdev);
@@ -151,7 +152,7 @@ static int cfg80211_conn_do_work(struct wireless_dev *wdev,
 	struct cfg80211_assoc_request req = {};
 	int err;
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	if (!wdev->conn)
 		return 0;
@@ -209,7 +210,8 @@ static int cfg80211_conn_do_work(struct wireless_dev *wdev,
 		if (!req.bss) {
 			err = -ENOENT;
 		} else {
-			err = cfg80211_mlme_assoc(rdev, wdev->netdev, &req);
+			err = cfg80211_mlme_assoc(rdev, wdev->netdev,
+						  &req, NULL);
 			cfg80211_put_bss(&rdev->wiphy, req.bss);
 		}
 
@@ -249,22 +251,19 @@ void cfg80211_conn_work(struct work_struct *work)
 	u8 bssid_buf[ETH_ALEN], *bssid = NULL;
 	enum nl80211_timeout_reason treason;
 
-	wiphy_lock(&rdev->wiphy);
+	guard(wiphy)(&rdev->wiphy);
 
 	list_for_each_entry(wdev, &rdev->wiphy.wdev_list, list) {
 		if (!wdev->netdev)
 			continue;
 
-		wdev_lock(wdev);
-		if (!netif_running(wdev->netdev)) {
-			wdev_unlock(wdev);
+		if (!netif_running(wdev->netdev))
 			continue;
-		}
+
 		if (!wdev->conn ||
-		    wdev->conn->state == CFG80211_CONN_CONNECTED) {
-			wdev_unlock(wdev);
+		    wdev->conn->state == CFG80211_CONN_CONNECTED)
 			continue;
-		}
+
 		if (wdev->conn->params.bssid) {
 			memcpy(bssid_buf, wdev->conn->params.bssid, ETH_ALEN);
 			bssid = bssid_buf;
@@ -279,10 +278,16 @@ void cfg80211_conn_work(struct work_struct *work)
 			cr.timeout_reason = treason;
 			__cfg80211_connect_result(wdev->netdev, &cr, false);
 		}
-		wdev_unlock(wdev);
 	}
+}
 
-	wiphy_unlock(&rdev->wiphy);
+static void cfg80211_step_auth_next(struct cfg80211_conn *conn,
+				    struct cfg80211_bss *bss)
+{
+	memcpy(conn->bssid, bss->bssid, ETH_ALEN);
+	conn->params.bssid = conn->bssid;
+	conn->params.channel = bss->channel;
+	conn->state = CFG80211_CONN_AUTHENTICATE_NEXT;
 }
 
 /* Returned bss is reference counted and must be cleaned up appropriately. */
@@ -291,7 +296,7 @@ static struct cfg80211_bss *cfg80211_get_conn_bss(struct wireless_dev *wdev)
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
 	struct cfg80211_bss *bss;
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	bss = cfg80211_get_bss(wdev->wiphy, wdev->conn->params.channel,
 			       wdev->conn->params.bssid,
@@ -302,22 +307,19 @@ static struct cfg80211_bss *cfg80211_get_conn_bss(struct wireless_dev *wdev)
 	if (!bss)
 		return NULL;
 
-	memcpy(wdev->conn->bssid, bss->bssid, ETH_ALEN);
-	wdev->conn->params.bssid = wdev->conn->bssid;
-	wdev->conn->params.channel = bss->channel;
-	wdev->conn->state = CFG80211_CONN_AUTHENTICATE_NEXT;
+	cfg80211_step_auth_next(wdev->conn, bss);
 	schedule_work(&rdev->conn_work);
 
 	return bss;
 }
 
-static void __cfg80211_sme_scan_done(struct net_device *dev)
+void cfg80211_sme_scan_done(struct net_device *dev)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
 	struct cfg80211_bss *bss;
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	if (!wdev->conn)
 		return;
@@ -333,15 +335,6 @@ static void __cfg80211_sme_scan_done(struct net_device *dev)
 		schedule_work(&rdev->conn_work);
 }
 
-void cfg80211_sme_scan_done(struct net_device *dev)
-{
-	struct wireless_dev *wdev = dev->ieee80211_ptr;
-
-	wdev_lock(wdev);
-	__cfg80211_sme_scan_done(dev);
-	wdev_unlock(wdev);
-}
-
 void cfg80211_sme_rx_auth(struct wireless_dev *wdev, const u8 *buf, size_t len)
 {
 	struct wiphy *wiphy = wdev->wiphy;
@@ -349,7 +342,7 @@ void cfg80211_sme_rx_auth(struct wireless_dev *wdev, const u8 *buf, size_t len)
 	struct ieee80211_mgmt *mgmt = (struct ieee80211_mgmt *)buf;
 	u16 status_code = le16_to_cpu(mgmt->u.auth.status_code);
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	if (!wdev->conn || wdev->conn->state == CFG80211_CONN_CONNECTED)
 		return;
@@ -485,6 +478,21 @@ static void cfg80211_wdev_release_bsses(struct wireless_dev *wdev)
 	}
 }
 
+void cfg80211_wdev_release_link_bsses(struct wireless_dev *wdev, u16 link_mask)
+{
+	unsigned int link;
+
+	for_each_valid_link(wdev, link) {
+		if (!wdev->links[link].client.current_bss ||
+		    !(link_mask & BIT(link)))
+			continue;
+		cfg80211_unhold_bss(wdev->links[link].client.current_bss);
+		cfg80211_put_bss(wdev->wiphy,
+				 &wdev->links[link].client.current_bss->pub);
+		wdev->links[link].client.current_bss = NULL;
+	}
+}
+
 static int cfg80211_sme_get_conn_ies(struct wireless_dev *wdev,
 				     const u8 *ies, size_t ies_len,
 				     const u8 **out_ies, size_t *out_ies_len)
@@ -507,7 +515,7 @@ static int cfg80211_sme_get_conn_ies(struct wireless_dev *wdev,
 	if (!buf)
 		return -ENOMEM;
 
-	if (ies_len) {
+	if (ies) {
 		static const u8 before_extcapa[] = {
 			/* not listing IEs expected to be created by driver */
 			WLAN_EID_RSN,
@@ -562,7 +570,7 @@ static int cfg80211_sme_connect(struct wireless_dev *wdev,
 	if (wdev->conn)
 		return -EINPROGRESS;
 
-	wdev->conn = kzalloc(sizeof(*wdev->conn), GFP_KERNEL);
+	wdev->conn = kzalloc_obj(*wdev->conn);
 	if (!wdev->conn)
 		return -ENOMEM;
 
@@ -597,7 +605,12 @@ static int cfg80211_sme_connect(struct wireless_dev *wdev,
 	wdev->conn->params.ssid_len = wdev->u.client.ssid_len;
 
 	/* see if we have the bss already */
-	bss = cfg80211_get_conn_bss(wdev);
+	bss = cfg80211_get_bss(wdev->wiphy, wdev->conn->params.channel,
+			       wdev->conn->params.bssid,
+			       wdev->conn->params.ssid,
+			       wdev->conn->params.ssid_len,
+			       wdev->conn_bss_type,
+			       IEEE80211_PRIVACY(wdev->conn->params.privacy));
 
 	if (prev_bssid) {
 		memcpy(wdev->conn->prev_bssid, prev_bssid, ETH_ALEN);
@@ -608,6 +621,7 @@ static int cfg80211_sme_connect(struct wireless_dev *wdev,
 	if (bss) {
 		enum nl80211_timeout_reason treason;
 
+		cfg80211_step_auth_next(wdev->conn, bss);
 		err = cfg80211_conn_do_work(wdev, &treason);
 		cfg80211_put_bss(wdev->wiphy, bss);
 	} else {
@@ -675,13 +689,13 @@ static bool cfg80211_is_all_idle(void)
 	 * need not issue a disconnect hint and reset any info such
 	 * as chan dfs state, etc.
 	 */
-	list_for_each_entry(rdev, &cfg80211_rdev_list, list) {
+	for_each_rdev(rdev) {
+		guard(wiphy)(&rdev->wiphy);
+
 		list_for_each_entry(wdev, &rdev->wiphy.wdev_list, list) {
-			wdev_lock(wdev);
 			if (wdev->conn || wdev->connected ||
 			    cfg80211_beaconing_iface_active(wdev))
 				is_all_idle = false;
-			wdev_unlock(wdev);
 		}
 	}
 
@@ -724,6 +738,7 @@ void __cfg80211_connect_result(struct net_device *dev,
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	const struct element *country_elem = NULL;
+	const struct element *ssid;
 	const u8 *country_data;
 	u8 country_datalen;
 #ifdef CPTCFG_CFG80211_WEXT
@@ -733,7 +748,7 @@ void __cfg80211_connect_result(struct net_device *dev,
 	const u8 *connected_addr;
 	bool bss_not_found = false;
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	if (WARN_ON(wdev->iftype != NL80211_IFTYPE_STATION &&
 		    wdev->iftype != NL80211_IFTYPE_P2P_CLIENT))
@@ -793,6 +808,10 @@ void __cfg80211_connect_result(struct net_device *dev,
 		}
 
 		for_each_valid_link(cr, link) {
+			/* don't do extra lookups for failures */
+			if (cr->links[link].status != WLAN_STATUS_SUCCESS)
+				continue;
+
 			if (cr->links[link].bss)
 				continue;
 
@@ -829,6 +848,16 @@ void __cfg80211_connect_result(struct net_device *dev,
 	}
 
 	memset(wdev->links, 0, sizeof(wdev->links));
+	for_each_valid_link(cr, link) {
+		if (cr->links[link].status == WLAN_STATUS_SUCCESS)
+			continue;
+		cr->valid_links &= ~BIT(link);
+		/* don't require bss pointer for failed links */
+		if (!cr->links[link].bss)
+			continue;
+		cfg80211_unhold_bss(bss_from_pub(cr->links[link].bss));
+		cfg80211_put_bss(wdev->wiphy, cr->links[link].bss);
+	}
 	wdev->valid_links = cr->valid_links;
 	for_each_valid_link(cr, link)
 		wdev->links[link].client.current_bss =
@@ -841,8 +870,7 @@ void __cfg80211_connect_result(struct net_device *dev,
 			       ETH_ALEN);
 	}
 
-	if (!(wdev->wiphy->flags & WIPHY_FLAG_HAS_STATIC_WEP))
-		cfg80211_upload_connect_keys(wdev);
+	cfg80211_upload_connect_keys(wdev);
 
 	rcu_read_lock();
 	for_each_valid_link(cr, link) {
@@ -868,6 +896,25 @@ void __cfg80211_connect_result(struct net_device *dev,
 				   cr->links[link].bss->channel->band,
 				   country_data, country_datalen);
 	kfree(country_data);
+
+	if (!wdev->u.client.ssid_len) {
+		rcu_read_lock();
+		for_each_valid_link(cr, link) {
+			u32 ssid_len;
+
+			ssid = ieee80211_bss_get_elem(cr->links[link].bss,
+						      WLAN_EID_SSID);
+
+			if (!ssid || !ssid->datalen)
+				continue;
+
+			ssid_len = min(ssid->datalen, IEEE80211_MAX_SSID_LEN);
+			memcpy(wdev->u.client.ssid, ssid->data, ssid_len);
+			wdev->u.client.ssid_len = ssid_len;
+			break;
+		}
+		rcu_read_unlock();
+	}
 
 	return;
 out:
@@ -1000,6 +1047,7 @@ void cfg80211_connect_done(struct net_device *dev,
 			cfg80211_hold_bss(
 				bss_from_pub(params->links[link].bss));
 		ev->cr.links[link].bss = params->links[link].bss;
+		ev->cr.links[link].status = params->links[link].status;
 
 		if (params->links[link].addr) {
 			ev->cr.links[link].addr = next;
@@ -1036,7 +1084,7 @@ void __cfg80211_roamed(struct wireless_dev *wdev,
 	unsigned int link;
 	const u8 *connected_addr;
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	if (WARN_ON(wdev->iftype != NL80211_IFTYPE_STATION &&
 		    wdev->iftype != NL80211_IFTYPE_P2P_CLIENT))
@@ -1237,39 +1285,48 @@ out:
 }
 EXPORT_SYMBOL(cfg80211_roamed);
 
-void __cfg80211_port_authorized(struct wireless_dev *wdev, const u8 *bssid)
+void __cfg80211_port_authorized(struct wireless_dev *wdev, const u8 *peer_addr,
+					const u8 *td_bitmap, u8 td_bitmap_len)
 {
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	if (WARN_ON(wdev->iftype != NL80211_IFTYPE_STATION &&
-		    wdev->iftype != NL80211_IFTYPE_P2P_CLIENT))
+		wdev->iftype != NL80211_IFTYPE_P2P_CLIENT &&
+		wdev->iftype != NL80211_IFTYPE_AP &&
+		wdev->iftype != NL80211_IFTYPE_P2P_GO))
 		return;
 
-	if (WARN_ON(!wdev->connected) ||
-	    WARN_ON(!ether_addr_equal(wdev->u.client.connected_addr, bssid)))
-		return;
+	if (wdev->iftype == NL80211_IFTYPE_STATION ||
+		wdev->iftype == NL80211_IFTYPE_P2P_CLIENT) {
+		if (WARN_ON(!wdev->connected) ||
+			WARN_ON(!ether_addr_equal(wdev->u.client.connected_addr, peer_addr)))
+			return;
+	}
 
 	nl80211_send_port_authorized(wiphy_to_rdev(wdev->wiphy), wdev->netdev,
-				     bssid);
+				     peer_addr, td_bitmap, td_bitmap_len);
 }
 
-void cfg80211_port_authorized(struct net_device *dev, const u8 *bssid,
-			      gfp_t gfp)
+void cfg80211_port_authorized(struct net_device *dev, const u8 *peer_addr,
+			      const u8 *td_bitmap, u8 td_bitmap_len, gfp_t gfp)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
 	struct cfg80211_event *ev;
 	unsigned long flags;
 
-	if (WARN_ON(!bssid))
+	if (WARN_ON(!peer_addr))
 		return;
 
-	ev = kzalloc(sizeof(*ev), gfp);
+	ev = kzalloc(sizeof(*ev) + td_bitmap_len, gfp);
 	if (!ev)
 		return;
 
 	ev->type = EVENT_PORT_AUTHORIZED;
-	memcpy(ev->pa.bssid, bssid, ETH_ALEN);
+	memcpy(ev->pa.peer_addr, peer_addr, ETH_ALEN);
+	ev->pa.td_bitmap = ((u8 *)ev) + sizeof(*ev);
+	ev->pa.td_bitmap_len = td_bitmap_len;
+	memcpy((void *)ev->pa.td_bitmap, td_bitmap, td_bitmap_len);
 
 	/*
 	 * Use the wdev event list so that if there are pending
@@ -1292,13 +1349,14 @@ void __cfg80211_disconnected(struct net_device *dev, const u8 *ie,
 	union iwreq_data wrqu;
 #endif
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	if (WARN_ON(wdev->iftype != NL80211_IFTYPE_STATION &&
 		    wdev->iftype != NL80211_IFTYPE_P2P_CLIENT))
 		return;
 
 	cfg80211_wdev_release_bsses(wdev);
+	wdev->valid_links = 0;
 	wdev->connected = false;
 	wdev->u.client.ssid_len = 0;
 	wdev->conn_owner_nlportid = 0;
@@ -1328,7 +1386,7 @@ void __cfg80211_disconnected(struct net_device *dev, const u8 *ie,
 			    NL80211_EXT_FEATURE_BEACON_PROTECTION_CLIENT))
 			max_key_idx = 7;
 		for (i = 0; i <= max_key_idx; i++)
-			rdev_del_key(rdev, dev, -1, i, false, NULL);
+			rdev_del_key(rdev, wdev, -1, i, false, NULL);
 	}
 
 	rdev_set_qos_map(rdev, dev, NULL);
@@ -1341,6 +1399,8 @@ void __cfg80211_disconnected(struct net_device *dev, const u8 *ie,
 #endif
 
 	schedule_work(&cfg80211_disconnect_work);
+
+	cfg80211_schedule_channels_check(wdev);
 }
 
 void cfg80211_disconnected(struct net_device *dev, u16 reason,
@@ -1382,7 +1442,7 @@ int cfg80211_connect(struct cfg80211_registered_device *rdev,
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	int err;
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	/*
 	 * If we have an ssid_len, we're trying to connect or are
@@ -1444,12 +1504,16 @@ int cfg80211_connect(struct cfg80211_registered_device *rdev,
 				connect->crypto.ciphers_pairwise[0] = cipher;
 			}
 		}
-
-		connect->crypto.wep_keys = connkeys->params;
-		connect->crypto.wep_tx_key = connkeys->def;
 	} else {
 		if (WARN_ON(connkeys))
 			return -EINVAL;
+
+		/* connect can point to wdev->wext.connect which
+		 * can hold key data from a previous connection
+		 */
+		connect->key = NULL;
+		connect->key_len = 0;
+		connect->key_idx = 0;
 	}
 
 	wdev->connect_keys = connkeys;
@@ -1484,7 +1548,7 @@ int cfg80211_disconnect(struct cfg80211_registered_device *rdev,
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	int err = 0;
 
-	ASSERT_WDEV_LOCK(wdev);
+	lockdep_assert_wiphy(wdev->wiphy);
 
 	kfree_sensitive(wdev->connect_keys);
 	wdev->connect_keys = NULL;
@@ -1519,19 +1583,19 @@ void cfg80211_autodisconnect_wk(struct work_struct *work)
 		container_of(work, struct wireless_dev, disconnect_wk);
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
 
-	wdev_lock(wdev);
+	guard(wiphy)(wdev->wiphy);
 
 	if (wdev->conn_owner_nlportid) {
 		switch (wdev->iftype) {
 		case NL80211_IFTYPE_ADHOC:
-			__cfg80211_leave_ibss(rdev, wdev->netdev, false);
+			cfg80211_leave_ibss(rdev, wdev->netdev, false);
 			break;
 		case NL80211_IFTYPE_AP:
 		case NL80211_IFTYPE_P2P_GO:
-			__cfg80211_stop_ap(rdev, wdev->netdev, -1, false);
+			cfg80211_stop_ap(rdev, wdev->netdev, -1, false);
 			break;
 		case NL80211_IFTYPE_MESH_POINT:
-			__cfg80211_leave_mesh(rdev, wdev->netdev);
+			cfg80211_leave_mesh(rdev, wdev->netdev);
 			break;
 		case NL80211_IFTYPE_STATION:
 		case NL80211_IFTYPE_P2P_CLIENT:
@@ -1555,6 +1619,4 @@ void cfg80211_autodisconnect_wk(struct work_struct *work)
 			break;
 		}
 	}
-
-	wdev_unlock(wdev);
 }
